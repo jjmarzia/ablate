@@ -63,6 +63,8 @@ class Solver {
      */
     inline ablate::domain::SubDomain& GetSubDomain() noexcept { return *subDomain; }
 
+    inline std::shared_ptr<ablate::domain::SubDomain> GetSubDomainPtr() noexcept { return subDomain; }
+
     /**
      * Get the sub domain used in this solver
      * @return

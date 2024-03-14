@@ -2,13 +2,13 @@ target_sources(ablateLibrary
         PRIVATE
         particleSolver.cpp
         fieldDescription.cpp
-        coupledParticleSolver.cpp
+#        coupledParticleSolver.cpp
 
         PUBLIC
         field.hpp
         fieldDescription.hpp
         particleSolver.hpp
-        coupledParticleSolver.hpp
+#        coupledParticleSolver.hpp
         )
 
 add_subdirectory(initializers)

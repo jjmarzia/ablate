@@ -6,9 +6,15 @@
 #include "utilities/constants.hpp"
 #include "utilities/mathUtilities.hpp"
 #include "utilities/petscSupport.hpp"
+#include "mathFunctions/functionFactory.hpp"
+
+
+
 
 ablate::finiteVolume::processes::SurfaceForce::SurfaceForce(PetscReal sigma) : sigma(sigma) {}
+
 ablate::finiteVolume::processes::SurfaceForce::~SurfaceForce() { DMDestroy(&vertexDM) >> utilities::PetscUtilities::checkError; }
+
 
 PetscReal GaussianDerivativeFactor(const PetscReal *x, const PetscReal s,  const PetscInt dx, const PetscInt dy, const PetscInt dz) {
 
@@ -45,13 +51,14 @@ PetscReal GaussianDerivativeFactor(const PetscReal *x, const PetscReal s,  const
 
 }
 
-void Get2DCoordinate(DM dm, PetscInt p, PetscReal *xp, PetscReal *yp){
+void GetCoordinate(DM dm, PetscInt dim, PetscInt p, PetscReal *xp, PetscReal *yp, PetscReal *zp){
     //get the coordinates of the point
     PetscReal vol;
-    PetscReal centroid[2];
+    PetscReal centroid[dim];
     DMPlexComputeCellGeometryFVM(dm, p, &vol, centroid, nullptr);
     *xp = centroid[0];
     *yp = centroid[1];
+    *zp = centroid[2];
 }
 
 // Calculate the curvature from a vertex-based level set field using Gaussian convolution.
@@ -131,16 +138,12 @@ void CurvatureViaGaussian(DM dm, const PetscInt cell, Vec vec, const ablate::dom
     }
 }
 
+std::shared_ptr<ablate::domain::SubDomain> subdomain = nullptr;
+// Called every time the mesh changes
 void ablate::finiteVolume::processes::SurfaceForce::Initialize(ablate::finiteVolume::FiniteVolumeSolver &solver) {
     SurfaceForce::subDomain = solver.GetSubDomainPtr();
 }
 
-void ablate::domain::SubDomain::UpdateAuxLocalVector() {
-    if (auxDM) {
-        DMLocalToGlobal(auxDM, auxLocalVec, INSERT_VALUES, auxGlobalVec) >> utilities::PetscUtilities::checkError;
-        DMGlobalToLocal(auxDM, auxGlobalVec, INSERT_VALUES, auxLocalVec) >> utilities::PetscUtilities::checkError;
-    }
-}
 
 void ablate::finiteVolume::processes::SurfaceForce::Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) {
     auto dim = flow.GetSubDomain().GetDimensions();
@@ -161,43 +164,54 @@ void ablate::finiteVolume::processes::SurfaceForce::Setup(ablate::finiteVolume::
 PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx) {
     PetscFunctionBegin;
 
-    ablate::finiteVolume::processes::SurfaceForce *process = (ablate::finiteVolume::processes::SurfaceForce *)ctx;
-    std::shared_ptr<ablate::domain::SubDomain> subDomain = process->subDomain;
-    const auto &phiField = subDomain->GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
-    const auto &phiTildeField = subDomain->GetField("phiTilde");
-    DM auxDM = subDomain->GetAuxDM();
-    Vec auxVec = subDomain->GetAuxVector();
-    const PetscScalar *solArray;
-    PetscScalar *auxArray;
+    auto process = (ablate::finiteVolume::processes::SurfaceForce *)ctx;
 
-    VecGetArrayRead(locX, &solArray) >> ablate::utilities::PetscUtilities::checkError;
-    VecGetArray(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;
 
+//    std::shared_ptr<ablate::domain::SubDomain> subdomain = nullptr;
+//    subdomain = solver.GetSubDomainPtr();
+
+    auto dim = solver.GetSubDomain().GetDimensions();
+    const auto &phiField = solver.GetSubDomain().GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
+    const auto &eulerField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
+    const auto &phitildeField = solver.GetSubDomain().GetField("phiTilde");
+
+    // march over each cell
     ablate::domain::Range cellRange;
     solver.GetCellRangeWithoutGhost(cellRange);
+    PetscScalar *fArray;
+    PetscCall(VecGetArray(locFVec, &fArray));
+    const PetscScalar *solArray;
+    PetscCall(VecGetArrayRead(locX, &solArray));
+
+    PetscScalar *auxArray;
+    Vec auxvec = solver.GetSubDomain().GetAuxVector();
+    PetscCall(VecGetArray(auxvec, &auxArray));
+
+
     PetscInt polyAug = 2;
     bool doesNotHaveDerivatives = false;
     bool doesNotHaveInterpolation = false;
     PetscReal h; DMPlexGetMinRadius(dm, &h); //h*=3;
     ablate::domain::rbf::MQ cellRBF(polyAug, h, doesNotHaveDerivatives, doesNotHaveInterpolation);
-    cellRBF.Setup(subDomain);
+    cellRBF.Setup(subdomain);
     cellRBF.Initialize();
 
-
-    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-        PetscInt cell = cellRange.GetPoint(c);
-        const PetscScalar *phic;
-        xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic) >> ablate::utilities::PetscUtilities::checkError;
+    for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
+        PetscInt cell = cellRange.GetPoint(i);
         PetscInt nNeighbors, *neighbors;
         DMPlexGetNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
 
-        PetscReal xc, yc;
-        Get2DCoordinate(dm, cell, &xc, &yc);
+        PetscReal xc, yc, zc;
+        GetCoordinate(dm, dim, cell, &xc, &yc, &zc);
         std::cout << "\n --------- cell " << cell << " -------start--";
-        std::cout << "\n coordinate=  ("<<xc<<", "<<yc<<")";
+        std::cout << "\n coordinate=  ("<<xc<<", "<<yc<<", "<<zc<<")";
+        PetscReal *phic;
+        xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic);
+        std::cout << "\n" << cell << "  phic "<<*phic;
 
         PetscReal M=0;
         PetscReal avgphi=0;
+
         for (PetscInt j = 0; j < nNeighbors; ++j){
             PetscInt neighbor = neighbors[j];
             if (cell != neighbor){
@@ -205,39 +219,81 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
                 PetscReal *phin;
                 xDMPlexPointLocalRead(dm, neighbor, phiField.id, solArray, &phin);
 
-                PetscReal xn, yn;
-                Get2DCoordinate(dm, neighbor, &xn, &yn);
+                PetscReal xn, yn, zn;
+                GetCoordinate(dm, dim, neighbor, &xn, &yn, &zn);
 
-                PetscReal distance = pow(   pow(xc-xn,2)+pow(yc-yn,2)     ,0.5);
-                avgphi += (*phin);
-
+                PetscReal distance = pow(   pow(xc-xn,2)+pow(yc-yn,2)+pow(zc-zn,2)     ,0.5);
+                avgphi += (*phin);// * pow(distance,-1);
+//                totaldistance += distance;
                 std::cout << "\n   neighbor= " << neighbor << "  distance= "<<distance << "  phin=  " << *phin;
-                std::cout << "\n      coordinate=  ("<<xn<<", "<<yn<<", "<<")";
-
+                std::cout << "\n      coordinate=  ("<<xn<<", "<<yn<<", "<<zn<<")";
             }
         }
-        avgphi/=M;
+//        avgphi/= (totaldistance*M);
+        avgphi /= M;
 
-        PetscScalar *phiTilde;
-        xDMPlexPointLocalRef(auxDM, cell, phiTildeField.id, auxArray, &phiTilde) >> ablate::utilities::PetscUtilities::checkError;
-        *phiTilde = (0.5*(*phic)) + (0.5*(avgphi));
+//        PetscReal phitilde = (0.5*(*phic)) + (0.5*(avgphi));
+//        PetscReal phitilde = *phic;
+        PetscReal *phitildePtr;
+
+        xDMPlexPointLocalRef(dm, cell, phitildeField.id, auxArray, &phitildePtr);
+//        *phitildePtr = (0.5*(*phic)) + (0.5*(avgphi));
+        *phitildePtr = *phic;
 
         std::cout << "\n" << cell << "  phiavg "<<avgphi;
-        std::cout << "\n" << cell << "  phitilde "<<*phiTilde + 0*process->sigma;
+        std::cout << "\n" << cell << "  phitilde "<<*phitildePtr + 0*process->sigma;
     }
-//    subDomain->UpdateAuxLocalVector();
-//    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-//        PetscInt cell = cellRange.GetPoint(c);
-//        const PetscScalar *phi, *phiTilde;
-//        xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phi) >> ablate::utilities::PetscUtilities::checkError;
-//        xDMPlexPointLocalRead(auxDM, cell, phiTildeField.id, auxArray, &phiTilde) >> ablate::utilities::PetscUtilities::checkError;
-//        if (PetscAbsScalar(*phi - *phiTilde) > PETSC_SMALL) {
-//            printf("%+f\t%+f\t%+e\n", *phi, *phiTilde, PetscAbsScalar(*phi - *phiTilde));
-//        }
-//    }
-    VecRestoreArrayRead(locX, &solArray) >> ablate::utilities::PetscUtilities::checkError;
-    VecRestoreArray(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;
-    printf("All Done!\n");
-    exit(0);
+
+    for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
+
+        const PetscInt cell = cellRange.GetPoint(i);
+        const PetscReal *phi; xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phi);
+        PetscReal kappa, Nx, Ny, Nz;
+
+        PetscReal xc, yc, zc;
+        GetCoordinate(dm, dim, cell, &xc, &yc, &zc);
+        if (*phi > 0.1 and *phi < 0.9) {
+
+//                std::cout << "\n CUT CELL, cell  " << cell << "   ("<<xc<<", "<<yc<<", "<<zc<<")";
+                double H, Nx_ptr, Ny_ptr;
+                CurvatureViaGaussian(dm, cell, locX, &phiField, &cellRBF, &h, &H, &Nx_ptr, &Ny_ptr);
+                Nx=Nx_ptr; Ny=Ny_ptr; Nz=0; kappa=H;
+        }
+        else {
+
+//            std::cout << "\n NOT CUT CELL, cell  " << cell << "   ("<<xc<<", "<<yc<<", "<<zc<<")";
+            kappa = Nx = Ny = Nz = 0;
+        }
+        PetscReal N[3] = {Nx, Ny, Nz};
+
+
+        // compute surface force sigma * cur * normal and add to local F vector
+        const PetscScalar *euler = nullptr;
+        PetscScalar *eulerSource = nullptr;
+        PetscCall(DMPlexPointLocalFieldRef(dm, cell, eulerField.id, fArray, &eulerSource));
+        PetscCall(DMPlexPointLocalFieldRead(dm, cell, eulerField.id, solArray, &euler));
+        auto density = euler[ablate::finiteVolume::CompressibleFlowFields::RHO];
+
+        for (PetscInt k = 0; k < dim; ++k) {
+            // calculate surface force and energy
+            PetscReal surfaceForce = process->sigma * kappa * N[k] + (0*time);
+            PetscReal vel = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + k] / density;
+            // add in the contributions
+
+            eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOU + k] += surfaceForce;
+            eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += surfaceForce * vel;
+
+
+        }
+    }
+
+    // cleanup
+    PetscCall(VecRestoreArray(locFVec, &fArray));
+    PetscCall(VecRestoreArrayRead(locX, &solArray));
+    solver.RestoreRange(cellRange);
+
     PetscFunctionReturn(0);
 }
+
+REGISTER(ablate::finiteVolume::processes::Process, ablate::finiteVolume::processes::SurfaceForce, "calculates surface tension force and adds source terms",
+         ARG(PetscReal, "sigma", "sigma, surface tension coefficient"));
