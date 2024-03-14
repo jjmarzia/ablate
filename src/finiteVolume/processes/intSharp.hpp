@@ -1,12 +1,10 @@
-#ifndef ABLATELIBRARY_FINITEVOLUME_SURFACEFORCE_HPP
-#define ABLATELIBRARY_FINITEVOLUME_SURFACEFORCE_HPP
+#ifndef ABLATELIBRARY_FINITEVOLUME_INTSHARP_HPP
+#define ABLATELIBRARY_FINITEVOLUME_INTSHARP_HPP
 
 #include <petsc.h>
 #include <memory>
 #include <vector>
 #include "domain/range.hpp"
-#include "domain/RBF/rbf.hpp"
-#include "domain/reverseRange.hpp"
 #include "finiteVolume/fluxCalculator/fluxCalculator.hpp"
 #include "flowProcess.hpp"
 #include "process.hpp"
@@ -15,38 +13,36 @@
 
 namespace ablate::finiteVolume::processes {
 
-class SurfaceForce : public Process {
-
+class IntSharp : public Process {
 
    private:
-    //surface tension coefficient
-    PetscReal sigma;
+    //coeffs
+    PetscReal Gamma;
+    PetscReal epsilon;
     //mesh for vertex information
     DM vertexDM{};
-    std::shared_ptr<ablate::domain::SubDomain> subDomain;
 
    public:
-
     /**
      *
-     * @param sigma
+     * @param Gamma
+     * @param epsilon
      */
-    explicit SurfaceForce(PetscReal sigma);
+    explicit IntSharp(PetscReal Gamma, PetscReal epsilon);
 
     /**
      * Clean up the dm created
      */
-    ~SurfaceForce() override;
+    ~IntSharp() override;
 
     /**
      * Setup the process to define the vertex dm
      * @param flow
      */
     void Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
-    void Initialize(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
 
     /**
-     * static function private function to compute surface force and add source to eulerset
+     * static function private function to compute interface regularization term and add source to eulerset
      * @param solver
      * @param dm
      * @param time
@@ -55,7 +51,7 @@ class SurfaceForce : public Process {
      * @param ctx
      * @return
      */
-    static PetscErrorCode ComputeSource(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx);
+    static PetscErrorCode ComputeTerm(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx);
 };
 }  // namespace ablate::finiteVolume::processes
 #endif
