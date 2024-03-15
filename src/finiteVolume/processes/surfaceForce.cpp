@@ -56,6 +56,94 @@ void Get2DCoordinate(DM dm, PetscInt p, PetscReal *xp, PetscReal *yp){
 
 // Calculate the curvature from a vertex-based level set field using Gaussian convolution.
 // Right now this is just 2D for testing purposes.
+
+static PetscInt FindCell(DM dm, const PetscReal x0[], const PetscInt nCells, const PetscInt cells[], PetscReal *distOut) {
+    // Return the cell with the cell-center that is the closest to a given point
+
+    PetscReal dist = PETSC_MAX_REAL;
+    PetscInt closestCell = -1;
+    PetscInt dim;
+    DMGetDimension(dm, &dim) >> ablate::utilities::PetscUtilities::checkError;
+
+    for (PetscInt c = 0; c < nCells; ++c) {
+        PetscReal x[dim];
+        DMPlexComputeCellGeometryFVM(dm, cells[c], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
+
+        ablate::utilities::MathUtilities::Subtract(dim, x, x0, x);
+        PetscReal cellDist = ablate::utilities::MathUtilities::MagVector(dim, x);
+        if (cellDist < dist) {
+            closestCell = cells[c];
+            dist = cellDist;
+        }
+    }
+    if (distOut) *distOut = dist;
+    return (closestCell);
+}
+static PetscInt *interpCellList = nullptr;
+
+//   Hermite-Gauss quadrature points
+const PetscInt nQuad = 4; // Size of the 1D quadrature
+
+//   The quadrature is actually sqrt(2) times the quadrature points. This is as we are integrating
+//      against the normal distribution, not exp(-x^2)
+const PetscReal quad[4] = {-0.74196378430272585764851359672636022482952014750891895361147387899499975465000530,
+                           0.74196378430272585764851359672636022482952014750891895361147387899499975465000530,
+                           -2.3344142183389772393175122672103621944890707102161406718291603341725665622712306,
+                           2.3344142183389772393175122672103621944890707102161406718291603341725665622712306};
+
+// The weights are the true weights divided by sqrt(pi)
+const PetscReal weights[4] = {0.45412414523193150818310700622549094933049562338805584403605771393758003145477625,
+                              0.45412414523193150818310700622549094933049562338805584403605771393758003145477625,
+                              0.045875854768068491816892993774509050669504376611944155963942286062419968545223748,
+                              0.045875854768068491816892993774509050669504376611944155963942286062419968545223748};
+
+
+static PetscReal sigmaFactor = 3.0;
+
+void BuildInterpCellList(DM dm, const ablate::domain::Range cellRange) {
+
+
+    PetscReal h;
+    DMPlexGetMinRadius(dm, &h) >> ablate::utilities::PetscUtilities::checkError;
+    h *= 2.0; // Min radius returns the distance between a cell-center and a face. Double it to get the average cell size
+    const PetscReal sigma = sigmaFactor*h;
+
+    PetscInt dim;
+    DMGetDimension(dm, &dim) >> ablate::utilities::PetscUtilities::checkError;
+
+    PetscMalloc1(16*(cellRange.end - cellRange.start), &interpCellList);
+
+    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+        PetscInt cell = cellRange.GetPoint(c);
+
+        PetscReal x0[dim];
+        DMPlexComputeCellGeometryFVM(dm, cell, NULL, x0, NULL) >> ablate::utilities::PetscUtilities::checkError;
+
+        PetscInt nCells, *cellList;
+        DMPlexGetNeighbors(dm, cell, 2, -1.0, -1, PETSC_FALSE, PETSC_FALSE, &nCells, &cellList) >> ablate::utilities::PetscUtilities::checkError;
+
+        for (PetscInt i = 0; i < nQuad; ++i) {
+            for (PetscInt j = 0; j < nQuad; ++j) {
+
+                PetscReal x[2] = {x0[0] + sigma*quad[i], x0[1] + sigma*quad[j]};
+
+                const PetscInt interpCell = FindCell(dm, x, nCells, cellList, NULL);
+
+                if (interpCell < 0) {
+                    int rank;
+                    MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+                    throw std::runtime_error("BuildInterpCellList could not determine the location of (" + std::to_string(x[0]) + ", " + std::to_string(x[1]) + ") on rank " + std::to_string(rank) + ".");
+                }
+
+                interpCellList[(c - cellRange.start)*16 + i*4 + j] = interpCell;
+            }
+        }
+
+        DMPlexRestoreNeighbors(dm, cell, 2, -1.0, -1, PETSC_FALSE, PETSC_FALSE, &nCells, &cellList) >> ablate::utilities::PetscUtilities::checkError;
+
+    }
+}
+
 void CurvatureViaGaussian(DM dm, const PetscInt cell, Vec vec, const ablate::domain::Field *lsField, ablate::domain::rbf::MQ *rbf, const double *h, double *H, double *Nx, double *Ny){
 
     PetscInt dim;
@@ -70,28 +158,14 @@ void CurvatureViaGaussian(DM dm, const PetscInt cell, Vec vec, const ablate::dom
     //  const PetscReal weights[] = {2.0/3.0, 1.0/6.0, 1.0/6.0};
 
 
-    //   Hermite-Gauss quadrature points
-    const PetscInt nQuad = 4; // Size of the 1D quadrature
 
-    //   The quadrature is actually sqrt(2) times the quadrature points. This is as we are integrating
-    //      against the normal distribution, not exp(-x^2)
-    const PetscReal quad[4] = {-0.74196378430272585764851359672636022482952014750891895361147387899499975465000530,
-                               0.74196378430272585764851359672636022482952014750891895361147387899499975465000530,
-                               -2.3344142183389772393175122672103621944890707102161406718291603341725665622712306,
-                               2.3344142183389772393175122672103621944890707102161406718291603341725665622712306};
-
-    // The weights are the true weights divided by sqrt(pi)
-    const PetscReal weights[4] = {0.45412414523193150818310700622549094933049562338805584403605771393758003145477625,
-                                  0.45412414523193150818310700622549094933049562338805584403605771393758003145477625,
-                                  0.045875854768068491816892993774509050669504376611944155963942286062419968545223748,
-                                  0.045875854768068491816892993774509050669504376611944155963942286062419968545223748};
 
 
     PetscReal x0[dim], vol;
     DMPlexComputeCellGeometryFVM(dm, cell, &vol, x0, nullptr) >> ablate::utilities::PetscUtilities::checkError;
 
 
-    const PetscReal a = 3*(*h); //1e-6
+    const PetscReal a = sigmaFactor*(*h); //1e-6
 
     PetscReal cx = 0.0, cy = 0.0, cxx = 0.0, cyy = 0.0, cxy = 0.0;
 
@@ -183,6 +257,11 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 
     ablate::domain::Range cellRange;
     solver.GetCellRangeWithoutGhost(cellRange);
+
+    if ( interpCellList==nullptr ) {
+        BuildInterpCellList(auxDM, cellRange);
+    }
+
     PetscInt polyAug = 2;
     bool doesNotHaveDerivatives = false;
     bool doesNotHaveInterpolation = false;
