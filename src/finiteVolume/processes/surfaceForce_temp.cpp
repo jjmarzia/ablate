@@ -171,8 +171,8 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 //    subdomain = solver.GetSubDomainPtr();
 
     auto dim = solver.GetSubDomain().GetDimensions();
-    const auto &phiField = solver.GetSubDomain().GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
     const auto &eulerField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
+    const auto &phiField = solver.GetSubDomain().GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
     const auto &phitildeField = solver.GetSubDomain().GetField("phiTilde");
 
     // march over each cell
