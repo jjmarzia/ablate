@@ -280,8 +280,8 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 
         PetscReal xc, yc;
         Get2DCoordinate(dm, cell, &xc, &yc);
-//        std::cout << "\n --------- cell " << cell << " -------start--";
-//        std::cout << "\n coordinate=  ("<<xc<<", "<<yc<<")";
+        std::cout << "\n --------- cell " << cell << " -------start--";
+        std::cout << "\n coordinate=  ("<<xc<<", "<<yc<<")";
 
         PetscReal M=0;
         PetscReal avgphi=0;
@@ -290,9 +290,18 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
         PetscScalar *phiTilde;
         xDMPlexPointLocalRef(auxDM, cell, phiTildeField.id, auxArray, &phiTilde) >> ablate::utilities::PetscUtilities::checkError;
 
+//        PetscInt sq_cre=sqrt(cellRange.end);
+//        bool cond1 = (cell < sq_cre);
+//        bool cond2 = (cell % sq_cre == 0);
+//        bool cond3 = ((cell - 1) % sq_cre == 0);
+//        bool cond4 = (cell >= cellRange.end - sq_cre);
+//        bool isBoundary = (cond1 or cond2 or cond3 or cond4);
 
-        if ( abs(xc) >= 1.5 or abs(yc) >= 1.5){
-            *phiTilde = *phic;
+        if ( abs(xc) >= 0.3 or abs(yc) >= 0.3){
+//        if (isBoundary){
+//            *phiTilde = *phic;
+            *phiTilde=0;
+            std::cout << "\nisboundary";
         }
         else {
             for (PetscInt j = 0; j < nNeighbors; ++j) {
@@ -312,6 +321,8 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 //                    std::cout << "\n   neighbor= " << neighbor << "  phin=  " << *phin;
 //                    std::cout << "\n      coordinate=  (" << xn << ", " << yn << ", "
 //                              << ")";
+
+                    std::cout << "\ndo smoothing";
                 }
             }
             avgphi /= M;
@@ -335,15 +346,35 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 
         const PetscInt cell = cellRange.GetPoint(i);
         const PetscReal *phiTilde; xDMPlexPointLocalRead(auxDM, cell, phiTildeField.id, auxArray, &phiTilde);
-        PetscReal kappa, Nx, Ny, Nz;
+        PetscReal kappa=0, Nx=0, Ny=0, Nz=0;
+
+//        PetscInt sq_cre=sqrt(cellRange.end);
+//        bool cond1 = (cell < sq_cre);
+//        bool cond2 = (cell % sq_cre == 0);
+//        bool cond3 = ((cell - 1) % sq_cre == 0);
+//        bool cond4 = (cell >= cellRange.end - sq_cre);
+//        bool isBoundary = (cond1 or cond2 or cond3 or cond4);
 
         PetscReal xc, yc;
         Get2DCoordinate(dm, cell, &xc, &yc);
-        if (*phiTilde > 0.1 and *phiTilde < 0.9) {
-            //                std::cout << "\n CUT CELL, cell  " << cell << "   ("<<xc<<", "<<yc<<", "<<zc<<")";
-            double H, Nx_ptr, Ny_ptr;
-            CurvatureViaGaussian(auxDM, cell, auxVec, &phiTildeField, &cellRBF, &h, &H, &Nx_ptr, &Ny_ptr);
-            Nx=Nx_ptr; Ny=Ny_ptr; Nz=0; kappa=H;
+
+        if ( abs(xc) < 0.3 or abs(yc) < 0.3){
+//        if (not (isBoundary)) {
+            if (*phiTilde > 0.1 and *phiTilde < 0.9) {
+                //                std::cout << "\n CUT CELL, cell  " << cell << "   ("<<xc<<", "<<yc<<", "<<zc<<")";
+                double H, Nx_ptr, Ny_ptr;
+                CurvatureViaGaussian(auxDM, cell, auxVec, &phiTildeField, &cellRBF, &h, &H, &Nx_ptr, &Ny_ptr);
+                Nx = Nx_ptr;
+                Ny = Ny_ptr;
+                Nz = 0;
+                kappa = H;
+
+
+                std::cout << "\n cell " << cell << " ("<<xc<<", "<<yc<<")  do gauss-hermite";
+            }
+            else{
+                kappa = Nx = Ny = Nz = 0;
+            }
         }
         else {
             //            std::cout << "\n NOT CUT CELL, cell  " << cell << "   ("<<xc<<", "<<yc<<", "<<zc<<")";
