@@ -280,8 +280,8 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 
         PetscReal xc, yc;
         Get2DCoordinate(dm, cell, &xc, &yc);
-        std::cout << "\n --------- cell " << cell << " -------start--";
-        std::cout << "\n coordinate=  ("<<xc<<", "<<yc<<")";
+//        std::cout << "\n --------- cell " << cell << " -------start--";
+//        std::cout << "\n coordinate=  ("<<xc<<", "<<yc<<")";
 
         PetscReal M=0;
         PetscReal avgphi=0;
@@ -297,11 +297,11 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 //        bool cond4 = (cell >= cellRange.end - sq_cre);
 //        bool isBoundary = (cond1 or cond2 or cond3 or cond4);
 
-        if ( abs(xc) >= 0.3 or abs(yc) >= 0.3){
+        if ( abs(xc) >= 1.5 or abs(yc) >= 1.5){
 //        if (isBoundary){
 //            *phiTilde = *phic;
             *phiTilde=0;
-            std::cout << "\nisboundary";
+//            std::cout << "\nisboundary";
         }
         else {
             for (PetscInt j = 0; j < nNeighbors; ++j) {
@@ -322,7 +322,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 //                    std::cout << "\n      coordinate=  (" << xn << ", " << yn << ", "
 //                              << ")";
 
-                    std::cout << "\ndo smoothing";
+//                    std::cout << "\ndo smoothing";
                 }
             }
             avgphi /= M;
@@ -358,7 +358,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
         PetscReal xc, yc;
         Get2DCoordinate(dm, cell, &xc, &yc);
 
-        if ( abs(xc) < 0.3 or abs(yc) < 0.3){
+        if ( abs(xc) < 1.5 and abs(yc) < 1.5){
 //        if (not (isBoundary)) {
             if (*phiTilde > 0.1 and *phiTilde < 0.9) {
                 //                std::cout << "\n CUT CELL, cell  " << cell << "   ("<<xc<<", "<<yc<<", "<<zc<<")";
@@ -370,7 +370,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
                 kappa = H;
 
 
-                std::cout << "\n cell " << cell << " ("<<xc<<", "<<yc<<")  do gauss-hermite";
+//                std::cout << "\n cell " << cell << " ("<<xc<<", "<<yc<<")  do gauss-hermite";
             }
             else{
                 kappa = Nx = Ny = Nz = 0;
