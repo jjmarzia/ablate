@@ -55,11 +55,6 @@ void Get3DCoordinate(DM dm, PetscInt p, PetscReal *xp, PetscReal *yp, PetscReal 
     *zp = centroid[2];
 }
 
-void GetVertexRange(DM dm, const std::shared_ptr<ablate::domain::Region> &region, ablate::domain::Range &vertexRange) {
-    PetscInt depth=0; //zeroth layer of DAG is always that of the vertices
-    ablate::domain::GetRange(dm, region, depth, vertexRange);
-}
-
 // Calculate the curvature from a vertex-based level set field using Gaussian convolution.
 // Right now this is just 2D for testing purposes.
 
@@ -282,91 +277,59 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 
     DM auxDM = subDomain->GetAuxDM();
     Vec auxVec = subDomain->GetAuxVector();
-    Vec vertexVec;
-    DMGetLocalVector(process->vertexDM, &vertexVec);
     const PetscScalar *solArray;
     PetscScalar *auxArray;
-    PetscScalar *vertexArray;
-    PetscScalar *fArray;
 
     VecGetArrayRead(locX, &solArray) >> ablate::utilities::PetscUtilities::checkError;
     VecGetArray(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;
-    VecGetArray(vertexVec, &vertexArray);
+
+    PetscScalar *fArray;
     PetscCall(VecGetArray(locFVec, &fArray));
 
     ablate::domain::Range cellRange;
     solver.GetCellRangeWithoutGhost(cellRange);
-    PetscInt vStart, vEnd;
-    DMPlexGetDepthStratum(process->vertexDM, 0, &vStart, &vEnd);
 
-    ablate::domain::Range vertexRange;
-    GetVertexRange(dm, ablate::domain::Region::ENTIREDOMAIN, vertexRange);
-
-    if (interpCellList == nullptr) {
+    if ( interpCellList==nullptr ) {
         BuildInterpCellList(auxDM, cellRange);
     }
 
     PetscInt polyAug = 2;
     bool doesNotHaveDerivatives = false;
     bool doesNotHaveInterpolation = false;
-    PetscReal h;
-    DMPlexGetMinRadius(dm, &h);  // h*=3;
+    PetscReal h; DMPlexGetMinRadius(dm, &h); //h*=3;
     ablate::domain::rbf::MQ cellRBF(polyAug, h, doesNotHaveDerivatives, doesNotHaveInterpolation);
     cellRBF.Setup(subDomain);
     cellRBF.Initialize();
+
 
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
         PetscInt cell = cellRange.GetPoint(c);
         const PetscScalar *phic;
         xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic) >> ablate::utilities::PetscUtilities::checkError;
+        PetscInt nNeighbors, *neighbors;
+        DMPlexGetNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
 
         PetscReal xc, yc, zc;
         Get3DCoordinate(dm, cell, &xc, &yc, &zc);
         //        std::cout << "\n --------- cell " << cell << " -------start--";
         //        std::cout << "\n coordinate=  ("<<xc<<", "<<yc<<")";
 
-        //here goes phistructured
-        //then phistructured ~ 0.5 defines the interface
-        PetscScalar *phiTildeStructured;
-        xDMPlexPointLocalRef(auxDM, cell, phiTildeStructuredField.id, auxArray, &phiTildeStructured) >> ablate::utilities::PetscUtilities::checkError;
-
-        PetscInt nNeighbors_1layer, *neighbors_1layer;
-        DMPlexGetNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors_1layer, &neighbors_1layer);
-
-        if (abs(xc) >= artificialsubdomain or abs(yc) >= artificialsubdomain or abs(zc) >= artificialsubdomain) {
-            *phiTildeStructured = 0;
-        } else {
-            for (PetscInt j = 0; j < nNeighbors_1layer; ++j) {
-                PetscInt neighbor = neighbors_1layer[j];
-                PetscReal *phin;
-                xDMPlexPointLocalRead(dm, neighbor, phiField.id, solArray, &phin);
-
-                *phiTildeStructured += *phin / (2*nNeighbors_1layer);
-            }
-        }
-        *phiTildeStructured += *phic/2;
-
-        //now build phitilde
-        //number of smoothing layers
-        PetscInt nNeighbors, *neighbors;
-        DMPlexGetNeighbors(dm, cell, 3, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
-
-
-
-        PetscReal weightedphi = 0;
-//        PetscReal avgphi = 0;
-        PetscReal Tw = 0;
+        PetscReal weightedphi=0;
+        PetscReal avgphi=0;
+        PetscReal Tw=0;
 
         PetscScalar *phiTilde;
         xDMPlexPointLocalRef(auxDM, cell, phiTildeField.id, auxArray, &phiTilde) >> ablate::utilities::PetscUtilities::checkError;
 
+        PetscScalar *phiTildeStructured;
+        xDMPlexPointLocalRef(auxDM, cell, phiTildeStructuredField.id, auxArray, &phiTildeStructured) >> ablate::utilities::PetscUtilities::checkError;
 
-        if (abs(xc) >= artificialsubdomain or abs(yc) >= artificialsubdomain or abs(zc) >= artificialsubdomain) {
-            *phiTilde = 0;
-        } else {
+        if ( abs(xc) >= artificialsubdomain or abs(yc) >= artificialsubdomain or abs(zc) >= artificialsubdomain){
+            *phiTilde=0;
+        }
+        else {
             for (PetscInt j = 0; j < nNeighbors; ++j) {
                 PetscInt neighbor = neighbors[j];
-
                 //                if (cell != neighbor) {
                 PetscReal *phin;
                 xDMPlexPointLocalRead(dm, neighbor, phiField.id, solArray, &phin);
@@ -374,240 +337,105 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
                 PetscReal xn, yn, zn;
                 Get3DCoordinate(dm, neighbor, &xn, &yn, &zn);
 
-                PetscReal d = PetscSqrtReal(PetscSqr(xn - xc) + PetscSqr(yn - yc) + PetscSqr(zn - zc));  // distance
-                //                PetscReal s = 1.698643600577*h; //stdev of our phitilde smoothing, NOT our convolution smoothing
-                PetscReal s = 6 * h;
+                PetscReal d = PetscSqrtReal(PetscSqr(xn-xc) + PetscSqr(yn-yc) + PetscSqr(zn-zc)); //distance
+                PetscReal s = 1.698643600577*h; //stdev of our phitilde smoothing, NOT our convolution smoothing
 
-                PetscReal wn;
-                PhiNeighborGaussWeight(d, s, &wn);
+                PetscReal wn; PhiNeighborGaussWeight(d, s, &wn);
                 Tw += wn;
 
-                weightedphi += (*phin * wn);
+                weightedphi += (*phin*wn);
 
-//                if (cell == neighbor) {
-//                    avgphi += 4 * *phin;
-//                    //                    std::cout<< cell << "  " << neighbor << "  center" << "\n";
-//                }
-//                if (abs(d - 2 * h) < PETSC_SMALL) {  // cardinal neightbor
-//                    avgphi += 2 * *phin;
-//                    //                    std::cout<< cell << "  " << neighbor << "  cardinal neighbor" << "\n";
-//                }
-//                if (abs(d - 2 * sqrt(2) * h) < PETSC_SMALL) {  // diagonal neighbor
-//                    avgphi += *phin;
-//                    //                    std::cout<< cell << "  " << neighbor << "  diagonal neighbor" << "\n";
-//                }
-//                if (not((cell == neighbor) or (abs(d - 2 * h) < PETSC_SMALL) or (abs(d - 2 * sqrt(2) * h) < PETSC_SMALL))) {
-//                    //                    std::cout<< cell << "  " << neighbor << "  further away" << "\n";
-//                }
+                if (cell == neighbor){
+                    avgphi += 4**phin;
+                }
+                if (abs(d - 2*h) < PETSC_SMALL){ //cardinal neightbor
+                    avgphi += 2**phin;
+                }
+                if (abs(d - 2* sqrt(2)*h) < PETSC_SMALL){ //diagonal neighbor
+                    avgphi += *phin;
+                }
+
+                //                }
             }
-
             weightedphi /= Tw;
-//            avgphi /= 16;
-            *phiTilde = weightedphi;  //*phiTilde = (0.5 * (*phic)) + (0.5 * (avgphi));
-//            *phiTildeStructured = avgphi;
+            avgphi /= 16;
+            *phiTilde = weightedphi; //*phiTilde = (0.5 * (*phic)) + (0.5 * (avgphi));
+            *phiTildeStructured = avgphi;
+
         }
+
     }
 
-    // VERTEX BASED
+    for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
 
-//    PetscReal kappabar = 0, Nkappa=0;
-        for (PetscInt j = vertexRange.start; j < vertexRange.end; j++){
+        const PetscInt cell = cellRange.GetPoint(i);
+        const PetscReal *phiTilde; xDMPlexPointLocalRead(auxDM, cell, phiTildeField.id, auxArray, &phiTilde);
+        PetscReal kappa, Nx, Ny, Nz;
 
-            const PetscInt vertex = vertexRange.GetPoint(j);
+        //        PetscInt sq_cre=sqrt(cellRange.end);
+        //        bool cond1 = (cell < sq_cre);
+        //        bool cond2 = (cell % sq_cre == 0);
+        //        bool cond3 = ((cell - 1) % sq_cre == 0);
+        //        bool cond4 = (cell >= cellRange.end - sq_cre);
+        //        bool isBoundary = (cond1 or cond2 or cond3 or cond4);
 
-            PetscScalar *gradPhi_v;
+        PetscReal xc, yc, zc;
+        Get3DCoordinate(dm, cell, &xc, &yc, &zc);
 
-            DMPlexPointLocalFieldRef(process->vertexDM, vertex, 0, vertexArray, &gradPhi_v);
-    //        DMPlexVertexGradFromCell(auxDM, vertex, auxVec, phiTildeStructuredField.id, 0, gradPhi_v);
-    //        DMPlexVertexGradFromCell(dm, vertex, locX, phiField.id, 0, gradPhi_v);
-            DMPlexVertexGradFromCell(auxDM, vertex, auxVec, phiTildeField.id, 0, gradPhi_v);
+        if ( abs(xc) < artificialsubdomain and abs(yc) < artificialsubdomain and abs(zc) < artificialsubdomain){
+            //        if (not (isBoundary)) {
+            if (*phiTilde > 0.1 and *phiTilde < 0.9) {
+                //                std::cout << "\n CUT CELL, cell  " << cell << "   ("<<xc<<", "<<yc<<", "<<zc<<")";
+                double H, Nx_ptr, Ny_ptr, Nz_ptr;
+                CurvatureViaGaussian(auxDM, cell, auxVec, &phiTildeStructuredField, &cellRBF, &h, &H, &Nx_ptr, &Ny_ptr, &Nz_ptr);
+                Nx = Nx_ptr;
+                Ny = Ny_ptr;
+                Nz = Nz_ptr;
+                //                Nz = 0;
+                kappa = H;
 
-            if (utilities::MathUtilities::MagVector(dim, gradPhi_v) > 1e-10) {
-                utilities::MathUtilities::NormVector(dim, gradPhi_v);
+
+                //                std::cout << "\n cell " << cell << " ("<<xc<<", "<<yc<<")  do gauss-hermite";
+            }
+            else{
+                kappa = Nx = Ny = Nz = 0;
             }
         }
-
-        for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
-
-            const PetscInt cell = cellRange.GetPoint(i);
-
-            PetscReal xc, yc, zc;
-            Get3DCoordinate(dm, cell, &xc, &yc, &zc);
-            PetscReal kappa=0, Nx, Ny, Nz;
-            const PetscReal *phiTilde; xDMPlexPointLocalRead(auxDM, cell, phiTildeField.id, auxArray, &phiTilde);
-            const PetscReal *phiTildeStructured; xDMPlexPointLocalRead(auxDM, cell, phiTildeStructuredField.id, auxArray, &phiTildeStructured);
-            const PetscReal *phic; xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic);
-//            if (*phiTilde > 0.25 and *phiTilde < 0.75) {
-//            if (*phic > 0.0001 and *phic < 0.9999) {
-            if (*phiTildeStructured > 1e-4 and *phiTildeStructured < 1-1e-4) {
-                if (abs(xc) >= artificialsubdomain or abs(yc) >= artificialsubdomain or abs(zc) >= artificialsubdomain) {
-                    kappa = Nx = Ny = Nz = 0;
-                } else {
-                    PetscReal nabla_n[dim];
-                    for (PetscInt offset = 0; offset < dim; offset++) {
-                        DMPlexCellGradFromVertex(process->vertexDM, cell, vertexVec, 0, offset, nabla_n);
-                        kappa += nabla_n[offset];
-                    }
-
-                    PetscScalar gradPhi_c[dim];
-                    DMPlexCellGradFromCell(auxDM, cell, auxVec, phiTildeField.id, 0, gradPhi_c);
-                    //            DMPlexCellGradFromCell(auxDM, cell, auxVec, phiTildeStructuredField.id, 0, gradPhi_c);
-                    //            DMPlexCellGradFromCell(dm, cell, locX, phiField.id, 0, gradPhi_c);
-                    if (utilities::MathUtilities::MagVector(dim, gradPhi_c) > 1e-10) {
-                        utilities::MathUtilities::NormVector(dim, gradPhi_c);
-                    }
-
-                    Nx = gradPhi_c[0];
-                    Ny = gradPhi_c[1];
-                    //            Nz = gradPhi_c[2];
-                    Nz = 0;
-                }
-            }
-            else {
-                kappa=Nx=Ny=Nz=0;
-            }
-            kappa *= -1;
-            Nx *= -1;
-            Ny *= -1;
-            Nz *= -1;
-
-            PetscScalar *kappaptr, *n0ptr, *n1ptr, *n2ptr;
-            xDMPlexPointLocalRef(auxDM, cell, kappaField.id, auxArray, &kappaptr) >> ablate::utilities::PetscUtilities::checkError;
-            xDMPlexPointLocalRef(auxDM, cell, n0Field.id, auxArray, &n0ptr) >> ablate::utilities::PetscUtilities::checkError;
-            xDMPlexPointLocalRef(auxDM, cell, n1Field.id, auxArray, &n1ptr) >> ablate::utilities::PetscUtilities::checkError;
-            xDMPlexPointLocalRef(auxDM, cell, n2Field.id, auxArray, &n2ptr) >> ablate::utilities::PetscUtilities::checkError;
-
-            *kappaptr = kappa;
-            *n0ptr = Nx;
-            *n1ptr = Ny;
-            *n2ptr = Nz;
-
-//            kappabar += kappa;
-//            Nkappa += 1;
-
-            PetscReal N[3] = {Nx, Ny, Nz};
-
-            const PetscScalar *euler = nullptr;
-            PetscScalar *eulerSource = nullptr;
-            PetscCall(DMPlexPointLocalFieldRef(dm, cell, eulerField.id, fArray, &eulerSource));
-            PetscCall(DMPlexPointLocalFieldRead(dm, cell, eulerField.id, solArray, &euler));
-            auto density = euler[ablate::finiteVolume::CompressibleFlowFields::RHO];
-
-            for (PetscInt k = 0; k < dim; ++k) {
-                // calculate surface force and energy
-                PetscReal surfaceForce = process->sigma * kappa * N[k] + (0 * time);
-                PetscReal vel = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + k] / density;
-                // add in the contributions
-
-                eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOU + k] += surfaceForce;
-                eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += surfaceForce * vel;
-            }
+        else {
+            //            std::cout << "\n NOT CUT CELL, cell  " << cell << "   ("<<xc<<", "<<yc<<", "<<zc<<")";
+            kappa = Nx = Ny = Nz = 0;
         }
+        PetscReal N[3] = {Nx, Ny, Nz};
+        PetscScalar *kappaptr, *n0ptr, *n1ptr, *n2ptr;
+        xDMPlexPointLocalRef(auxDM, cell, kappaField.id, auxArray, &kappaptr) >> ablate::utilities::PetscUtilities::checkError;
+        xDMPlexPointLocalRef(auxDM, cell, n0Field.id, auxArray, &n0ptr) >> ablate::utilities::PetscUtilities::checkError;
+        xDMPlexPointLocalRef(auxDM, cell, n1Field.id, auxArray, &n1ptr) >> ablate::utilities::PetscUtilities::checkError;
+        xDMPlexPointLocalRef(auxDM, cell, n2Field.id, auxArray, &n2ptr) >> ablate::utilities::PetscUtilities::checkError;
 
-//        kappabar /= Nkappa;
+        *kappaptr = kappa;
+        *n0ptr = Nx;
+        *n1ptr = Ny;
+        *n2ptr = Nz;
 
-//        for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
-//            const PetscInt cell = cellRange.GetPoint(i);
-//
-//            PetscScalar *kappaptr, *n0ptr, *n1ptr, *n2ptr;
-//            xDMPlexPointLocalRef(auxDM, cell, kappaField.id, auxArray, &kappaptr) >> ablate::utilities::PetscUtilities::checkError;
-//            xDMPlexPointLocalRef(auxDM, cell, n0Field.id, auxArray, &n0ptr) >> ablate::utilities::PetscUtilities::checkError;
-//            xDMPlexPointLocalRef(auxDM, cell, n1Field.id, auxArray, &n1ptr) >> ablate::utilities::PetscUtilities::checkError;
-//            xDMPlexPointLocalRef(auxDM, cell, n2Field.id, auxArray, &n2ptr) >> ablate::utilities::PetscUtilities::checkError;
-//
-//            PetscReal N[3] = {*n0ptr, *n1ptr, *n2ptr};
-//
-//            const PetscScalar *euler = nullptr;
-//            PetscScalar *eulerSource = nullptr;
-//            PetscCall(DMPlexPointLocalFieldRef(dm, cell, eulerField.id, fArray, &eulerSource));
-//            PetscCall(DMPlexPointLocalFieldRead(dm, cell, eulerField.id, solArray, &euler));
-//            auto density = euler[ablate::finiteVolume::CompressibleFlowFields::RHO];
-//
-//            for (PetscInt k = 0; k < dim; ++k) {
-//                // calculate surface force and energy
-//                PetscReal surfaceForce = process->sigma * (kappabar - *kappaptr) * N[k] + (0 * time);
-//                PetscReal vel = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + k] / density;
-//                // add in the contributions
-//
-//                eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOU + k] += surfaceForce;
-//                eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += surfaceForce * vel;
-//            }
-//        }
+        // compute surface force sigma * cur * normal and add to local F vector
+        const PetscScalar *euler = nullptr;
+        PetscScalar *eulerSource = nullptr;
+        PetscCall(DMPlexPointLocalFieldRef(dm, cell, eulerField.id, fArray, &eulerSource));
+        PetscCall(DMPlexPointLocalFieldRead(dm, cell, eulerField.id, solArray, &euler));
+        auto density = euler[ablate::finiteVolume::CompressibleFlowFields::RHO];
 
-        //END OF VERTEX BASED
+        for (PetscInt k = 0; k < dim; ++k) {
+            // calculate surface force and energy
+            PetscReal surfaceForce = process->sigma * kappa * N[k] + (0*time);
+            PetscReal vel = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + k] / density;
+            // add in the contributions
 
-        //START OF GDF
+            eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOU + k] += surfaceForce;
+            eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += surfaceForce * vel;
 
-//    for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
-//
-//        const PetscInt cell = cellRange.GetPoint(i);
-//        const PetscReal *phiTilde; xDMPlexPointLocalRead(auxDM, cell, phiTildeField.id, auxArray, &phiTilde);
-//        PetscReal kappa, Nx, Ny, Nz;
-//
-//        //        PetscInt sq_cre=sqrt(cellRange.end);
-//        //        bool cond1 = (cell < sq_cre);
-//        //        bool cond2 = (cell % sq_cre == 0);
-//        //        bool cond3 = ((cell - 1) % sq_cre == 0);
-//        //        bool cond4 = (cell >= cellRange.end - sq_cre);
-//        //        bool isBoundary = (cond1 or cond2 or cond3 or cond4);
-//
-//        PetscReal xc, yc, zc;
-//        Get3DCoordinate(dm, cell, &xc, &yc, &zc);
-//
-//        if ( abs(xc) < artificialsubdomain and abs(yc) < artificialsubdomain and abs(zc) < artificialsubdomain){
-//            //        if (not (isBoundary)) {
-//            if (*phiTilde > 0.25 and *phiTilde < 0.75) {
-//                //                std::cout << "\n CUT CELL, cell  " << cell << "   ("<<xc<<", "<<yc<<", "<<zc<<")";
-//                double H, Nx_ptr, Ny_ptr, Nz_ptr;
-//                CurvatureViaGaussian(auxDM, cell, auxVec, &phiTildeStructuredField, &cellRBF, &h, &H, &Nx_ptr, &Ny_ptr, &Nz_ptr);
-//                Nx = Nx_ptr;
-//                Ny = Ny_ptr;
-//                Nz = Nz_ptr;
-//                //                Nz = 0;
-//                kappa = H;
-//
-//
-//                //                std::cout << "\n cell " << cell << " ("<<xc<<", "<<yc<<")  do gauss-hermite";
-//            }
-//            else{
-//                kappa = Nx = Ny = Nz = 0;
-//            }
-//        }
-//        else {
-//            //            std::cout << "\n NOT CUT CELL, cell  " << cell << "   ("<<xc<<", "<<yc<<", "<<zc<<")";
-//            kappa = Nx = Ny = Nz = 0;
-//        }
-//        PetscReal N[3] = {Nx, Ny, Nz};
-//        PetscScalar *kappaptr, *n0ptr, *n1ptr, *n2ptr;
-//        xDMPlexPointLocalRef(auxDM, cell, kappaField.id, auxArray, &kappaptr) >> ablate::utilities::PetscUtilities::checkError;
-//        xDMPlexPointLocalRef(auxDM, cell, n0Field.id, auxArray, &n0ptr) >> ablate::utilities::PetscUtilities::checkError;
-//        xDMPlexPointLocalRef(auxDM, cell, n1Field.id, auxArray, &n1ptr) >> ablate::utilities::PetscUtilities::checkError;
-//        xDMPlexPointLocalRef(auxDM, cell, n2Field.id, auxArray, &n2ptr) >> ablate::utilities::PetscUtilities::checkError;
-//
-//        *kappaptr = kappa;
-//        *n0ptr = Nx;
-//        *n1ptr = Ny;
-//        *n2ptr = Nz;
-//
-//        // compute surface force sigma * cur * normal and add to local F vector
-//        const PetscScalar *euler = nullptr;
-//        PetscScalar *eulerSource = nullptr;
-//        PetscCall(DMPlexPointLocalFieldRef(dm, cell, eulerField.id, fArray, &eulerSource));
-//        PetscCall(DMPlexPointLocalFieldRead(dm, cell, eulerField.id, solArray, &euler));
-//        auto density = euler[ablate::finiteVolume::CompressibleFlowFields::RHO];
-//
-//        for (PetscInt k = 0; k < dim; ++k) {
-//            // calculate surface force and energy
-//            PetscReal surfaceForce = process->sigma * kappa * N[k] + (0*time);
-//            PetscReal vel = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + k] / density;
-//            // add in the contributions
-//
-//            eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOU + k] += surfaceForce;
-//            eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += surfaceForce * vel;
-//        }
-//    }
 
-        //GDF
+        }
+    }
 
     VecRestoreArrayRead(locX, &solArray) >> ablate::utilities::PetscUtilities::checkError;
     VecRestoreArray(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;

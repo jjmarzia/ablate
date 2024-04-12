@@ -15,7 +15,6 @@ target_sources(ablateLibrary
         radiationLoss.cpp
         thermophoreticDiffusion.cpp
         surfaceForce.cpp
-#        surfaceForceFix.cpp
         soot.cpp
 
         PUBLIC
@@ -35,6 +34,5 @@ target_sources(ablateLibrary
         radiationLoss.hpp
         thermophoreticDiffusion.hpp
         surfaceForce.hpp
-#        surfaceForceFix.hpp
         soot.hpp
         )
