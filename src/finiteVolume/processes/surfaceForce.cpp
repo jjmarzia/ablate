@@ -429,7 +429,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 
             DMPlexPointLocalFieldRef(process->vertexDM, vertex, 0, vertexArray, &gradPhi_v);
     //        DMPlexVertexGradFromCell(auxDM, vertex, auxVec, phiTildeStructuredField.id, 0, gradPhi_v);
-            DMPlexVertexGradFromCell(dm, vertex, locX, phiField.id, 0, gradPhi_v);
+//            DMPlexVertexGradFromCell(dm, vertex, locX, phiField.id, 0, gradPhi_v);
             DMPlexVertexGradFromCell(auxDM, vertex, auxVec, phiTildeField.id, 0, gradPhi_v);
 
             if (utilities::MathUtilities::MagVector(dim, gradPhi_v) > 1e-10) {
