@@ -82,7 +82,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
         for (PetscInt k =0; k< nvn; ++k){
             PetscInt neighbor = vertexneighbors[k];
             PetscReal nx, ny, nz; GetCoordinate(dm, dim, neighbor, &nx, &ny, &nz);
-            PetscReal distance = pow(pow((nx-vx),2) + pow((ny-vy),2) + pow((nz-vz),2), 0.5);
+            PetscReal distance = PetscSqrtReal(PetscSqr(nx-vx) + PetscSqr(ny-vy) + PetscSqr(nz-vz));
             if (distance < shortestdistance){shortestdistance=distance;}
             distances[k]=distance;
         }
@@ -124,7 +124,6 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
             avptr[k]=av[k];
         }
     }
-
 
     // march over cells
     for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
