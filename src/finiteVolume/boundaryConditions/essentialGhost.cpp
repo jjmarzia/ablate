@@ -13,10 +13,16 @@ PetscErrorCode ablate::finiteVolume::boundaryConditions::EssentialGhost::Essenti
         essentialGhost->dim, time, c, essentialGhost->fieldSize, a_xG, essentialGhost->boundaryFunction->GetSolutionField().GetContext()));
 
     if (essentialGhost->enforceAtFace) {
-        // use linear interpolation to enforce at face
         for (PetscInt f = 0; f < essentialGhost->fieldSize; f++) {
-            a_xG[f] *= 2.0;
-            a_xG[f] -= a_xI[essentialGhost->fieldOffset + f];
+// use linear interpolation to enforce at face
+//            a_xG[f] *= 2.0;
+//            a_xG[f] -= a_xI[essentialGhost->fieldOffset + f];
+// 1/2 (u_L + u_R) = \bar{u}
+// \implies u_L+ u_R = 2\bar{u}
+// \implies u_R = 2\bar{u} - u_L
+
+// u_R = u_L
+            a_xG[f] = a_xI[essentialGhost->fieldOffset + f];
         }
     }
     PetscFunctionReturn(0);

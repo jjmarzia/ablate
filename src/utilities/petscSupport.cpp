@@ -1,4 +1,5 @@
 #include "petscSupport.hpp"
+#include "finiteVolume/compressibleFlowFields.hpp"
 #include <petsc/private/vecimpl.h>
 #include <petscdm.h>  // For DMPolytopeTypeGetNumVertices
 
@@ -1103,11 +1104,18 @@ PetscErrorCode DMPlexCellGradFromVertex(DM dm, const PetscInt c, Vec data, Petsc
         PetscReal cnt = 0.0, ave = 0.0;
         for (PetscInt cl = 0; cl < nClosure * 2; cl += 2) {
             if (closure[cl] >= vStart && closure[cl] < vEnd) {  // Only use the points corresponding to a vertex
+
+
+
                 const PetscScalar *val;
                 PetscCall(xDMPlexPointLocalRead(dm, closure[cl], fID, dataArray, &val));
                 ave += val[offset];
                 cnt += 1.0;
+
+                PetscReal vol, centroid[3]; DMPlexComputeCellGeometryFVM(dm, closure[cl], &vol, centroid, nullptr);
+//                std::cout << "   vertex   " << closure[cl] << "   (" << centroid[0] << ",    "<<centroid[1]<<") count-->  " <<cnt<<"\n";
             }
+
         }
 
         PetscCall(DMPlexRestoreTransitiveClosure(dm, faces[f], PETSC_TRUE, &nClosure, &closure));  // Restore the points
