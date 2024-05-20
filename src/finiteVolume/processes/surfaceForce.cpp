@@ -395,9 +395,9 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
         DMPlexVertexGradFromCell(auxDM, vertex, auxVec, phiTildeField.id, 0, gradPhi_v);
 
         //surface volume force DOES NOT normalize
-//        if (utilities::MathUtilities::MagVector(dim, gradPhi_v) > 1e-10) {
-//            utilities::MathUtilities::NormVector(dim, gradPhi_v);
-//        }
+        if (utilities::MathUtilities::MagVector(dim, gradPhi_v) > 1e-10) {
+            utilities::MathUtilities::NormVector(dim, gradPhi_v);
+        }
     }
     //        subDomain->UpdateAuxLocalVector();
 
@@ -460,9 +460,9 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
                 //            DMPlexCellGradFromCell(dm, cell, locX, phiField.id, 0, gradPhi_c);
 
                 //surface volume force DOES NOT normalize
-//                if (utilities::MathUtilities::MagVector(dim, gradPhi_c) > 1e-10) {
-//                    utilities::MathUtilities::NormVector(dim, gradPhi_c);
-//                }
+                if (utilities::MathUtilities::MagVector(dim, gradPhi_c) > 1e-10) {
+                    utilities::MathUtilities::NormVector(dim, gradPhi_c);
+                }
 
                 Nx = gradPhi_c[0];
                 Ny = gradPhi_c[1];
