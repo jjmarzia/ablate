@@ -7,7 +7,7 @@ using namespace ablate::finiteVolume::fluxCalculator;
 static void expansionShockCalculation(const PetscReal pstar, const PetscReal gamma, const PetscReal gamm1, const PetscReal gamp1, const PetscReal p0, const PetscReal p, const PetscReal a,
                                       const PetscReal rho, PetscReal *f0, PetscReal *f1) {
 
-    //time to add surface tension
+    //time to add surface tension !
 
     if (pstar <= p)  // expansion wave equation from Toro
     {
