@@ -1,13 +1,13 @@
 
 #include "riemannSolver.hpp"
 #include "utilities/constants.hpp"
+#include "utilities/mathUtilities.hpp"
 
 using namespace ablate::finiteVolume::fluxCalculator;
 
 static void expansionShockCalculation(const PetscReal pstar, const PetscReal gamma, const PetscReal gamm1, const PetscReal gamp1, const PetscReal p0, const PetscReal p, const PetscReal a,
-                                      const PetscReal rho, PetscReal *f0, PetscReal *f1) {
+                                      const PetscReal rho, PetscReal T, PetscReal *f0, PetscReal *f1) {
 
-    //time to add surface tension !
 
     if (pstar <= p)  // expansion wave equation from Toro
     {
@@ -21,13 +21,34 @@ static void expansionShockCalculation(const PetscReal pstar, const PetscReal gam
 
     } else  // shock equation from Toro
     {
+
+        //modified for surface tension
+        // ************************
+//        PetscReal phi=0;
+        PetscReal gradphi[2]; gradphi[0]=0;gradphi[1]=0; //getGrad? to do this we'd have to import the field
+        PetscInt dim=2;
+        PetscReal maggradphi = ablate::utilities::MathUtilities::MagVector(dim, gradphi); //second order tensor whose divergence is the surface volume force
+//        PetscReal Txx = maggradphi - gradphi[0]*gradphi[0]/maggradphi;
+//        PetscReal T=Txx;
+
+
         PetscReal A = 2 / (gamp1 * rho);
+        PetscReal Ader=0;
         PetscReal B = gamm1 * (p + p0) / gamp1;
         PetscReal pFrac = A / (pstar + p0 + B);
         PetscReal pSqrt = PetscSqrtReal(pFrac);
-
         *f0 = (pstar - p) * pSqrt;
-        *f1 = 0.5 * pFrac * pSqrt * (2.0 * (B + p0) + pstar + p) / A;
+
+        if (PetscAbs(T)>ablate::utilities::Constants::tiny){
+            A *= (p - pstar)*(  gamm1*(p+p0) + gamm1*(pstar+p0)  )/(  (p-pstar-T)*(  gamm1*(p+p0) + gamp1*(pstar+p0) - gamm1*T  )   );
+            Ader = 4*gamm1*(  ((p+p0)-T)*PetscSqr(pstar+p0) + ((PetscSqr(T)-2*T*(p+p0))*gamma - 2*PetscSqr(p+p0) + 2*T*(p+p0) - PetscSqr(T))*(pstar+p0) + PetscPowReal((p+p0),3) - T* PetscSqr((p+p0))  );
+            Ader /= (p+p0)*gamp1*PetscSqr(pstar-p+T)*PetscSqr(gamp1*(pstar+p0) + ((p+p0)-T)*gamma - (p+p0) + T  );
+            *f1 = 0.5*(pstar - p + T)*(Ader/(pstar+p0+B) - A/PetscSqr(pstar+p0+B))/(pSqrt) + pSqrt;
+        }
+        else {
+            *f1 = 0.5 * pFrac * pSqrt * (2.0 * (B + p0) + pstar + p) / A;
+        }
+
     }
 }
 
@@ -163,12 +184,13 @@ Direction RiemannSolver::riemannSolver(const PetscReal uL, const PetscReal aL, c
     const PetscReal gamLm1 = gammaL - 1.0, gamLp1 = gammaL + 1.0;
     const PetscReal gamRm1 = gammaR - 1.0, gamRp1 = gammaR + 1.0;
     const PetscInt MAXIT = 100;
+    PetscReal TL=0,TR=0;
     PetscInt i = 0;
 
     do  // Newton's method
     {
-        expansionShockCalculation(pstar, gammaL, gamLm1, gamLp1, p0L, pL, aL, rhoL, &f_L_0, &f_L_1);
-        expansionShockCalculation(pstar, gammaR, gamRm1, gamRp1, p0R, pR, aR, rhoR, &f_R_0, &f_R_1);
+        expansionShockCalculation(pstar, gammaL, gamLm1, gamLp1, p0L, pL, aL, rhoL, TL, &f_L_0, &f_L_1);
+        expansionShockCalculation(pstar, gammaR, gamRm1, gamRp1, p0R, pR, aR, rhoR, TR, &f_R_0, &f_R_1);
 
         pold = pstar;
         pstar = pold - (f_L_0 + f_R_0 + del_u) / (f_L_1 + f_R_1);  // new guess
