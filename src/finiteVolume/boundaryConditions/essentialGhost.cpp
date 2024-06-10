@@ -14,6 +14,16 @@ PetscErrorCode ablate::finiteVolume::boundaryConditions::EssentialGhost::Essenti
 
     if (essentialGhost->enforceAtFace) {
         for (PetscInt f = 0; f < essentialGhost->fieldSize; f++) {
+
+            if (f>=2){
+                a_xG[f] = 0; //velocity=0 no matter what
+            }
+            else{
+                //previously uR = 2ubar - uL
+
+                //now, uR = uL
+                a_xG[f] = a_xI[essentialGhost->fieldOffset + f]; //neumann on rho, rhoe
+            }
 // use linear interpolation to enforce at face
 //            a_xG[f] *= 2.0;
 //            a_xG[f] -= a_xI[essentialGhost->fieldOffset + f];
@@ -22,7 +32,6 @@ PetscErrorCode ablate::finiteVolume::boundaryConditions::EssentialGhost::Essenti
 // \implies u_R = 2\bar{u} - u_L
 
 // u_R = u_L
-            a_xG[f] = a_xI[essentialGhost->fieldOffset + f];
         }
     }
     PetscFunctionReturn(0);

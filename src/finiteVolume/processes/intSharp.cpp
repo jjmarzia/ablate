@@ -6,10 +6,10 @@
 #include "utilities/petscSupport.hpp"
 #include "utilities/petscUtilities.hpp"
 
-void GetVertexRange(DM dm, const std::shared_ptr<ablate::domain::Region> &region, ablate::domain::Range &vertexRange) {
-    PetscInt depth=0; //zeroth layer of DAG is always that of the vertices
-    ablate::domain::GetRange(dm, region, depth, vertexRange);
-}
+//void GetVertexRange(DM dm, const std::shared_ptr<ablate::domain::Region> &region, ablate::domain::Range &vertexRange) {
+//    PetscInt depth=0; //zeroth layer of DAG is always that of the vertices
+//    ablate::domain::GetRange(dm, region, depth, vertexRange);
+//}
 
 void GetCoordinate(DM dm, PetscInt dim, PetscInt p, PetscReal *xp, PetscReal *yp, PetscReal *zp){
     //get the coordinates of the point
@@ -20,6 +20,17 @@ void GetCoordinate(DM dm, PetscInt dim, PetscInt p, PetscReal *xp, PetscReal *yp
     *yp = centroid[1];
     *zp = centroid[2];
 }
+
+void ablate::finiteVolume::processes::IntSharp::Initialize(ablate::finiteVolume::FiniteVolumeSolver &solver) {
+    IntSharp::subDomain = solver.GetSubDomainPtr();
+}
+
+//void ablate::domain::SubDomain::UpdateAuxLocalVector() {
+//    if (auxDM) {
+//        DMLocalToGlobal(auxDM, auxLocalVec, INSERT_VALUES, auxGlobalVec) >> utilities::PetscUtilities::checkError;
+//        DMGlobalToLocal(auxDM, auxGlobalVec, INSERT_VALUES, auxLocalVec) >> utilities::PetscUtilities::checkError;
+//    }
+//}
 
 ablate::finiteVolume::processes::IntSharp::IntSharp(PetscReal Gamma, PetscReal epsilon) : Gamma(Gamma), epsilon(epsilon) {}
 
@@ -43,7 +54,10 @@ void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::Fini
 
 PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx) {
     PetscFunctionBegin;
-    auto process = (ablate::finiteVolume::processes::IntSharp *)ctx;
+
+    auto *process = (ablate::finiteVolume::processes::IntSharp *)ctx;
+    std::shared_ptr<ablate::domain::SubDomain> subDomain = process->subDomain;
+    subDomain->UpdateAuxLocalVector();
 
     //dm = sol DM
     //locX = solvec
@@ -56,6 +70,8 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     //get fields
     auto dim = solver.GetSubDomain().GetDimensions();
     const auto &phiField = solver.GetSubDomain().GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
+//    const auto &n0Field = subDomain->GetField("diva0");
+//    const auto &n1Field = subDomain->GetField("diva1");
     const auto &eulerField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
     auto phifID = phiField.id;
     auto eulerfID = eulerField.id;
@@ -66,6 +82,8 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     PetscScalar *fArray; VecGetArray(locFVec, &fArray);
     PetscScalar *solArray; VecGetArray(locX, &solArray);
 
+
+
     // get ranges
     ablate::domain::Range cellRange; solver.GetCellRangeWithoutGhost(cellRange);
     PetscInt vStart, vEnd; DMPlexGetDepthStratum(process->vertexDM, 0, &vStart, &vEnd);
@@ -73,30 +91,42 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     //march over vertices
     for (PetscInt vertex = vStart; vertex < vEnd; vertex++) {
 
-        const double epsmach = 1e-52;
+//        const double epsmach = ablate::utilities::Constants::tiny;
         PetscReal vx, vy, vz; GetCoordinate(dm, dim, vertex, &vx, &vy, &vz);
         PetscInt nvn, *vertexneighbors;
         DMPlexVertexGetCells(dm, vertex, &nvn, &vertexneighbors);
+
+        std::cout << "vertex    " << vertex <<"    ("<<vx<<",   "<<vy<<")    "<<"\n";
+        for (PetscInt k =0; k< nvn; ++k){      }
+
+
+
         PetscReal distances[nvn];
-        PetscReal shortestdistance=999999;
+        PetscReal shortestdistance= ablate::utilities::Constants::large;
         for (PetscInt k =0; k< nvn; ++k){
             PetscInt neighbor = vertexneighbors[k];
             PetscReal nx, ny, nz; GetCoordinate(dm, dim, neighbor, &nx, &ny, &nz);
+
+            std::cout << "  cells    " << vertexneighbors[k] <<"    ("<<nx<<",   "<<ny<<")    "<<"\n";
+
             PetscReal distance = PetscSqrtReal(PetscSqr(nx-vx) + PetscSqr(ny-vy) + PetscSqr(nz-vz));
-            if (distance < shortestdistance){shortestdistance=distance;}
+            if (distance < shortestdistance){ shortestdistance=distance; }
             distances[k]=distance;
         }
         PetscReal weights_wrt_short[nvn];
         PetscReal totalweight_wrt_short=0;
+
         for (PetscInt k =0; k< nvn; ++k){
             PetscReal weight_wrt_short = shortestdistance/distances[k];
             weights_wrt_short[k] =  weight_wrt_short;
             totalweight_wrt_short += weight_wrt_short;
         }
+
         PetscReal weights[nvn];
-        for (PetscInt k =0; k< nvn; ++k){weights[k] = weights_wrt_short[k]/totalweight_wrt_short;}
+        for (PetscInt k =0; k< nvn; ++k){ weights[k] = weights_wrt_short[k]/totalweight_wrt_short; }
 
         PetscReal phiv=0;
+
         for (PetscInt k =0; k< nvn; ++k){
             PetscInt neighbor = vertexneighbors[k];
             const PetscReal *phineighbor;
@@ -104,15 +134,17 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
             //                    phiv += (*phineighbor/nvn); //would only work for structured
             phiv += (*phineighbor)*(weights[k]); //unstructured case
         }
-        
+
+
+
         //get gradphi at vertices (gradphiv) based on cell centered phis
         PetscScalar gradphiv[dim];
         DMPlexVertexGradFromCell(dm, vertex, locX, phifID, 0, gradphiv);
         PetscReal normgradphi = 0.0;
         for (int k=0; k<dim; ++k){
-            normgradphi += pow(gradphiv[k],2);
+            normgradphi += PetscSqr(gradphiv[k]);
         }
-        normgradphi = pow(normgradphi, 0.5);
+        normgradphi = PetscSqrtReal(normgradphi);
         
         //get a at vertices (av) (Chiu 2011)
         //based on Eq. 1 of:   Jain SS. Accurate conservative phase-field method for simulation of two-phase flows. Journal of Computational Physics. 2022 Nov 15;469:111529.
@@ -120,8 +152,15 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
         PetscReal *avptr;
         xDMPlexPointLocalRef(process->vertexDM, vertex, 0, auxArray, &avptr); //vertexDM
         for (int k=0; k<dim; ++k){
-            av[k] = (process->Gamma * process->epsilon * gradphiv[k]) - (process->Gamma * phiv * (1-phiv) * ((gradphiv[k] + epsmach)/(normgradphi + epsmach)));
+            if (normgradphi > ablate::utilities::Constants::tiny){
+                av[k] = (process->Gamma * process->epsilon * gradphiv[k]) - (process->Gamma * phiv * (1-phiv) * (gradphiv[k]/normgradphi) );
+            }
+            else {
+                av[k] = (process->Gamma * process->epsilon * gradphiv[k]) - (process->Gamma * phiv * (1-phiv) * gradphiv[k] );
+            }
             avptr[k]=av[k];
+//            std::cout << dim << "    gradphiv" << k << "  " << gradphiv[k] << "\n";
+//            std::cout << avptr[k] << "\n";
         }
     }
 

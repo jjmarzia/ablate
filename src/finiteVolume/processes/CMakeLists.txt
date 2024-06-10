@@ -16,7 +16,7 @@ target_sources(ablateLibrary
         thermophoreticDiffusion.cpp
         surfaceForce.cpp
         soot.cpp
-#        intSharp.cpp
+        intSharp.cpp
         #        duplicate symbol 'GetVertexRange(_p_DM*, std::__1::shared_ptr<ablate::domain::Region> const&, ablate::domain::Range&)' in:
         #        CMakeFiles/ablateLibrary.dir/src/finiteVolume/processes/surfaceForce.cpp.o
         #        CMakeFiles/ablateLibrary.dir/src/finiteVolume/processes/intSharp.cpp.o
@@ -40,6 +40,6 @@ target_sources(ablateLibrary
         thermophoreticDiffusion.hpp
         surfaceForce.hpp
         soot.hpp
-#        intSharp.hpp
+        intSharp.hpp
 
         )

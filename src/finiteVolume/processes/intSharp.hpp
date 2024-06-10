@@ -21,6 +21,7 @@ class IntSharp : public Process {
     PetscReal epsilon;
     //mesh for vertex information
     DM vertexDM{};
+    std::shared_ptr<ablate::domain::SubDomain> subDomain;
 
    public:
     /**
@@ -40,6 +41,7 @@ class IntSharp : public Process {
      * @param flow
      */
     void Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
+    void Initialize(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
 
     /**
      * static function private function to compute interface regularization term and add source to eulerset

@@ -274,9 +274,9 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
     const auto &phiTildeField = subDomain->GetField("phiTilde");
     const auto &kappaField = subDomain->GetField("kappa");
 //    const auto &kappaTildeField = subDomain->GetField("kappaTilde");
-    const auto &xField = subDomain->GetField("x");
-    const auto &yField = subDomain->GetField("y");
-    const auto &zField = subDomain->GetField("z");
+//    const auto &xField = subDomain->GetField("x");
+//    const auto &yField = subDomain->GetField("y");
+//    const auto &zField = subDomain->GetField("z");
     const auto &n0Field = subDomain->GetField("n0");
     const auto &n1Field = subDomain->GetField("n1");
     const auto &n2Field = subDomain->GetField("n2");
@@ -311,26 +311,31 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
     ablate::domain::Range vertexRange;
     GetVertexRange(dm, ablate::domain::Region::ENTIREDOMAIN, vertexRange);
 
-    if (interpCellList == nullptr) {
-        BuildInterpCellList(auxDM, cellRange);
-    }
+//    if (interpCellList == nullptr) {
+//        BuildInterpCellList(auxDM, cellRange);
+//    }
 
-    PetscInt polyAug = 2;
-    bool doesNotHaveDerivatives = false;
-    bool doesNotHaveInterpolation = false;
+//    PetscInt polyAug = 2;
+//    bool doesNotHaveDerivatives = false;
+//    bool doesNotHaveInterpolation = false;
     PetscReal rmin;
     DMPlexGetMinRadius(dm, &rmin); PetscReal h=2*rmin;
-    ablate::domain::rbf::MQ cellRBF(polyAug, rmin, doesNotHaveDerivatives, doesNotHaveInterpolation);
-    cellRBF.Setup(subDomain);
-    cellRBF.Initialize();
+//    ablate::domain::rbf::MQ cellRBF(polyAug, rmin, doesNotHaveDerivatives, doesNotHaveInterpolation);
+//    cellRBF.Setup(subDomain);
+//    cellRBF.Initialize();
 
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
         PetscInt cell = cellRange.GetPoint(c);
         const PetscScalar *phic;
         xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic) >> ablate::utilities::PetscUtilities::checkError;
 
+        std::cout << cell << "   " << "   phic  " << *phic << "\n";
+
         PetscReal xc, yc, zc;
+
+
         Get3DCoordinate(dm, cell, &xc, &yc, &zc);
+
         //        std::cout << "\n --------- cell " << cell << " -------start--";
         //        std::cout << "\n coordinate=  ("<<xc<<", "<<yc<<")";
 
@@ -338,16 +343,37 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
         //number of smoothing layers
 
         PetscInt nNeighbors, *neighbors;
-        PetscScalar C=2, N=2.6;
-        PetscScalar layers = ceil(C*N);
-        DMPlexGetNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
+        PetscScalar C=2;
+//        PetscScalar N=2.6; PetscScalar layers = ceil(C*N);
+
+        std::cout << "cell  " << cell << "\n";
+        std::cout << "("<< xc << ",  "<< yc << ")\n";
+
+//        DMPlexGetNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
+
+        DMPolytopeType celltype;
+        DMPlexGetCellType(dm, cell, &celltype);
+
+        PetscScalar *phiTilde;
+        xDMPlexPointLocalRef(auxDM, cell, phiTildeField.id, auxArray, &phiTilde) >> ablate::utilities::PetscUtilities::checkError;
+
+        if (celltype <= 12){
+
+        }
+        else{
+            *phiTilde = 0;
+        }
+
+        DMPlexGetNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
+
+        //dmplexgetneighbors is not nice to 1D.
+        std::cout << "nneighbors  " << nNeighbors << "\n";
 
         PetscReal weightedphi = 0;
         //        PetscReal avgphi = 0;
         PetscReal Tw = 0;
 
-        PetscScalar *phiTilde;
-        xDMPlexPointLocalRef(auxDM, cell, phiTildeField.id, auxArray, &phiTilde) >> ablate::utilities::PetscUtilities::checkError;
+
 
 
 //        if (abs(xc) >= artificialsubdomain or abs(yc) >= artificialsubdomain or abs(zc) >= artificialsubdomain) {
@@ -368,15 +394,10 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
                 PetscReal wn;
                 PhiNeighborGaussWeight(d, s, &wn);
                 Tw += wn;
-
                 weightedphi += (*phin * wn);
             }
-
             weightedphi /= Tw;
-            //            avgphi /= 16;
-            *phiTilde = weightedphi;  //*phiTilde = (0.5 * (*phic)) + (0.5 * (avgphi));
-                                      //            *phiTildeStructured = avgphi;
-//        }
+            *phiTilde = weightedphi;
     }
     //    subDomain->UpdateAuxLocalVector();
 
@@ -434,8 +455,8 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 //        phi1/= M;
 
 //        if (*phiTilde > 0.25 and *phiTilde < 0.75)  {
-        if (*phiTilde > 1e-2 and *phiTilde < 1-1e-2)  {
-        //            if (*phic > 0.0001 and *phic < 0.9999) {
+//        if (*phiTilde > 1e-2 and *phiTilde < 1-1e-2)  {
+                    if (*phic > 0.0001 and *phic < 0.9999) {
         //            if (*phiTildeStructured > 1e-4 and *phiTildeStructured < 1-1e-4) {
         //            if (phi1 > 1e-4 and phi1 < 1-1e-4) {
         //            if (phi1 > (1e-4)/4 and phi1 < (1-1e-4)/4) {
@@ -469,6 +490,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
                 //            Nz = gradPhi_c[2];
                 Nz = 0;
 //            }
+                kappa = -1; //artificial curvature
         }
         else {
             kappa=Nx=Ny=Nz=0;
@@ -546,6 +568,9 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 //        *CSF0ptr = process->sigma * *kappaTildeptr * -*n0ptr;
 //        *CSF1ptr = process->sigma * *kappaTildeptr * -*n1ptr;
 //        *CSF2ptr = process->sigma * *kappaTildeptr * -*n2ptr;
+
+
+
         *CSF0ptr = process->sigma * *kappaptr * -*n0ptr;
         *CSF1ptr = process->sigma * *kappaptr * -*n1ptr;
         *CSF2ptr = process->sigma * *kappaptr * -*n2ptr;
@@ -612,12 +637,12 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 //            std::cout << cell << "   csf   " << *CSF0ptr << "   " << *CSF1ptr << "   " << *CSF2ptr<<"\n";
 //        }
 
-        PetscReal x, y, z; Get3DCoordinate(dm, cell, &x, &y, &z);
-        PetscScalar *xptr=0, *yptr=0, *zptr=0;
-        xDMPlexPointLocalRef(auxDM, cell, xField.id, auxArray, &xptr) >> ablate::utilities::PetscUtilities::checkError;
-        xDMPlexPointLocalRef(auxDM, cell, yField.id, auxArray, &yptr) >> ablate::utilities::PetscUtilities::checkError;
-        xDMPlexPointLocalRef(auxDM, cell, zField.id, auxArray, &zptr) >> ablate::utilities::PetscUtilities::checkError;
-        *xptr = x; *yptr =y; *zptr =z;
+//        PetscReal x, y, z; Get3DCoordinate(dm, cell, &x, &y, &z);
+//        PetscScalar *xptr=0, *yptr=0, *zptr=0;
+//        xDMPlexPointLocalRef(auxDM, cell, xField.id, auxArray, &xptr) >> ablate::utilities::PetscUtilities::checkError;
+//        xDMPlexPointLocalRef(auxDM, cell, yField.id, auxArray, &yptr) >> ablate::utilities::PetscUtilities::checkError;
+//        xDMPlexPointLocalRef(auxDM, cell, zField.id, auxArray, &zptr) >> ablate::utilities::PetscUtilities::checkError;
+//        *xptr = x; *yptr =y; *zptr =z;
 
         const PetscScalar *euler = nullptr;
         PetscScalar *eulerSource = nullptr;

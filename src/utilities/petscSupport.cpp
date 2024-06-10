@@ -152,6 +152,12 @@ static PetscErrorCode DMPlexGetNeighborCells_Internal(DM dm, PetscReal x0[3], Pe
             for (st = 0; st < nStar * 2; st += 2) {
                 if (star[st] >= cStart && star[st] < cEnd) {                               // If the point is a cell add it.
                     PetscCall(DMPlexComputeCellGeometryFVM(dm, star[st], NULL, x, NULL));  // Center of the candidate cell.
+                    std::cout << "neighbor being called    " << star[st]<<"\n";
+
+//                    for (i = 0; i < dim; ++i) {
+//                        std::cout << i<<"coord   " << x[i]<<"\n";
+//                    }
+
                     dist = 0.0;
                     for (i = 0; i < dim; ++i) {  // Compute the distance so that we can check if it's within the required distance.
                         dist += PetscSqr(x0[i] - x[i]);
@@ -290,6 +296,8 @@ PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscRe
     }
 
     PetscCall(DMPlexComputeCellGeometryFVM(dm, p, NULL, x0, NULL));  // Center of the cell-of-interest
+
+
 
     // Declare the internal function pointer
     PetscErrorCode (*neighborFunc)(DM, PetscReal[3], PetscInt, PetscReal, PetscBool, PetscInt *, PetscInt **);
