@@ -6,21 +6,61 @@
 #include <string>
 #include <vector>
 
+
+/**
+ * Determines if a point is inside a cell
+ * Inputs:
+ *  dm - The mesh
+ *  cell - The cell to check
+ *  x - The point to check
+  *
+ * Outputs:
+ *  inCell - PETSC_TRUE if the point is inside the cell, PETSC_FALSE if it is not.
+ *
+ * Note: This is done by checking the inner produce of the outward facing normal of a face and the vector from the point to the
+ *        the face centroid. For a point to be inside the cell each of these inner-products must be non-negative.
+ *        An inner product of zero indicates that it lies in the plance of a face, but all of the other faces still need to be checked.
+ *        This will ONLY work for convex shapes.
+ */
+PetscErrorCode DMPlexInCell(DM dm, const PetscInt cell, const PetscReal x[], PetscBool *inCell);
+
+
+/**
+ * Calculate the neighboring cell which a given vector points into.
+ * Inputs:
+ *  dm - The mesh
+ *  cell - The cell where the vector originates from. It's assumed that the vector is from the cell-center.
+ *  v - Vector centered at the cell-center
+ *  direction - +1 to find the cell in the direction of v, -1 to find the cell in the opposite direction of v
+ *
+ * Outputs:
+ *  nCell - The neighbor cell which the vector points into. Returns -1 if the neighboring cell doesn't exist
+ *
+ * Note: In almost all cases this will be via a shared face. Try that first and then only check vertices
+ */
+PetscErrorCode DMPlexGetForwardCell(DM dm, const PetscInt cell, const PetscReal v[], const PetscScalar direction, PetscInt *nCellID);
+
+
+
+PetscErrorCode DMPlexCornerSurfaceAreaNormal(DM dm, const PetscInt v, const PetscInt c, PetscReal N[]);
+PetscErrorCode DMPlexFaceCentroidOutwardAreaNormal(DM dm, PetscInt cell, PetscInt face, PetscReal *centroid, PetscReal *n);
+
 /**
  * Return the list of neighboring cells/vertices to cell p using a combination of number of levels and maximum distance
  * dm - The mesh
  * maxLevels - Number of neighboring cells/vertices to check
  * maxDist - Maximum distance to include
  * numberCells - The number of cells/vertices to return.
- * useCells -
+ * useSharedFace - Return cells/vertices which share a common face (PETSC_TRUE) or a shared vertex (PETSC_FALSE)
  * returnVertices - Return vertices surrounding the center cell (PETSC_TRUE) or cells surrounding the center cell (PETSC_FALSE)
  * nCells - Number of neighboring cells/vertices
  * cells - The list of neighboring cell/vertices IDs
  *
  * Note: The intended use is to use either maxLevels OR maxDist OR minNumberCells.
  */
-PetscErrorCode DMPlexRestoreNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscReal maxDist, PetscInt numberCells, PetscBool useCells, PetscBool returnVertices, PetscInt *nCells, PetscInt **cells);
-PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt levels, PetscReal maxDist, PetscInt minNumberCells, PetscBool useCells, PetscBool returnNeighborVertices, PetscInt *nCells,
+PetscErrorCode DMPlexRestoreNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscReal maxDist, PetscInt numberCells, PetscBool useSharedFace, PetscBool returnVertices, PetscInt *nCells,
+                                      PetscInt **cells);
+PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt levels, PetscReal maxDist, PetscInt minNumberCells, PetscBool useSharedFace, PetscBool returnNeighborVertices, PetscInt *nCells,
                                   PetscInt **cells);
 
 /**
@@ -115,6 +155,7 @@ PetscErrorCode DMPlexVertexGradFromCell(DM dm, const PetscInt v, Vec data, Petsc
  */
 PetscErrorCode DMPlexCellGradFromVertex(DM dm, const PetscInt c, Vec data, PetscInt fID, PetscInt offset, PetscScalar g[]);
 
+
 /**
  * Compute the gradient of a field defined over cells at a cell center
  * @param dm - The DM of the data stored in vec
@@ -128,6 +169,9 @@ PetscErrorCode DMPlexCellGradFromVertex(DM dm, const PetscInt c, Vec data, Petsc
  *    first-order accurate for triangular meshes. This should(?) be replaced with one that uses cell-center values later.
  */
 PetscErrorCode DMPlexCellGradFromCell(DM dm, const PetscInt c, Vec data, PetscInt fID, PetscInt offset, PetscScalar g[]);
+
+
+
 
 /**
  * Returns all DMPlex points at a given depth which are common between two DMPlex points. For example, if p1 is a cell and p2 is a vertex on the cell with depth=1 this will
