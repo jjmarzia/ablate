@@ -93,6 +93,23 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     const auto &gradphiField = subDomain->GetField("gradphi");
     const auto &gradrhoField = subDomain->GetField("gradrho");
     const auto &densityVFField = subDomain->GetField("densityvolumeFraction");
+
+//    ablate::finiteVolume::processes::TwoPhaseEulerAdvection::CreateTwoPhaseDecoder()
+    //decode state
+//    PetscReal *densityG;
+//    PetscReal Yg = densityVF / (*density);
+//    PetscReal Yl = ((*density) - densityVF) / (*density);
+//    PetscReal R1 = eosGas->GetGasConstant();
+//    PetscReal R2 = eosLiquid->GetGasConstant();
+//    PetscReal gamma1 = eosGas->GetSpecificHeatRatio();
+//    PetscReal gamma2 = eosLiquid->GetSpecificHeatRatio();
+//    PetscReal cv1 = R1 / (gamma1 - 1);
+//    PetscReal cv2 = R2 / (gamma2 - 1);
+//    PetscReal eG = (*internalEnergy) / (Yg + Yl * cv2 / cv1);
+//    PetscReal eL = cv2 / cv1 * eG;
+//    PetscReal rhoG = (*density) * (Yg + Yl * eL / eG * (gamma2 - 1) / (gamma1 - 1));
+
+//    ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Perf
 //    const auto &densityField = subDomain->GetField("density");
 //    const auto &velocityField = subDomain->GetField(ablate::finiteVolume::CompressibleFlowFields::VELOCITY_FIELD);
 //    const auto &velocityField = subDomain->GetField("velocity");
@@ -556,7 +573,39 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
         PetscScalar *eulerSource; xDMPlexPointLocalRef(dm, cell, eulerfID, fArray, &eulerSource);
 
         PetscScalar *rhophiSource; xDMPlexPointLocalRef(dm, cell, densityVFField.id, fArray, &rhophiSource);// std::cout << "cell   " << cell << "  phi   " << *phik << "   rhs of rhophi equation   " << *rhophiSource << "\n";// *rhophi += 0; std::cout << "  xnew  " << *rhophi << "\n";
-        *rhophiSource += density*div;
+
+        PetscScalar rhog; const PetscScalar *rhogphig; xDMPlexPointLocalRead(dm, cell, densityVFField.id, solArray, &rhogphig);
+        if(*rhogphig > 1e-10){rhog = *rhogphig / *phik;}else{rhog = 0;}
+
+        *rhophiSource += rhog*div + (0*Fdiffy*Fdiffz);
+//        *rhophiSource += density*div;
+
+        PetscScalar gradrhogphi[dim];
+        PetscScalar gradphi[dim];
+        PetscScalar gradrhog[dim];
+        if (dim == 1) {
+            PetscInt nNeighbors, *neighbors;
+            DMPlexGetNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
+            const PetscReal *rhogphikm1;xDMPlexPointLocalRead(dm, neighbors[0], densityVFField.id, solArray, &rhogphikm1);
+            const PetscReal *rhogphikp1;xDMPlexPointLocalRead(dm, neighbors[2], densityVFField.id, solArray, &rhogphikp1);
+            const PetscReal *phikm1;xDMPlexPointLocalRead(auxDM, neighbors[0], phiTildeField.id, auxArray, &phikm1);
+            const PetscReal *phikp1;xDMPlexPointLocalRead(auxDM, neighbors[2], phiTildeField.id, auxArray, &phikp1);
+            gradrhogphi[0] = (*rhogphikp1 - *rhogphikm1) / (2 * process->epsilon);
+            gradphi[0] = (*phikp1 - *phikm1) / (2 * process->epsilon);
+            if(*phik>1e-2){
+                gradrhog[0] = 0*(gradrhogphi[0] - rhog*gradphi[0])/(*phik);
+            }
+            else{
+                gradrhog[0]=0;
+            }
+        }
+        else{
+            DMPlexCellGradFromCell(dm, cell, locX, densityVFField.id, 0, gradrhog);
+            //this will be gradrhophi, not gradrho; need to change it
+        }
+        *rhophiSource += gradrhog[0]*ux;
+        if (dim>1){*rhophiSource += gradrhog[1]*uy;}
+        if (dim>2){*rhophiSource += gradrhog[2]*uz;}
 
 //        PetscScalar *phiSource; xDMPlexPointLocalRef(dm, cell, phiField.id, fArray, &phiSource); std::cout << "cell   " << cell << "   phiSource  " << *phiSource;
 //        *phiSource += div; std::cout << "  xnew  " << *phiSource << "\n";
@@ -567,13 +616,13 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
 //        eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOU] += Fdiffx;
 //        eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += Fdiffx*ux;
 
-        if (dim>1){
-            eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOV] += Fdiffy;
-            eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += Fdiffy*uy;}
-        if (dim>2){
-            eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOW] += Fdiffz;
-            eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += Fdiffz*uz;
-        }
+//        if (dim>1){
+//            eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOV] += Fdiffy;
+//            eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += Fdiffy*uy;}
+//        if (dim>2){
+//            eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOW] += Fdiffz;
+//            eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += Fdiffz*uz;
+//        }
 
 //        std::cout << cell << "  " << *phik << "    " << density << "   " << ux << "   " << div << "    " << mdiff << "\n";
 

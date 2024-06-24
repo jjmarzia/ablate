@@ -464,14 +464,15 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
                 }
                 //surface area force DOES normalize;
                 //surface volume force DOES NOT normalize
-                if (utilities::MathUtilities::MagVector(dim, gradPhi_c) > 1e-10) {
-                    utilities::MathUtilities::NormVector(dim, gradPhi_c);
-                }
+//                if (utilities::MathUtilities::MagVector(dim, gradPhi_c) > 1e-10) {
+//                    utilities::MathUtilities::NormVector(dim, gradPhi_c);
+//                }
+
                 Nx = gradPhi_c[0];
                 Ny = gradPhi_c[1];
                 //Nz = gradPhi_c[2];
                 Nz = 0;
-                kappa = -1; //artificial curvature!!!!!! temporary!!!!!!!!!!!!!!!
+                if (dim==1){kappa = -1;} //artificial curvature!!!!!!!
         }
         else {
             kappa=Nx=Ny=Nz=0;
