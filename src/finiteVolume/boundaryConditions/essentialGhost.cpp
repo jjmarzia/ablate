@@ -16,7 +16,8 @@ PetscErrorCode ablate::finiteVolume::boundaryConditions::EssentialGhost::Essenti
         for (PetscInt f = 0; f < essentialGhost->fieldSize; f++) {
 
             if (f>=2){
-                a_xG[f] = 0; //velocity=0 no matter what
+//                a_xG[f] = 0; //velocity=0 no matter what
+                a_xG[f] = a_xI[essentialGhost->fieldOffset + f];
             }
             else{
                 //previously uR = 2ubar - uL

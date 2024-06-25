@@ -89,7 +89,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     const auto &mdiffField = subDomain->GetField("mdiff");
     const auto &FdiffxField = subDomain->GetField("Fdiffx");
     const auto &phiTildeField = subDomain->GetField("ISphiTilde");
-    const auto &phiTildeMaskField = subDomain->GetField("phiTildeMask");
+    const auto &phiTildeMaskField = subDomain->GetField("ISphiTildeMask");
     const auto &gradphiField = subDomain->GetField("gradphi");
     const auto &gradrhoField = subDomain->GetField("gradrho");
     const auto &densityVFField = subDomain->GetField("densityvolumeFraction");
