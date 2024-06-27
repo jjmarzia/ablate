@@ -22,6 +22,14 @@ void GetCoordinate(DM dm, PetscInt dim, PetscInt p, PetscReal *xp, PetscReal *yp
     *zp = centroid[2];
 }
 
+void GetCoordinate1D(DM dm, PetscInt dim, PetscInt p, PetscReal *xp){
+    //get the coordinates of the point
+    PetscReal vol;
+    PetscReal centroid[dim];
+    DMPlexComputeCellGeometryFVM(dm, p, &vol, centroid, nullptr);
+    *xp = centroid[0];
+}
+
 void PhiNeighborGauss(PetscReal d, PetscReal s, PetscReal *weight){
     PetscReal pi = 3.14159265358979323846264338327950288419716939937510;
     PetscReal Coeff = 1/(PetscSqrtReal(2*pi)*s);
@@ -274,8 +282,8 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
 //                const PetscScalar *phikp1; xDMPlexPointLocalRead(dm, vertexneighbors[1], phiField.id, solArray, &phikp1);
                 PetscScalar *phikm1; xDMPlexPointLocalRef(auxDM, vertexneighbors[0], phiTildeField.id, auxArray, &phikm1);
                 PetscScalar *phikp1; xDMPlexPointLocalRef(auxDM, vertexneighbors[1], phiTildeField.id, auxArray, &phikp1);
-                PetscReal xm1, ym1, zm1; GetCoordinate(dm, dim, vertexneighbors[0], &xm1, &ym1, &zm1);
-                PetscReal xp1, yp1, zp1; GetCoordinate(dm, dim, vertexneighbors[1], &xp1, &yp1, &zp1);
+                PetscReal xm1; GetCoordinate1D(dm, dim, vertexneighbors[0], &xm1);
+                PetscReal xp1; GetCoordinate1D(dm, dim, vertexneighbors[1], &xp1);
 
 //                gradphiv[0]=PetscAbs((*phikp1 - *phikm1)/(xp1-xm1));
 //                gradphiv[0]=-(*phikp1 - *phikm1)/(xp1-xm1);
