@@ -290,8 +290,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 
     DM auxDM = subDomain->GetAuxDM();
     Vec auxVec = subDomain->GetAuxVector();
-    Vec vertexVec;
-    DMGetLocalVector(process->vertexDM, &vertexVec);
+    Vec vertexVec; DMGetLocalVector(process->vertexDM, &vertexVec);
     const PetscScalar *solArray;
     PetscScalar *auxArray;
     PetscScalar *vertexArray;
@@ -343,6 +342,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
                 PetscScalar *Mask; xDMPlexPointLocalRef(auxDM, neighbor, SFMaskField.id, auxArray, &Mask) >> ablate::utilities::PetscUtilities::checkError;
                 *Mask = 1;
             }
+            DMPlexRestoreNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         }
     }
 
@@ -364,6 +364,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
                 PetscScalar *phiTildeMask; xDMPlexPointLocalRef(auxDM, neighbor, phiTildeMaskField.id, auxArray, &phiTildeMask) >> ablate::utilities::PetscUtilities::checkError;
                 *phiTildeMask = 1;
             }
+            DMPlexRestoreNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         }
     }
 
@@ -410,6 +411,8 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
             }
             weightedphi /= Tw;
             *phiTilde = weightedphi;
+
+            DMPlexRestoreNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         }
     }
     //    subDomain->UpdateAuxLocalVector();
@@ -442,6 +445,8 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
         else{
             *gradPhi_v = 0;
         }
+
+        DMPlexVertexRestoreCells(dm, vertex, &nCells, &cells);
     }
     //        subDomain->UpdateAuxLocalVector();
 
@@ -490,6 +495,8 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
                     PetscReal xp1, yp1, zp1; Get3DCoordinate(dm, neighbors[2], &xp1, &yp1, &zp1);
                     gradPhi_c[0] = (*phiTildekp1-*phiTildekm1)/(xp1-xm1);
                     gradPhi_c[1] = 0;
+
+                    DMPlexRestoreNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &gNeighbors, &neighbors);
                 }
                 else{
                     DMPlexCellGradFromCell(auxDM, cell, auxVec, phiTildeField.id, 0, gradPhi_c);
@@ -796,7 +803,14 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
     VecRestoreArray(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;
     VecRestoreArray(vertexVec, &vertexArray);
     VecRestoreArray(locFVec, &fArray);
-    //    DMRestoreLocalVector(process->vertexDM, &vertexVec);
+    DMRestoreLocalVector(process->vertexDM, &vertexVec);
+    VecDestroy(&vertexVec);
+    solver.RestoreRange(cellRange);
+    solver.RestoreRange(vertexRange);
+
+    //    VecDestroy(&auxVec);
+    //    VecDestroy(&locX);
+
 
     PetscFunctionReturn(0);
 }
