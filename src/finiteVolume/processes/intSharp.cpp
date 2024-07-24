@@ -114,7 +114,8 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
         PetscInt cell = cellRange.GetPoint(c); //
         const PetscScalar *phic; xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic) >> ablate::utilities::PetscUtilities::checkError;
-        if (*phic > 0.0001 and *phic < 0.9999) {
+        if (*phic > 0.1 and *phic < 0.9) {
+//        if (*phic > 1e-4 and *phic < 1-1e-4) {
             PetscInt nNeighbors, *neighbors; DMPlexGetNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors); //
             for (PetscInt j = 0; j < nNeighbors; ++j) {
                 PetscInt neighbor = neighbors[j];
@@ -135,6 +136,8 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
         PetscInt cell = cellRange.GetPoint(c);
         PetscScalar *phiTildeMask; xDMPlexPointLocalRef(auxDM, cell, phiTildeMaskField.id, auxArray, &phiTildeMask); *phiTildeMask = 0;
     }
+//    subDomain->UpdateAuxLocalVector();
+
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
         PetscInt cell = cellRange.GetPoint(c);
         const PetscScalar *phic; xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic) >> ablate::utilities::PetscUtilities::checkError;
@@ -147,6 +150,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
             DMPlexRestoreNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         }
     }
+//    subDomain->UpdateAuxLocalVector();
 
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
         PetscInt cell = cellRange.GetPoint(c);
@@ -183,6 +187,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
             DMPlexRestoreNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         }
     }
+//    subDomain->UpdateAuxLocalVector();
 
     //march over vertices
     for (PetscInt vertex = vStart; vertex < vEnd; vertex++) {
@@ -304,6 +309,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
         }
         DMPlexVertexRestoreCells(dm, vertex, &nvn, &vertexneighbors);
     }
+//    subDomain->UpdateAuxLocalVector();
 
     // march over cells
     for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
@@ -507,14 +513,15 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
 //        std::cout << cell << "  " << *phik << "    " << density << "   " << ux << "   " << div << "    " << mdiff << "\n";
 
     }
-    //clean up. necessary?
-    for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
-        const PetscInt cell = cellRange.GetPoint(i);
-        PetscReal *divaptr; xDMPlexPointLocalRef(auxDM, cell, divaField.id, auxArray, &divaptr);
-        PetscReal *Mask; xDMPlexPointLocalRef(auxDM, cell, ISMaskField.id, auxArray, &Mask);
-        if (*Mask < 0.99){*Mask = 0;}
+//    subDomain->UpdateAuxLocalVector();
 
-    }
+    //clean up. necessary?
+//    for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
+//        const PetscInt cell = cellRange.GetPoint(i);
+//        PetscReal *divaptr; xDMPlexPointLocalRef(auxDM, cell, divaField.id, auxArray, &divaptr);
+//        PetscReal *Mask; xDMPlexPointLocalRef(auxDM, cell, ISMaskField.id, auxArray, &Mask);
+//        if (*Mask < 0.99){*Mask = 0;}
+//    }
 
     // cleanup
     VecRestoreArrayRead(locX, &solArray);
