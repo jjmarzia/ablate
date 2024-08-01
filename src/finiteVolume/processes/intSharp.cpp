@@ -63,7 +63,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
 
     auto *process = (ablate::finiteVolume::processes::IntSharp *)ctx;
     std::shared_ptr<ablate::domain::SubDomain> subDomain = process->subDomain;
-    subDomain->UpdateAuxLocalVector();
+//    subDomain->UpdateAuxLocalVector();
 
     //dm = sol DM
     //locX = solvec
@@ -84,6 +84,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     const auto &phiTildeField = subDomain->GetField("ISphiTilde");
     const auto &phiTildeMaskField = subDomain->GetField("ISphiTildeMask");
     const auto &gradphiField = subDomain->GetField("gradphi");
+    const auto &rankField = subDomain->GetField("rank");
     const auto &gradrhoField = subDomain->GetField("gradrho");
     const auto &densityVFField = subDomain->GetField("densityvolumeFraction");
 
@@ -93,7 +94,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     // get vecs/arrays
 
     DM auxDM = subDomain->GetAuxDM();
-    Vec auxVec = subDomain->GetAuxVector(); //these do not have a corresponding restore call
+    Vec auxVec = subDomain->GetAuxVector();
 
     Vec vertexVec; DMGetLocalVector(process->vertexDM, &vertexVec); //
     const PetscScalar *solArray; VecGetArrayRead(locX, &solArray) >> ablate::utilities::PetscUtilities::checkError; //
@@ -105,25 +106,80 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     ablate::domain::Range cellRange; solver.GetCellRangeWithoutGhost(cellRange); //
     PetscInt vStart, vEnd; DMPlexGetDepthStratum(process->vertexDM, 0, &vStart, &vEnd); //
 
-    //Initialize Mask field
-    // ISMask determines which cells receive a nonzero interface regularization term value
+    //clean up fields
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
         PetscInt cell = cellRange.GetPoint(c); //
-        PetscScalar *Mask; xDMPlexPointLocalRef(auxDM, cell, ISMaskField.id, auxArray, &Mask); *Mask = 0;
+        PetscScalar *Mask; xDMPlexPointLocalRef(auxDM, cell, ISMaskField.id, auxArray, &Mask);
+        *Mask = 0;
+        PetscScalar *rank; xDMPlexPointLocalRef(auxDM, cell, rankField.id, auxArray, &rank);
+        *rank = 0;
     }
+
+    //rank field reveals how the domain is divided in terms of processors
+    PetscInt rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+//    std::cout << "rank:  " << rank <<"\n";
+    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+        PetscInt cell = cellRange.GetPoint(c);
+        PetscScalar *r; xDMPlexPointLocalRef(auxDM, cell, rankField.id, auxArray, &r);
+        *r = rank+1;
+    }
+//    subDomain->UpdateAuxLocalVector();
+
+    //Initialize Mask field
+    // ISMask determines which cells receive a nonzero interface regularization term value
+
+//    subDomain->UpdateAuxLocalVector();
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
         PetscInt cell = cellRange.GetPoint(c); //
         const PetscScalar *phic; xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic) >> ablate::utilities::PetscUtilities::checkError;
-        if (*phic > 0.1 and *phic < 0.9) {
-//        if (*phic > 1e-4 and *phic < 1-1e-4) {
+//        if (*phic > 0.1 and *phic < 0.9) {
+        if (*phic > 1e-4 and *phic < 1-1e-4) {
             PetscInt nNeighbors, *neighbors; DMPlexGetNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors); //
+
             for (PetscInt j = 0; j < nNeighbors; ++j) {
                 PetscInt neighbor = neighbors[j];
-                PetscScalar *Mask; xDMPlexPointLocalRef(auxDM, neighbor, ISMaskField.id, auxArray, &Mask); *Mask = 1;
+
+                //unable to write to neighbor on diff processor maybe?
+                //                *Mask=1;
+                PetscScalar *Mask; xDMPlexPointLocalRef(auxDM, neighbor, ISMaskField.id, auxArray, &Mask);
+                //this indicates that a cell is able to detect neighbors on different processors. however, it seems like we cannot write to such cells.
+//                if (*Mask > 50){std::cout << *Mask << "\n\n\n";}// using this we now know that we are in fact successfully writing to the neighboring cells, but the written info is not being saved.
+                //something about switching ranks is overriding this data.
+                PetscScalar *rn; xDMPlexPointLocalRef(auxDM, neighbor, rankField.id, auxArray, &rn);
+                if ((*rn-1 - rank) > 1e-2){
+                    std::cout << "cell:   " << cell << "   cell rank:   " << rank << "   neighbor:  " << neighbor << "   neighbor rank:   " << *rn-1 << "\n";
+                    *Mask = 100;
+                }
+                else{
+                    *Mask = rank+1;
+                }
+
+                // this is the right idea, but the cells IDs are wrong because something about the relationship between true cell ID and what paraview thinks is the ID when multiple processors are used.
+//                bool mydebug = ((neighbor==2516) or (neighbor==2547) or (neighbor==720) or (neighbor==690) or (neighbor==280) or (neighbor==308));
+//                if (mydebug){
+//                    std::cout << "cell:  " << cell << "    neighbor:  " << neighbor << "\n";
+//                    *Mask = 100;
+//                }
+//                else{
+//                    *Mask = rank+1;
+//                }
+
             }
+
             DMPlexRestoreNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         }
     }
+//    subDomain->UpdateAuxLocalVector();
+
+    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+        PetscInt cell = cellRange.GetPoint(c); //
+        const PetscScalar *phic; xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic) >> ablate::utilities::PetscUtilities::checkError;
+        if (*phic > 1e-4 and *phic < 1-1e-4) {
+            PetscScalar *Mask; xDMPlexPointLocalRef(auxDM, cell, ISMaskField.id, auxArray, &Mask);
+            *Mask = 10;
+        }
+    }
+//    subDomain->UpdateAuxLocalVector();
 
     //Initialize phiTildeMask
     // phiTildeMask determines which cells receive a nonzero phiTilde value
@@ -471,10 +527,10 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
         if (dim == 1) {
             PetscInt nNeighbors, *neighbors;
             DMPlexGetNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);//
-            const PetscReal *rhogphikm1;xDMPlexPointLocalRead(dm, neighbors[0], densityVFField.id, solArray, &rhogphikm1);
-            const PetscReal *rhogphikp1;xDMPlexPointLocalRead(dm, neighbors[2], densityVFField.id, solArray, &rhogphikp1);
-            const PetscReal *phikm1;xDMPlexPointLocalRead(auxDM, neighbors[0], phiTildeField.id, auxArray, &phikm1);
-            const PetscReal *phikp1;xDMPlexPointLocalRead(auxDM, neighbors[2], phiTildeField.id, auxArray, &phikp1);
+            const PetscReal *rhogphikm1; xDMPlexPointLocalRead(dm, neighbors[0], densityVFField.id, solArray, &rhogphikm1);
+            const PetscReal *rhogphikp1; xDMPlexPointLocalRead(dm, neighbors[2], densityVFField.id, solArray, &rhogphikp1);
+            const PetscReal *phikm1; xDMPlexPointLocalRead(auxDM, neighbors[0], phiTildeField.id, auxArray, &phikm1);
+            const PetscReal *phikp1; xDMPlexPointLocalRead(auxDM, neighbors[2], phiTildeField.id, auxArray, &phikp1);
             gradrhogphi[0] = (*rhogphikp1 - *rhogphikm1) / (2 * process->epsilon);
             gradphi[0] = (*phikp1 - *phikm1) / (2 * process->epsilon);
             if(*phik>1e-2){
