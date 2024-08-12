@@ -238,7 +238,8 @@ void ablate::finiteVolume::processes::SurfaceForce::Initialize(ablate::finiteVol
 
 void ablate::domain::SubDomain::UpdateAuxLocalVector() {
     if (auxDM) {
-        DMLocalToGlobal(auxDM, auxLocalVec, ADD_VALUES, auxGlobalVec) >> utilities::PetscUtilities::checkError;
+        DMLocalToGlobal(auxDM, auxLocalVec, INSERT_VALUES, auxGlobalVec) >> utilities::PetscUtilities::checkError;
+//        DMLocalToGlobal(auxDM, auxLocalVec, ADD_VALUES, auxGlobalVec) >> utilities::PetscUtilities::checkError;
         DMGlobalToLocal(auxDM, auxGlobalVec, INSERT_VALUES, auxLocalVec) >> utilities::PetscUtilities::checkError;
     }
 }

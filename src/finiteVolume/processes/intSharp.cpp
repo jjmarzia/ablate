@@ -7,10 +7,49 @@
 #include "utilities/petscSupport.hpp"
 #include "utilities/petscUtilities.hpp"
 
+//#include <iostream>
+#include <fstream>
+
 //void GetVertexRange(DM dm, const std::shared_ptr<ablate::domain::Region> &region, ablate::domain::Range &vertexRange) {
 //    PetscInt depth=0; //zeroth layer of DAG is always that of the vertices
 //    ablate::domain::GetRange(dm, region, depth, vertexRange);
 //}
+
+static void Reconstruction_CopyDM(DM oldDM, const PetscInt pStart, const PetscInt pEnd, const PetscInt nDOF, DM *newDM) {
+
+    PetscSection section;
+
+
+    // Create a sub auxDM
+
+    DM coordDM;
+    DMGetCoordinateDM(oldDM, &coordDM) >> ablate::utilities::PetscUtilities::checkError;
+
+    DMClone(oldDM, newDM) >> ablate::utilities::PetscUtilities::checkError;
+
+    // this is a hard coded "dmAux" that petsc looks for
+    DMSetCoordinateDM(*newDM, coordDM) >> ablate::utilities::PetscUtilities::checkError;
+
+    PetscSectionCreate(PetscObjectComm((PetscObject)(*newDM)), &section) >> ablate::utilities::PetscUtilities::checkError;
+    PetscSectionSetChart(section, pStart, pEnd) >> ablate::utilities::PetscUtilities::checkError;
+    for (PetscInt p = pStart; p < pEnd; ++p) PetscSectionSetDof(section, p, nDOF) >> ablate::utilities::PetscUtilities::checkError;
+    PetscSectionSetUp(section) >> ablate::utilities::PetscUtilities::checkError;
+    DMSetLocalSection(*newDM, section) >> ablate::utilities::PetscUtilities::checkError;
+    PetscSectionDestroy(&section) >> ablate::utilities::PetscUtilities::checkError;
+    DMSetUp(*newDM) >> ablate::utilities::PetscUtilities::checkError;
+
+    // This builds the global section information based on the local section. It's necessary if we don't create a global vector
+    //    right away.
+    DMGetGlobalSection(*newDM, &section) >> ablate::utilities::PetscUtilities::checkError;
+
+    /* Calling DMPlexComputeGeometryFVM() generates the value returned by DMPlexGetMinRadius() */
+    Vec cellgeom = NULL;
+    Vec facegeom = NULL;
+    DMPlexComputeGeometryFVM(*newDM, &cellgeom, &facegeom);
+    VecDestroy(&cellgeom);
+    VecDestroy(&facegeom);
+
+}
 
 void GetCoordinate(DM dm, PetscInt dim, PetscInt p, PetscReal *xp, PetscReal *yp, PetscReal *zp){
     //get the coordinates of the point
@@ -29,6 +68,38 @@ void PhiNeighborGauss(PetscReal d, PetscReal s, PetscReal *weight){
     PetscReal gd = PetscExpReal(-PetscSqr(d)/ (2*PetscSqr(s)));
     *weight = gd/g0;
 }
+
+void PushGhost(DM dm, Vec LocalVec, Vec GlobalVec) {
+//    DMLocalToGlobal(dm, LocalVec, INSERT_VALUES, GlobalVec);
+        DMLocalToGlobal(dm, LocalVec, ADD_VALUES, GlobalVec); //p0 to p1
+    DMGlobalToLocal(dm, GlobalVec, INSERT_VALUES, LocalVec); //p1 to p1
+}
+
+PetscInt counter=0;
+void SaveData(ablate::domain::Range range, DM dm, PetscScalar *array, std::string filename, bool iterateAcrossTime){
+
+        PetscInt rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+
+        std::string counterstring;
+        if (iterateAcrossTime){
+            counter+=1;
+            counterstring = std::to_string(counter);
+        }
+        if (not (iterateAcrossTime)){ counterstring = ""; }
+        std::ofstream thefile("/Users/jjmarzia/Desktop/ablate/inputs/parallel/"+filename+counterstring+"_rank"+std::to_string(rank)+".txt");
+
+        for (PetscInt c = range.start; c < range.end; ++c) {
+            PetscInt cell = range.GetPoint(c);
+            PetscScalar *ptr; xDMPlexPointLocalRef(dm, cell, -1, array, &ptr);
+            auto s = std::to_string(*ptr);
+            if (thefile.is_open()){
+                thefile << s; thefile << "\n";
+            }
+        }
+        thefile.close();
+}
+
+
 void ablate::finiteVolume::processes::IntSharp::Initialize(ablate::finiteVolume::FiniteVolumeSolver &solver) {
     IntSharp::subDomain = solver.GetSubDomainPtr();
 }
@@ -47,6 +118,7 @@ void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::Fini
     auto dim = flow.GetSubDomain().GetDimensions();
     auto dm = flow.GetSubDomain().GetDM();
 
+
     // create a domain, vertexDM, to use it in source function for storing any calculated vertex normal. Here the vertex normals will be stored on vertices, therefore k = 1
     PetscFE fe_coords;
     PetscInt k = 1;
@@ -63,7 +135,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
 
     auto *process = (ablate::finiteVolume::processes::IntSharp *)ctx;
     std::shared_ptr<ablate::domain::SubDomain> subDomain = process->subDomain;
-//    subDomain->UpdateAuxLocalVector();
+    subDomain->UpdateAuxLocalVector();
 
     //dm = sol DM
     //locX = solvec
@@ -92,9 +164,8 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     auto eulerfID = eulerField.id;
 
     // get vecs/arrays
-
     DM auxDM = subDomain->GetAuxDM();
-    Vec auxVec = subDomain->GetAuxVector();
+    Vec auxVec = subDomain->GetAuxVector(); //LOCAL aux vector, not global
 
     Vec vertexVec; DMGetLocalVector(process->vertexDM, &vertexVec); //
     const PetscScalar *solArray; VecGetArrayRead(locX, &solArray) >> ablate::utilities::PetscUtilities::checkError; //
@@ -106,79 +177,239 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     ablate::domain::Range cellRange; solver.GetCellRangeWithoutGhost(cellRange); //
     PetscInt vStart, vEnd; DMPlexGetDepthStratum(process->vertexDM, 0, &vStart, &vEnd); //
 
+    PetscInt cStart, cEnd; DMPlexGetHeightStratum(auxDM, 0, &cStart, &cEnd);
+
+    DM ismaskDM;
+
+    Reconstruction_CopyDM(auxDM, cStart, cEnd, 1, &ismaskDM);
+    Vec ismaskLocalVec; DMCreateLocalVector(ismaskDM, &ismaskLocalVec);
+    Vec ismaskGlobalVec; DMCreateGlobalVector(ismaskDM, &ismaskGlobalVec);
+    VecZeroEntries(ismaskLocalVec);
+    VecZeroEntries(ismaskGlobalVec);
+    PetscScalar *ismaskLocalArray; VecGetArray(ismaskLocalVec, &ismaskLocalArray);
+
+    DM rankDM;
+//    Reconstruction_CopyDM(auxDM, cStart, cEnd, 1, &rankDM);
+    Reconstruction_CopyDM(auxDM, cellRange.start, cellRange.end, 1, &rankDM); //eventually this must be abolished
+//    Reconstruction_CopyDM(dm, cellRange.start, cellRange.end, 1, &rankDM);
+    Vec rankLocalVec; DMCreateLocalVector(rankDM, &rankLocalVec);
+    Vec rankGlobalVec; DMCreateGlobalVector(rankDM, &rankGlobalVec);
+    VecZeroEntries(rankLocalVec);
+    VecZeroEntries(rankGlobalVec);
+    PetscScalar *rankLocalArray; VecGetArray(rankLocalVec, &rankLocalArray);
+
+//    PetscViewer viewer;
+//    PetscViewerASCIIOpen(MPI_Comm comm, "", PetscViewer *viewer)
+//    DMView(rankDM, viewer);
+
+    DMViewFromOptions(rankDM, NULL, "-dm-view");
+//    PetscViewer viewer;
+//    PetscViewerFormat informat = PETSC_VIEWER_ASCII_LATEX;
+//    PetscViewerOp
+//    PetscViewerPushFormat(viewer, informat);
+//    DMView(rankDM, viewer);
+
+
+    DM phiDM;
+//    Reconstruction_CopyDM(auxDM, cStart, cEnd, 1, &phiDM);
+    Reconstruction_CopyDM(auxDM, cellRange.start, cellRange.end, 1, &phiDM); //eventually this must be abolished
+    Vec phiLocalVec; DMCreateLocalVector(phiDM, &phiLocalVec);
+    Vec phiGlobalVec; DMCreateGlobalVector(phiDM, &phiGlobalVec);
+    VecZeroEntries(phiLocalVec);
+    VecZeroEntries(phiGlobalVec);
+    PetscScalar *phiLocalArray; VecGetArray(phiLocalVec, &phiLocalArray);
+
+    DM cellidDM;
+//    Reconstruction_CopyDM(auxDM, cStart, cEnd, 1, &cellidDM);
+    Reconstruction_CopyDM(auxDM, cellRange.start, cellRange.end, 1, &cellidDM); //eventually this must be abolished
+    Vec cellidLocalVec; DMCreateLocalVector(cellidDM, &cellidLocalVec);
+    Vec cellidGlobalVec; DMCreateGlobalVector(cellidDM, &cellidGlobalVec);
+    VecZeroEntries(cellidLocalVec);
+    VecZeroEntries(cellidGlobalVec);
+    PetscScalar *cellidLocalArray; VecGetArray(cellidLocalVec, &cellidLocalArray);
+
+    DM xDM;
+//    Reconstruction_CopyDM(auxDM, cStart, cEnd, 1, &xDM);
+    Reconstruction_CopyDM(auxDM, cellRange.start, cellRange.end, 1, &xDM);
+    DM yDM;
+//    Reconstruction_CopyDM(auxDM, cStart, cEnd, 1, &yDM);
+    Reconstruction_CopyDM(auxDM, cellRange.start, cellRange.end, 1, &yDM);
+    Vec xLocalVec; DMCreateLocalVector(xDM, &xLocalVec);
+    Vec xGlobalVec; DMCreateGlobalVector(xDM, &xGlobalVec);
+    Vec yLocalVec; DMCreateLocalVector(yDM, &yLocalVec);
+    Vec yGlobalVec; DMCreateGlobalVector(yDM, &yGlobalVec);
+    VecZeroEntries(xLocalVec);
+    VecZeroEntries(xGlobalVec);
+    VecZeroEntries(yLocalVec);
+    VecZeroEntries(yGlobalVec);
+    PetscScalar *xLocalArray; VecGetArray(xLocalVec, &xLocalArray);
+    PetscScalar *yLocalArray; VecGetArray(yLocalVec, &yLocalArray);
+    //field ID for non field calls is -1.
+
     //clean up fields
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+
         PetscInt cell = cellRange.GetPoint(c); //
         PetscScalar *Mask; xDMPlexPointLocalRef(auxDM, cell, ISMaskField.id, auxArray, &Mask);
         *Mask = 0;
         PetscScalar *rank; xDMPlexPointLocalRef(auxDM, cell, rankField.id, auxArray, &rank);
         *rank = 0;
+
+        PetscScalar *ismaskptr; xDMPlexPointLocalRef(ismaskDM, cell, -1, ismaskLocalArray, &ismaskptr);
+        *ismaskptr = 0;
+        PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
+        *rankptr = 0;
+        PetscScalar *cellidptr; xDMPlexPointLocalRef(cellidDM, cell, -1, cellidLocalArray, &cellidptr);
+        *cellidptr = cell;
+
+        const PetscScalar *phic; xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic);
+        PetscScalar *phiptr; xDMPlexPointLocalRef(phiDM, cell, -1, phiLocalArray, &phiptr);
+        *phiptr = *phic;
+
+        PetscReal xp, yp, zp; GetCoordinate(dm, dim, cell, &xp, &yp, &zp);
+        PetscScalar *xptr; xDMPlexPointLocalRef(xDM, cell, -1, xLocalArray, &xptr);
+        PetscScalar *yptr; xDMPlexPointLocalRef(yDM, cell, -1, yLocalArray, &yptr);
+        *xptr = xp; *yptr = yp;
+
     }
 
+    SaveData(cellRange, xDM, xLocalArray, "x", false);
+    SaveData(cellRange, yDM, yLocalArray, "y", false);
+    SaveData(cellRange, cellidDM, cellidLocalArray, "xcellid", false);
+    SaveData(cellRange, phiDM, phiLocalArray, "phi", true);
+
+
+    //INITIALIZE CELL ID field as an artificial way to do dmview!!!! so you can plot (x,y,cellID)
+
+    //Initialize rank field
     //rank field reveals how the domain is divided in terms of processors
-    PetscInt rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-//    std::cout << "rank:  " << rank <<"\n";
+    PetscInt rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank); rank+=1;
+
+    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+        PetscInt cell = cellRange.GetPoint(c);
+
+        //check whether a cell is owned by a processor
+        PetscSection globalSection;
+        //                    DMGetGlobalSection(cellDM, &globalSection);
+        DMGetGlobalSection(dm, &globalSection);
+        PetscInt owned = 1;
+        PetscSectionGetOffset(globalSection, cell, &owned);
+
+        if (owned>=0){
+                PetscScalar *r;
+                xDMPlexPointLocalRef(auxDM, cell, rankField.id, auxArray, &r);
+                *r = rank;
+
+                PetscScalar *rankcptr;
+                xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankcptr);
+                *rankcptr = rank;
+        }
+
+    }
+
+    //check the above
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
         PetscInt cell = cellRange.GetPoint(c);
         PetscScalar *r; xDMPlexPointLocalRef(auxDM, cell, rankField.id, auxArray, &r);
-        *r = rank+1;
+        PetscScalar *rankcptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankcptr);
+        PetscScalar *cellidptr; xDMPlexPointLocalRef(cellidDM, cell, -1, cellidLocalArray, &cellidptr);
+        if (PetscAbs(*rankcptr - *r) > 1e-2){std::cout << "error rank\n";} //this doesn't print anything; good
+        if (PetscAbs(*cellidptr - cell) > 1e-2){std::cout << "error cellid\n";} //this doesn't print anything; good
     }
-//    subDomain->UpdateAuxLocalVector();
 
-    //Initialize Mask field
-    // ISMask determines which cells receive a nonzero interface regularization term value
+//    PushGhost(rankDM, rankLocalVec, rankGlobalVec);
+//    SaveData(cellRange, rankDM, rankLocalArray, "rank", false);
 
-//    subDomain->UpdateAuxLocalVector();
+    //get the range of overlap/ghost cells, and then see if when we call dmplexgetneighbors, the neighbors include cells in this range.
+//    PetscInt ghoststart, ghostend;
+//    DMPlexGetCellTypeStratum(dm, DM_POLYTOPE_FV_GHOST, &ghoststart, &ghostend);
+
+
+
+    //init mask field
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-        PetscInt cell = cellRange.GetPoint(c); //
+        PetscInt cell = cellRange.GetPoint(c);
         const PetscScalar *phic; xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic) >> ablate::utilities::PetscUtilities::checkError;
-//        if (*phic > 0.1 and *phic < 0.9) {
+
+//        PetscScalar *ismaskptr; xDMPlexPointLocalRef(ismaskDM, cell, -1, ismaskLocalArray, &ismaskptr);
+//        PetscScalar *xptr; xDMPlexPointLocalRef(xDM, cell, -1, xLocalArray, &xptr);
+//        PetscScalar *yptr; xDMPlexPointLocalRef(yDM, cell, -1, yLocalArray, &yptr);
+//        *ismaskptr = *xptr + *yptr; //this confirms the arrangement of ismask is the same as the arrangement of x and y vectors. which is good
+
         if (*phic > 1e-4 and *phic < 1-1e-4) {
-            PetscInt nNeighbors, *neighbors; DMPlexGetNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors); //
 
-            for (PetscInt j = 0; j < nNeighbors; ++j) {
-                PetscInt neighbor = neighbors[j];
+                PetscInt nNeighbors, *neighbors;
+                DMPlexGetNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors); //
 
-                //unable to write to neighbor on diff processor maybe?
-                //                *Mask=1;
-                PetscScalar *Mask; xDMPlexPointLocalRef(auxDM, neighbor, ISMaskField.id, auxArray, &Mask);
-                //this indicates that a cell is able to detect neighbors on different processors. however, it seems like we cannot write to such cells.
-//                if (*Mask > 50){std::cout << *Mask << "\n\n\n";}// using this we now know that we are in fact successfully writing to the neighboring cells, but the written info is not being saved.
-                //something about switching ranks is overriding this data.
-                PetscScalar *rn; xDMPlexPointLocalRef(auxDM, neighbor, rankField.id, auxArray, &rn);
-                if ((*rn-1 - rank) > 1e-2){
-                    std::cout << "cell:   " << cell << "   cell rank:   " << rank << "   neighbor:  " << neighbor << "   neighbor rank:   " << *rn-1 << "\n";
-                    *Mask = 100;
+//                PetscInt bordercount=0;
+                for (PetscInt j = 0; j < nNeighbors; ++j) {
+
+                    PetscInt neighbor = neighbors[j];
+
+                    PetscSection globalSection; DMGetGlobalSection(dm, &globalSection);
+                    PetscInt owned = 1; PetscSectionGetOffset(globalSection, neighbor, &owned);
+
+//                    if (owned<0) {
+//                        ++bordercount;
+//                        std::cout << "cell    " << cell << "   overlaps with  " << neighbor << " (bordercount="<<bordercount<<")  \n";
+//                    }
+
+                    PetscScalar *ranknptr;
+                    xDMPlexPointLocalRef(rankDM, neighbor, -1, rankLocalArray, &ranknptr);
+                    PetscScalar *rn;
+                    xDMPlexPointLocalRef(auxDM, neighbor, rankField.id, auxArray, &rn);
+                    PetscScalar *rankcptr;
+                    xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankcptr);
+                    PetscScalar *rc;
+                    xDMPlexPointLocalRef(auxDM, cell, rankField.id, auxArray, &rc);
+
+//                    if (PetscAbs(*ranknptr - *rn) > 1e-2){std::cout << "error neighbor\n";} //this prints stuff
+//                    if (PetscAbs(*rankcptr - *rc) > 1e-2){std::cout << "error cell\n";} //this DOES NOT print stuff
+
+                    PetscScalar *Mask; xDMPlexPointLocalRef(auxDM, neighbor, ISMaskField.id, auxArray, &Mask);
+                    PetscScalar *ismaskptr; xDMPlexPointLocalRef(ismaskDM, neighbor, -1, ismaskLocalArray, &ismaskptr);
+
+                    *Mask = *rn;
+                    *ismaskptr = *ranknptr;
+
+//                    if (cell==11){
+////                        PushGhost(ismaskDM, ismaskLocalVec, ismaskGlobalVec);
+//                        std::cout << "cell 11 has neighbor " << neighbor <<"\n";
+//                    }
+
+
                 }
-                else{
-                    *Mask = rank+1;
-                }
-
-                // this is the right idea, but the cells IDs are wrong because something about the relationship between true cell ID and what paraview thinks is the ID when multiple processors are used.
-//                bool mydebug = ((neighbor==2516) or (neighbor==2547) or (neighbor==720) or (neighbor==690) or (neighbor==280) or (neighbor==308));
-//                if (mydebug){
-//                    std::cout << "cell:  " << cell << "    neighbor:  " << neighbor << "\n";
-//                    *Mask = 100;
-//                }
-//                else{
-//                    *Mask = rank+1;
-//                }
-
-            }
-
-            DMPlexRestoreNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
+                DMPlexRestoreNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         }
+
     }
-//    subDomain->UpdateAuxLocalVector();
+    PushGhost(ismaskDM, ismaskLocalVec, ismaskGlobalVec);
+    SaveData(cellRange, rankDM, rankLocalArray, "rank", false);
+
+
+
+    subDomain->UpdateAuxLocalVector();
+
 
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
         PetscInt cell = cellRange.GetPoint(c); //
         const PetscScalar *phic; xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic) >> ablate::utilities::PetscUtilities::checkError;
         if (*phic > 1e-4 and *phic < 1-1e-4) {
             PetscScalar *Mask; xDMPlexPointLocalRef(auxDM, cell, ISMaskField.id, auxArray, &Mask);
-            *Mask = 10;
+            PetscScalar *ismaskptr; xDMPlexPointLocalRef(ismaskDM, cell, -1, ismaskLocalArray, &ismaskptr); //after vec surgery
+
+            *Mask = 5; *ismaskptr = 5;
+
+//            if (cell==541){ *Mask = 10; *ismaskptr = 10; }
+//            else{ *Mask = 5; *ismaskptr = 5; }
+            //this shows our mapping of cell IDs is correct
+
         }
     }
+
+    SaveData(cellRange, ismaskDM, ismaskLocalArray, "ismask", true);
+
+//    PushGhost(ismaskDM, ismaskLocalVec, ismaskGlobalVec);
 //    subDomain->UpdateAuxLocalVector();
 
     //Initialize phiTildeMask
@@ -192,7 +423,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
         PetscInt cell = cellRange.GetPoint(c);
         PetscScalar *phiTildeMask; xDMPlexPointLocalRef(auxDM, cell, phiTildeMaskField.id, auxArray, &phiTildeMask); *phiTildeMask = 0;
     }
-//    subDomain->UpdateAuxLocalVector();
+    subDomain->UpdateAuxLocalVector();
 
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
         PetscInt cell = cellRange.GetPoint(c);
@@ -206,7 +437,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
             DMPlexRestoreNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         }
     }
-//    subDomain->UpdateAuxLocalVector();
+    subDomain->UpdateAuxLocalVector();
 
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
         PetscInt cell = cellRange.GetPoint(c);
@@ -243,7 +474,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
             DMPlexRestoreNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         }
     }
-//    subDomain->UpdateAuxLocalVector();
+    subDomain->UpdateAuxLocalVector();
 
     //march over vertices
     for (PetscInt vertex = vStart; vertex < vEnd; vertex++) {
@@ -365,7 +596,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
         }
         DMPlexVertexRestoreCells(dm, vertex, &nvn, &vertexneighbors);
     }
-//    subDomain->UpdateAuxLocalVector();
+    subDomain->UpdateAuxLocalVector();
 
     // march over cells
     for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
@@ -569,7 +800,38 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
 //        std::cout << cell << "  " << *phik << "    " << density << "   " << ux << "   " << div << "    " << mdiff << "\n";
 
     }
-//    subDomain->UpdateAuxLocalVector();
+    subDomain->UpdateAuxLocalVector();
+
+    //destroy vecs
+    VecRestoreArray(ismaskLocalVec, &ismaskLocalArray);
+    DMRestoreLocalVector(ismaskDM, &ismaskLocalVec);
+    DMRestoreGlobalVector(ismaskDM, &ismaskGlobalVec);
+    DMDestroy(&ismaskDM);
+
+    VecRestoreArray(rankLocalVec, &rankLocalArray);
+    DMRestoreLocalVector(rankDM, &rankLocalVec);
+    DMRestoreGlobalVector(rankDM, &rankGlobalVec);
+    DMDestroy(&rankDM);
+
+    VecRestoreArray(phiLocalVec, &phiLocalArray);
+    DMRestoreLocalVector(phiDM, &phiLocalVec);
+    DMRestoreGlobalVector(phiDM, &phiGlobalVec);
+    DMDestroy(&phiDM);
+
+    VecRestoreArray(cellidLocalVec, &cellidLocalArray);
+    DMRestoreLocalVector(cellidDM, &cellidLocalVec);
+    DMRestoreGlobalVector(cellidDM, &cellidGlobalVec);
+    DMDestroy(&cellidDM);
+
+    VecRestoreArray(xLocalVec, &xLocalArray);
+    DMRestoreLocalVector(xDM, &xLocalVec);
+    DMRestoreGlobalVector(xDM, &xGlobalVec);
+    DMDestroy(&xDM);
+
+    VecRestoreArray(yLocalVec, &yLocalArray);
+    DMRestoreLocalVector(yDM, &yLocalVec);
+    DMRestoreGlobalVector(yDM, &yGlobalVec);
+    DMDestroy(&yDM);
 
     //clean up. necessary?
 //    for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {

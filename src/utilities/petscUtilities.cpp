@@ -8,6 +8,8 @@ void ablate::utilities::PetscUtilities::Initialize(const char help[]) {
     ablate::environment::RunEnvironment::RegisterCleanUpFunction("ablate::utilities::PetscUtilities::Initialize", []() { PetscFinalize() >> utilities::PetscUtilities::checkError; });
 }
 
+
+
 void ablate::utilities::PetscUtilities::Set(const std::string& prefix, const std::map<std::string, std::string>& options, bool override) {
     // March over and set each option in the global petsc database
     for (const auto& optionPair : options) {
