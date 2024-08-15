@@ -7,6 +7,8 @@
 #include "utilities/mathUtilities.hpp"
 #include "utilities/petscSupport.hpp"
 
+#include <fstream>
+
 ablate::finiteVolume::processes::SurfaceForce::SurfaceForce(PetscReal sigma) : sigma(sigma) {}
 ablate::finiteVolume::processes::SurfaceForce::~SurfaceForce() { DMDestroy(&vertexDM) >> utilities::PetscUtilities::checkError; }
 
@@ -154,14 +156,10 @@ void BuildInterpCellList(DM dm, const ablate::domain::Range cellRange) {
 }
 
 void CurvatureViaGaussian(DM dm, const PetscInt cell, Vec vec, const ablate::domain::Field *lsField, ablate::domain::rbf::MQ *rbf, const double *h, double *H, double *Nx, double *Ny, double *Nz){
-
-    PetscInt dim;
-    DMGetDimension(dm, &dim) >> ablate::utilities::PetscUtilities::checkError;
-
+    PetscInt dim; DMGetDimension(dm, &dim) >> ablate::utilities::PetscUtilities::checkError;
     //    PetscReal h;
     //    DMPlexGetMinRadius(dm, &h) >> ablate::utilities::PetscUtilities::checkError;
     //    h *= 2.0; // Min radius returns the distance between a cell-center and a face. Double it to get the average cell size
-
     //  const PetscInt nQuad = 3; // Size of the 1D quadrature
     //  const PetscReal quad[] = {0.0, PetscSqrtReal(3.0), -PetscSqrtReal(3.0)};
     //  const PetscReal weights[] = {2.0/3.0, 1.0/6.0, 1.0/6.0};
@@ -244,6 +242,60 @@ void ablate::domain::SubDomain::UpdateAuxLocalVector() {
     }
 }
 
+void PushGhost(DM dm, Vec LocalVec, Vec GlobalVec, InsertMode ADD_OR_INSERT_VALUES) {
+    //    DMLocalToGlobal(dm, LocalVec, INSERT_VALUES, GlobalVec);
+    DMLocalToGlobal(dm, LocalVec, ADD_OR_INSERT_VALUES, GlobalVec); //p0 to p1
+    DMGlobalToLocal(dm, GlobalVec, INSERT_VALUES, LocalVec); //p1 to p1
+}
+
+PetscInt counter=0;
+void SaveData(PetscInt rangeStart, PetscInt rangeEnd, DM dm, PetscScalar *array, std::string filename, bool iterateAcrossTime){
+    PetscInt rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+    std::string counterstring;
+    if (iterateAcrossTime){
+        counter+=1;
+        counterstring = std::to_string(counter);
+    }
+    if (not (iterateAcrossTime)){ counterstring = ""; }
+    std::ofstream thefile("/Users/jjmarzia/Desktop/ablate/inputs/parallel/"+filename+counterstring+"_rank"+std::to_string(rank)+".txt");
+    for (PetscInt cell = rangeStart; cell < rangeEnd; ++cell) {
+        //            PetscInt cell = range.GetPoint(c);
+        PetscScalar *ptr; xDMPlexPointLocalRef(dm, cell, -1, array, &ptr);
+        auto s = std::to_string(*ptr);
+        if (thefile.is_open()){
+            thefile << s; thefile << "\n";
+        }
+    }
+    thefile.close();
+}
+
+static void SF_CopyDM(DM oldDM, const PetscInt pStart, const PetscInt pEnd, const PetscInt nDOF, DM *newDM) {
+
+    PetscSection section;
+    // Create a sub auxDM
+    DM coordDM;
+    DMGetCoordinateDM(oldDM, &coordDM) >> ablate::utilities::PetscUtilities::checkError;
+    DMClone(oldDM, newDM) >> ablate::utilities::PetscUtilities::checkError;
+    // this is a hard coded "dmAux" that petsc looks for
+    DMSetCoordinateDM(*newDM, coordDM) >> ablate::utilities::PetscUtilities::checkError;
+    PetscSectionCreate(PetscObjectComm((PetscObject)(*newDM)), &section) >> ablate::utilities::PetscUtilities::checkError;
+    PetscSectionSetChart(section, pStart, pEnd) >> ablate::utilities::PetscUtilities::checkError;
+    for (PetscInt p = pStart; p < pEnd; ++p) PetscSectionSetDof(section, p, nDOF) >> ablate::utilities::PetscUtilities::checkError;
+    PetscSectionSetUp(section) >> ablate::utilities::PetscUtilities::checkError;
+    DMSetLocalSection(*newDM, section) >> ablate::utilities::PetscUtilities::checkError;
+    PetscSectionDestroy(&section) >> ablate::utilities::PetscUtilities::checkError;
+    DMSetUp(*newDM) >> ablate::utilities::PetscUtilities::checkError;
+    // This builds the global section information based on the local section. It's necessary if we don't create a global vector
+    //    right away.
+    DMGetGlobalSection(*newDM, &section) >> ablate::utilities::PetscUtilities::checkError;
+    /* Calling DMPlexComputeGeometryFVM() generates the value returned by DMPlexGetMinRadius() */
+    Vec cellgeom = NULL;
+    Vec facegeom = NULL;
+    DMPlexComputeGeometryFVM(*newDM, &cellgeom, &facegeom);
+    VecDestroy(&cellgeom);
+    VecDestroy(&facegeom);
+}
+
 void ablate::finiteVolume::processes::SurfaceForce::Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) {
     auto dim = flow.GetSubDomain().GetDimensions();
     auto dm = flow.GetSubDomain().GetDM();
@@ -304,11 +356,101 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 
     ablate::domain::Range cellRange;
     solver.GetCellRangeWithoutGhost(cellRange);
-    PetscInt vStart, vEnd;
-    DMPlexGetDepthStratum(process->vertexDM, 0, &vStart, &vEnd);
+
 
     ablate::domain::Range vertexRange;
     GetVertexRange(dm, ablate::domain::Region::ENTIREDOMAIN, vertexRange);
+
+    PetscInt vStart, vEnd; DMPlexGetDepthStratum(process->vertexDM, 0, &vStart, &vEnd); //this might replace the above later
+
+    DM nablanDM;
+    SF_CopyDM(process->vertexDM, vStart, vEnd, dim, &nablanDM);
+    Vec aLocalVec; DMCreateLocalVector(nablanDM, &aLocalVec);
+    Vec aGlobalVec; DMCreateGlobalVector(nablanDM, &aGlobalVec);
+    VecZeroEntries(aLocalVec);
+    VecZeroEntries(aGlobalVec);
+    PetscScalar *aLocalArray; VecGetArray(aLocalVec, &aLocalArray);
+
+    PetscInt cStart, cEnd; DMPlexGetHeightStratum(auxDM, 0, &cStart, &cEnd);
+
+    DM nDM;
+    SF_CopyDM(auxDM, cStart, cEnd, dim, &nDM); //////////////////////// do this? or do componentwise vecs? come back to this
+    Vec nLocalVec; DMCreateLocalVector(nDM, &nLocalVec);
+    Vec nGlobalVec; DMCreateGlobalVector(nDM, &nGlobalVec);
+    VecZeroEntries(nLocalVec);
+    VecZeroEntries(nGlobalVec);
+    PetscScalar *nLocalArray; VecGetArray(nLocalVec, &nLocalArray);
+
+    DM sfDM;
+    SF_CopyDM(auxDM, cStart, cEnd, dim, &sfDM); //////////////////////// do this? or do componentwise vecs? come back to this
+    Vec sfLocalVec; DMCreateLocalVector(sfDM, &sfLocalVec);
+    Vec sfGlobalVec; DMCreateGlobalVector(sfDM, &sfGlobalVec);
+    VecZeroEntries(sfLocalVec);
+    VecZeroEntries(sfGlobalVec);
+    PetscScalar *sfLocalArray; VecGetArray(sfLocalVec, &sfLocalArray);
+
+    DM kappaDM;
+    SF_CopyDM(auxDM, cStart, cEnd, 1, &kappaDM);
+    Vec kappaLocalVec; DMCreateLocalVector(kappaDM, &kappaLocalVec);
+    Vec kappaGlobalVec; DMCreateGlobalVector(kappaDM, &kappaGlobalVec);
+    VecZeroEntries(kappaLocalVec);
+    VecZeroEntries(kappaGlobalVec);
+    PetscScalar *kappaLocalArray; VecGetArray(kappaLocalVec, &kappaLocalArray);
+
+    DM sfmaskDM;
+    SF_CopyDM(auxDM, cStart, cEnd, 1, &sfmaskDM);
+    Vec sfmaskLocalVec; DMCreateLocalVector(sfmaskDM, &sfmaskLocalVec);
+    Vec sfmaskGlobalVec; DMCreateGlobalVector(sfmaskDM, &sfmaskGlobalVec);
+    VecZeroEntries(sfmaskLocalVec);
+    VecZeroEntries(sfmaskGlobalVec);
+    PetscScalar *sfmaskLocalArray; VecGetArray(sfmaskLocalVec, &sfmaskLocalArray);
+
+    DM phitildemaskDM;
+    SF_CopyDM(auxDM, cStart, cEnd, 1, &phitildemaskDM);
+    Vec phitildemaskLocalVec; DMCreateLocalVector(phitildemaskDM, &phitildemaskLocalVec);
+    Vec phitildemaskGlobalVec; DMCreateGlobalVector(phitildemaskDM, &phitildemaskGlobalVec);
+    VecZeroEntries(phitildemaskLocalVec);
+    VecZeroEntries(phitildemaskGlobalVec);
+    PetscScalar *phitildemaskLocalArray; VecGetArray(phitildemaskLocalVec, &phitildemaskLocalArray);
+
+    DM phiDM;
+    SF_CopyDM(auxDM, cStart, cEnd, 1, &phiDM);
+    Vec phiLocalVec; DMCreateLocalVector(phiDM, &phiLocalVec);
+    Vec phiGlobalVec; DMCreateGlobalVector(phiDM, &phiGlobalVec);
+    VecZeroEntries(phiLocalVec);
+    VecZeroEntries(phiGlobalVec);
+    PetscScalar *phiLocalArray; VecGetArray(phiLocalVec, &phiLocalArray);
+
+    DM phitildeDM;
+    SF_CopyDM(auxDM, cStart, cEnd, 1, &phitildeDM);
+    Vec phitildeLocalVec; DMCreateLocalVector(phitildeDM, &phitildeLocalVec);
+    Vec phitildeGlobalVec; DMCreateGlobalVector(phitildeDM, &phitildeGlobalVec);
+    VecZeroEntries(phitildeLocalVec);
+    VecZeroEntries(phitildeGlobalVec);
+    PetscScalar *phitildeLocalArray; VecGetArray(phitildeLocalVec, &phitildeLocalArray);
+
+    DM cellidDM;
+    SF_CopyDM(auxDM, cStart, cEnd, 1, &cellidDM);
+    Vec cellidLocalVec; DMCreateLocalVector(cellidDM, &cellidLocalVec);
+    Vec cellidGlobalVec; DMCreateGlobalVector(cellidDM, &cellidGlobalVec);
+    VecZeroEntries(cellidLocalVec);
+    VecZeroEntries(cellidGlobalVec);
+    PetscScalar *cellidLocalArray; VecGetArray(cellidLocalVec, &cellidLocalArray);
+
+    DM xDM;
+    SF_CopyDM(auxDM, cStart, cEnd, 1, &xDM);
+    DM yDM;
+    SF_CopyDM(auxDM, cStart, cEnd, 1, &yDM);
+    Vec xLocalVec; DMCreateLocalVector(xDM, &xLocalVec);
+    Vec xGlobalVec; DMCreateGlobalVector(xDM, &xGlobalVec);
+    Vec yLocalVec; DMCreateLocalVector(yDM, &yLocalVec);
+    Vec yGlobalVec; DMCreateGlobalVector(yDM, &yGlobalVec);
+    VecZeroEntries(xLocalVec);
+    VecZeroEntries(xGlobalVec);
+    VecZeroEntries(yLocalVec);
+    VecZeroEntries(yGlobalVec);
+    PetscScalar *xLocalArray; VecGetArray(xLocalVec, &xLocalArray);
+    PetscScalar *yLocalArray; VecGetArray(yLocalVec, &yLocalArray);
 
 //    if (interpCellList == nullptr) {
 //        BuildInterpCellList(auxDM, cellRange);
@@ -322,8 +464,6 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 //    ablate::domain::rbf::MQ cellRBF(polyAug, rmin, doesNotHaveDerivatives, doesNotHaveInterpolation);
 //    cellRBF.Setup(subDomain);
 //    cellRBF.Initialize();
-
-
 
 
 
