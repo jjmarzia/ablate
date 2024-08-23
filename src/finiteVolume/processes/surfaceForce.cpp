@@ -381,13 +381,21 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
     VecZeroEntries(nGlobalVec);
     PetscScalar *nLocalArray; VecGetArray(nLocalVec, &nLocalArray);
 
-    DM sfDM;
-    SF_CopyDM(auxDM, cStart, cEnd, dim, &sfDM); //////////////////////// do this? or do componentwise vecs? come back to this
-    Vec sfLocalVec; DMCreateLocalVector(sfDM, &sfLocalVec);
-    Vec sfGlobalVec; DMCreateGlobalVector(sfDM, &sfGlobalVec);
-    VecZeroEntries(sfLocalVec);
-    VecZeroEntries(sfGlobalVec);
-    PetscScalar *sfLocalArray; VecGetArray(sfLocalVec, &sfLocalArray);
+    DM sfxDM;
+    SF_CopyDM(auxDM, cStart, cEnd, 1, &sfxDM);
+    Vec sfxLocalVec; DMCreateLocalVector(sfxDM, &sfxLocalVec);
+    Vec sfxGlobalVec; DMCreateGlobalVector(sfxDM, &sfxGlobalVec);
+    VecZeroEntries(sfxLocalVec);
+    VecZeroEntries(sfxGlobalVec);
+    PetscScalar *sfxLocalArray; VecGetArray(sfxLocalVec, &sfxLocalArray);
+
+    DM sfyDM;
+    SF_CopyDM(auxDM, cStart, cEnd, 1, &sfyDM);
+    Vec sfyLocalVec; DMCreateLocalVector(sfyDM, &sfyLocalVec);
+    Vec sfyGlobalVec; DMCreateGlobalVector(sfyDM, &sfyGlobalVec);
+    VecZeroEntries(sfyLocalVec);
+    VecZeroEntries(sfyGlobalVec);
+    PetscScalar *sfyLocalArray; VecGetArray(sfyLocalVec, &sfyLocalArray);
 
     DM rankDM;
     SF_CopyDM(auxDM, cStart, cEnd, 1, &rankDM);
@@ -867,17 +875,21 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 //    }
 
     //csf auxDM copy
-    for (PetscInt cell = cStart; cell < cEnd; ++cell) {
+//    for (PetscInt cell = cStart; cell < cEnd; ++cell) {
+    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+        PetscInt cell = cellRange.GetPoint(c);
+
         PetscReal *phitildemaskptr; xDMPlexPointLocalRef(phitildeDM, cell, -1, phitildemaskLocalArray, &phitildemaskptr);
         PetscScalar *kappaptr; xDMPlexPointLocalRef(kappaDM, cell, -1, kappaLocalArray, &kappaptr);
         PetscScalar *nptr; xDMPlexPointLocalRef(nDM, cell, -1, nLocalArray, &nptr);
-        PetscScalar *sfptr; xDMPlexPointLocalRef(sfDM, cell, -1, sfLocalArray, &sfptr);
+        PetscScalar *sfxptr; xDMPlexPointLocalRef(sfxDM, cell, -1, sfxLocalArray, &sfxptr);
+        PetscScalar *sfyptr; xDMPlexPointLocalRef(sfyDM, cell, -1, sfyLocalArray, &sfyptr);
         if(*phitildemaskptr > 0.5){
-            sfptr[0] = process->sigma * *kappaptr * -nptr[0];
-            sfptr[1] = process->sigma * *kappaptr * -nptr[1];
-            sfptr[2] = process->sigma * *kappaptr * -nptr[2];
+            *sfxptr = process->sigma * *kappaptr * -nptr[0];
+            *sfyptr = process->sigma * *kappaptr * -nptr[1];
+//            sfptr[2] = process->sigma * *kappaptr * -nptr[2];
         }
-        else{ sfptr[0]=0; sfptr[1]=0; sfptr[2]=0; }
+        else{ *sfxptr = 0; *sfyptr = 0; } //sfptr[2]=0; }
 
         const PetscScalar *euler = nullptr;
         PetscScalar *eulerSource = nullptr;
@@ -887,14 +899,17 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
         PetscReal ux = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 0] / density;
         PetscReal uy = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 1] / density;
         PetscReal uz = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 2] / density;
-        if (PetscAbs(sfptr[0]) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOU] += sfptr[0];}
-        if (PetscAbs(sfptr[1]) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOV] += sfptr[1];}
-        if (PetscAbs(sfptr[2]) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOW] += sfptr[2];}
-        if (PetscAbs(sfptr[0]) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += sfptr[0]*ux;}
-        if (PetscAbs(sfptr[1]) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += sfptr[1]*uy;}
-        if (PetscAbs(sfptr[2]) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += sfptr[2]*uz;}
+        if (PetscAbs(*sfxptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOU] += *sfxptr;}
+        if (PetscAbs(*sfyptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOV] += *sfyptr;}
+//        if (PetscAbs(sfptr[2]) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOW] += sfptr[2];}
+        if (PetscAbs(*sfxptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += *sfxptr * ux;}
+        if (PetscAbs(*sfyptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += *sfyptr * uy;}
+//        if (PetscAbs(sfptr[2]) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += sfptr[2]*uz;}
     }
-    if (verbose){SaveDataToFile(cellRange.start, cellRange.end, sfDM, sfLocalArray, "sf", true);}
+    if (verbose){
+        SaveDataToFile(cellRange.start, cellRange.end, sfxDM, sfxLocalArray, "sfx", true);
+        SaveDataToFile(cellRange.start, cellRange.end, sfyDM, sfyLocalArray, "sfy", true);
+    }
 
     //CSF auxDM delete asap
 //    for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
@@ -1133,10 +1148,15 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
     DMRestoreGlobalVector(nDM, &nGlobalVec);
     DMDestroy(&nDM);
 
-    VecRestoreArray(sfLocalVec, &sfLocalArray);
-    DMRestoreLocalVector(sfDM, &sfLocalVec);
-    DMRestoreGlobalVector(sfDM, &sfGlobalVec);
-    DMDestroy(&sfDM);
+    VecRestoreArray(sfxLocalVec, &sfxLocalArray);
+    DMRestoreLocalVector(sfxDM, &sfxLocalVec);
+    DMRestoreGlobalVector(sfxDM, &sfxGlobalVec);
+    DMDestroy(&sfxDM);
+
+    VecRestoreArray(sfyLocalVec, &sfyLocalArray);
+    DMRestoreLocalVector(sfyDM, &sfyLocalVec);
+    DMRestoreGlobalVector(sfyDM, &sfyGlobalVec);
+    DMDestroy(&sfyDM);
     
     VecRestoreArray(kappaLocalVec, &kappaLocalArray);
     DMRestoreLocalVector(kappaDM, &kappaLocalVec);
