@@ -339,6 +339,8 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 //    const auto &CSF1TildeField = subDomain->GetField("SF1Tilde");
 //    const auto &CSF2TildeField = subDomain->GetField("SF2Tilde");
     auto dim = solver.GetSubDomain().GetDimensions();
+    const auto &ofield = subDomain->GetField("debug");
+    const auto &ofield2 = subDomain->GetField("debug2");
     const auto &eulerField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
 
     DM auxDM = subDomain->GetAuxDM();
@@ -489,6 +491,13 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
         *kappaptr = 0;
         PetscScalar *sfmaskptr; xDMPlexPointLocalRef(sfmaskDM, cell, -1, sfmaskLocalArray, &sfmaskptr);
         *sfmaskptr = 0;
+        PetscScalar *nptr; xDMPlexPointLocalRef(nDM, cell, -1, nLocalArray, &nptr);
+        *nptr = 0;
+        PetscScalar *sfxptr; xDMPlexPointLocalRef(sfxDM, cell, -1, sfxLocalArray, &sfxptr);
+        *sfxptr = 0;
+        PetscScalar *sfyptr; xDMPlexPointLocalRef(sfyDM, cell, -1, sfyLocalArray, &sfyptr);
+        *sfyptr = 0;
+
         PetscSection globalSection; DMGetGlobalSection(dm, &globalSection);
         PetscInt owned = 1; PetscSectionGetOffset(globalSection, cell, &owned);
         if (owned>=0){
@@ -558,7 +567,8 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 
     PetscReal rmin; DMPlexGetMinRadius(dm, &rmin); PetscReal h=2*rmin;
     PetscScalar C=2; PetscScalar N=2.6; PetscScalar layers = ceil(C*N);
-    layers = 2; //temporary
+//    layers = 2; //temporary; current limit for parallel
+    layers = 4; //temporary
 
     //auxDM copy
     for (PetscInt cell = cStart; cell < cEnd; ++cell) {
@@ -874,12 +884,8 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 //        }
 //    }
 
-    //csf auxDM copy
-//    for (PetscInt cell = cStart; cell < cEnd; ++cell) {
-    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-        PetscInt cell = cellRange.GetPoint(c);
-
-        PetscReal *phitildemaskptr; xDMPlexPointLocalRef(phitildeDM, cell, -1, phitildemaskLocalArray, &phitildemaskptr);
+    for (PetscInt cell = cStart; cell < cEnd; ++cell){
+        PetscReal *phitildemaskptr; xDMPlexPointLocalRef(phitildemaskDM, cell, -1, phitildemaskLocalArray, &phitildemaskptr);
         PetscScalar *kappaptr; xDMPlexPointLocalRef(kappaDM, cell, -1, kappaLocalArray, &kappaptr);
         PetscScalar *nptr; xDMPlexPointLocalRef(nDM, cell, -1, nLocalArray, &nptr);
         PetscScalar *sfxptr; xDMPlexPointLocalRef(sfxDM, cell, -1, sfxLocalArray, &sfxptr);
@@ -887,9 +893,22 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
         if(*phitildemaskptr > 0.5){
             *sfxptr = process->sigma * *kappaptr * -nptr[0];
             *sfyptr = process->sigma * *kappaptr * -nptr[1];
-//            sfptr[2] = process->sigma * *kappaptr * -nptr[2];
+            //            sfptr[2] = process->sigma * *kappaptr * -nptr[2];
         }
         else{ *sfxptr = 0; *sfyptr = 0; } //sfptr[2]=0; }
+    }
+    PushToGhost(sfxDM, sfxLocalVec, sfxGlobalVec, INSERT_VALUES);
+    PushToGhost(sfyDM, sfyLocalVec, sfyGlobalVec, INSERT_VALUES);
+
+    //add to rhs (auxdm copy)
+    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+        PetscInt cell = cellRange.GetPoint(c);
+
+        PetscReal *phitildemaskptr; xDMPlexPointLocalRef(phitildemaskDM, cell, -1, phitildemaskLocalArray, &phitildemaskptr);
+//        PetscScalar *kappaptr; xDMPlexPointLocalRef(kappaDM, cell, -1, kappaLocalArray, &kappaptr);
+//        PetscScalar *nptr; xDMPlexPointLocalRef(nDM, cell, -1, nLocalArray, &nptr);
+        PetscScalar *sfxptr; xDMPlexPointLocalRef(sfxDM, cell, -1, sfxLocalArray, &sfxptr);
+        PetscScalar *sfyptr; xDMPlexPointLocalRef(sfyDM, cell, -1, sfyLocalArray, &sfyptr);
 
         const PetscScalar *euler = nullptr;
         PetscScalar *eulerSource = nullptr;
@@ -898,18 +917,26 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
         auto density = euler[ablate::finiteVolume::CompressibleFlowFields::RHO];
         PetscReal ux = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 0] / density;
         PetscReal uy = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 1] / density;
-        PetscReal uz = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 2] / density;
+//        PetscReal uz = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 2] / density;
         if (PetscAbs(*sfxptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOU] += *sfxptr;}
         if (PetscAbs(*sfyptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOV] += *sfyptr;}
 //        if (PetscAbs(sfptr[2]) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOW] += sfptr[2];}
         if (PetscAbs(*sfxptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += *sfxptr * ux;}
         if (PetscAbs(*sfyptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += *sfyptr * uy;}
 //        if (PetscAbs(sfptr[2]) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += sfptr[2]*uz;}
+
+        PetscScalar *optr; xDMPlexPointLocalRef(auxDM, cell, ofield.id, auxArray, &optr);
+        PetscScalar *optr2; xDMPlexPointLocalRef(auxDM, cell, ofield2.id, auxArray, &optr2);
+//        PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(phitildemaskDM, cell, -1, phitildemaskLocalArray, &phitildemaskptr);
+        *optr = *phitildemaskptr;
+        *optr2 = *sfxptr;
+
     }
     if (verbose){
         SaveDataToFile(cellRange.start, cellRange.end, sfxDM, sfxLocalArray, "sfx", true);
         SaveDataToFile(cellRange.start, cellRange.end, sfyDM, sfyLocalArray, "sfy", true);
     }
+
 
     //CSF auxDM delete asap
 //    for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {

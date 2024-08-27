@@ -421,7 +421,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
 
     PetscReal rmin; DMPlexGetMinRadius(dm, &rmin); PetscReal h=2*rmin;
     PetscScalar C=2; PetscScalar N=2.6; PetscInt layers = ceil(C*N);
-    layers = 2; //temporary
+    layers = 4; //temporary
 
     //do phitildemask for auxDM COPY
     for (PetscInt cell = cStart; cell < cEnd; ++cell) {
