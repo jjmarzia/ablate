@@ -566,9 +566,10 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 //    }
 
     PetscReal rmin; DMPlexGetMinRadius(dm, &rmin); PetscReal h=2*rmin;
-    PetscScalar C=2; PetscScalar N=2.6; PetscScalar layers = ceil(C*N);
+//    PetscScalar C=2; PetscScalar N=2.6; PetscScalar layers = ceil(C*N);
+    PetscScalar C=1; PetscScalar N=2.6; PetscScalar layers = ceil(C*N);
 //    layers = 2; //temporary; current limit for parallel
-    layers = 4; //temporary
+//    layers = 4; //temporary
 
     //auxDM copy
     for (PetscInt cell = cStart; cell < cEnd; ++cell) {
@@ -929,7 +930,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
         PetscScalar *optr2; xDMPlexPointLocalRef(auxDM, cell, ofield2.id, auxArray, &optr2);
 //        PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(phitildemaskDM, cell, -1, phitildemaskLocalArray, &phitildemaskptr);
         *optr = *phitildemaskptr;
-        *optr2 = *sfxptr;
+        *optr2 = PetscSqrtReal(PetscSqr(*sfxptr) + PetscSqr(*sfyptr));
 
     }
     if (verbose){

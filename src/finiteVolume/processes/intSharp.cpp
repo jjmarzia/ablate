@@ -420,8 +420,8 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     // this is smoothed to a greater extent than the intsharp field. (this might need to change)
 
     PetscReal rmin; DMPlexGetMinRadius(dm, &rmin); PetscReal h=2*rmin;
-    PetscScalar C=2; PetscScalar N=2.6; PetscInt layers = ceil(C*N);
-    layers = 4; //temporary
+    PetscScalar C=1; PetscScalar N=2.6; PetscScalar layers = ceil(C*N);
+//    layers = 4; //temporary; C=1.5, N=2.6
 
     //do phitildemask for auxDM COPY
     for (PetscInt cell = cStart; cell < cEnd; ++cell) {
