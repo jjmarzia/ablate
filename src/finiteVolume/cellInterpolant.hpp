@@ -78,19 +78,6 @@ class CellInterpolant {
     void ComputeFieldGradients(const domain::Field& field, Vec xLocalVec, Vec& gradLocVec, DM& dmGrad, Vec cellGeomVec, Vec faceGeomVec, const ablate::domain::Range& faceRange,
                                const ablate::domain::Range& cellRange);
 
-    /**
-     * Helper function to compute the gradient at each cell
-     * @param dm
-     * @param regionLabel
-     * @param regionValue
-     * @param fvm
-     * @param faceGeometry
-     * @param cellGeometry
-     * @param dmGrad
-     * @return
-     */
-    static PetscErrorCode ComputeGradientFVM(DM dm, DMLabel regionLabel, PetscInt regionValue, PetscFV fvm, Vec faceGeometry, Vec cellGeometry, DM* dmGrad);
-
    public:
     /**
      * Create an instance of the cell interpolant for the current solver region

@@ -175,3 +175,23 @@ PetscErrorCode PetscSortedArrayCommon(const PetscInt na, const PetscInt a[], Pet
  * @return
  */
 PetscErrorCode DMProjectFunctionLocalMixedCells(DM, PetscReal, PetscErrorCode (**)(PetscInt, PetscReal, const PetscReal[], PetscInt, PetscScalar *, void *), void **, InsertMode, Vec);
+
+/**
+ * Compute geometric factors for gradient reconstruction, which are stored in the geometry data, and compute layout for gradient data
+ * Inputs:
+ +    dm - The `DMPLEX`
+ *    regionLabel - Label of the region to consider
+ *    regionValue - Region ID number
+ *    fvm - The `PetscFV`
+ *    cellGeometry - The cell geometry from `DMPlexComputeCellGeometryFVM()`
+ *
+ *  Inputs/Outputs:
+ *    faceGeometry - The face geometry from `DMPlexComputeFaceGeometryFVM()`; on output
+ *                the geometric factors for gradient calculation are inserted
+ *
+ * Outputs:
+ *    dmGrad - The `DM` describing the layout of gradient data
+ *
+ * Note: This is an extension of ComputeGradientFVM in plexgeometry with the addition of label information
+ */
+PetscErrorCode ComputeGradientFVM(DM dm, DMLabel regionLabel, PetscInt regionValue, PetscFV fvm, Vec faceGeometry, Vec cellGeometry, DM* dmGrad);
