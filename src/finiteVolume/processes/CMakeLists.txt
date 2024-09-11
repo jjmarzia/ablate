@@ -17,10 +17,6 @@ target_sources(ablateLibrary
         surfaceForce.cpp
         soot.cpp
         intSharp.cpp
-        #        duplicate symbol 'GetVertexRange(_p_DM*, std::__1::shared_ptr<ablate::domain::Region> const&, ablate::domain::Range&)' in:
-        #        CMakeFiles/ablateLibrary.dir/src/finiteVolume/processes/surfaceForce.cpp.o
-        #        CMakeFiles/ablateLibrary.dir/src/finiteVolume/processes/intSharp.cpp.o
-        #        ld: 1 duplicate symbol for architecture arm64
 
         PUBLIC
         process.hpp

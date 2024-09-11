@@ -758,6 +758,7 @@ void ablate::domain::SubDomain::CreateEmptySubDM(DM* inDM, std::shared_ptr<domai
     }
     if (subDmLabel) {
         DMPlexFilter(GetDM(), subDmLabel, subDmValue, PETSC_FALSE, PETSC_FALSE, NULL, inDM);
+//        DMPlexFilter(GetDM(), subDmLabel, subDmValue, inDM);
     } else {
         DMClone(GetDM(), inDM);
     }

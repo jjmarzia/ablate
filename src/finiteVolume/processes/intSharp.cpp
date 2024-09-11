@@ -97,7 +97,7 @@ void PushGhost(DM dm, Vec LocalVec, Vec GlobalVec, InsertMode ADD_OR_INSERT_VALU
 
 PetscInt counter=0;
 void SaveData(PetscInt rangeStart, PetscInt rangeEnd, DM dm, PetscScalar *array, std::string filename, bool iterateAcrossTime){
-        PetscInt rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+        int rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
         std::string counterstring;
         if (iterateAcrossTime){
             counter+=1;
@@ -283,7 +283,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     PetscScalar *yLocalArray; VecGetArray(yLocalVec, &yLocalArray);
     //field ID for non field calls is -1.
 
-    PetscInt rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank); rank+=1;
+    int rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank); rank+=1;
 
     //print? (if long )
     bool verbose=false;

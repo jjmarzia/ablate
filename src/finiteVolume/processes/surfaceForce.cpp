@@ -250,7 +250,7 @@ void PushToGhost(DM dm, Vec LocalVec, Vec GlobalVec, InsertMode ADD_OR_INSERT_VA
 
 PetscInt count=0;
 void SaveDataToFile(PetscInt rangeStart, PetscInt rangeEnd, DM dm, PetscScalar *array, std::string filename, bool iterateAcrossTime){
-    PetscInt rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+    int rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
     std::string counterstring;
     if (iterateAcrossTime){
         count+=1;
@@ -484,7 +484,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 
     bool verbose=false;
 
-    PetscInt rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank); rank+=1;
+    int rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank); rank+=1;
 
     for (PetscInt cell = cStart; cell < cEnd; ++cell){
         PetscScalar *kappaptr; xDMPlexPointLocalRef(kappaDM, cell, -1, kappaLocalArray, &kappaptr);
