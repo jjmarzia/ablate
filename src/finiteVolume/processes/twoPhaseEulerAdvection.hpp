@@ -178,18 +178,16 @@ class TwoPhaseEulerAdvection : public Process {
     std::shared_ptr<TwoPhaseDecoder> decoder;
 
    public:
-    static PetscErrorCode UpdateAuxTemperatureField2Gas(PetscReal time, PetscInt dim, const PetscFVCellGeom *cellGeom, const PetscInt uOff[], const PetscScalar *conservedValues, const PetscInt aOff[],
-                                                        PetscScalar *auxField, void *ctx);
 
-    static PetscErrorCode UpdateAuxPressureField2Gas(PetscReal time, PetscInt dim, const PetscFVCellGeom *cellGeom, const PetscInt uOff[], const PetscScalar *conservedValues, const PetscInt aOff[],
+    static PetscErrorCode UpdateAuxFieldsTwoPhase(PetscReal time, PetscInt dim, const PetscFVCellGeom *cellGeom, const PetscInt uOff[], const PetscScalar *conservedValues, const PetscInt aOff[],
                                                      PetscScalar *auxField, void *ctx);
+    std::vector<std::string> auxUpdateFields = {};
 
-    static PetscErrorCode UpdateAuxVelocityField2Gas(PetscReal time, PetscInt dim, const PetscFVCellGeom *cellGeom, const PetscInt uOff[], const PetscScalar *conservedValues, const PetscInt aOff[],
-                                                     PetscScalar *auxField, void *ctx);
 
     TwoPhaseEulerAdvection(std::shared_ptr<eos::EOS> eosTwoPhase, const std::shared_ptr<parameters::Parameters> &parameters, std::shared_ptr<fluxCalculator::FluxCalculator> fluxCalculatorGasGas,
                            std::shared_ptr<fluxCalculator::FluxCalculator> fluxCalculatorGasLiquid, std::shared_ptr<fluxCalculator::FluxCalculator> fluxCalculatorLiquidGas,
                            std::shared_ptr<fluxCalculator::FluxCalculator> fluxCalculatorLiquidLiquid);
+    ~TwoPhaseEulerAdvection();
     void Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
 
    private:
@@ -200,6 +198,15 @@ class TwoPhaseEulerAdvection : public Process {
                                                            const PetscInt aOff[], const PetscScalar auxL[], const PetscScalar auxR[], PetscScalar *flux, void *ctx);
     static PetscErrorCode CompressibleFlowComputeVFFlux(PetscInt dim, const PetscFVFaceGeom *fg, const PetscInt uOff[], const PetscScalar fieldL[], const PetscScalar fieldR[], const PetscInt aOff[],
                                                         const PetscScalar auxL[], const PetscScalar auxR[], PetscScalar *flux, void *ctx);
+
+    DM eulerGradDM = nullptr; // Used to compute the cell-center gradient for the Euler field which is then used for projection
+    DM alphaRhoGradDM = nullptr; // Used to compute the cell-center gradient for the alpha-g*rho-g field which is then used for projection
+
+    Vec faceGeomVec;
+    Vec cellGeomVec;
+
+    // Compute the Euler and density-volume fraction fluxes
+    static PetscErrorCode CompressibleFlowCompleteFlux(const ablate::finiteVolume::FiniteVolumeSolver &flow, DM dm, PetscReal time, Vec locXVec, Vec locFVec, void* ctx);
 
    public:
     /**

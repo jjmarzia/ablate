@@ -111,6 +111,9 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 
     // Look for the euler field and volume fraction (alpha)
     const auto &eulerField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
+printf("Right now ablate::finiteVolume::processes::SurfaceForce::ComputeSource assumes that TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD is in the SOL field\n");
+printf("This needs to be changed to use it in the AUX field.\n");
+exit(0);
     const auto &VFfield = solver.GetSubDomain().GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
 
     // get the cell range
