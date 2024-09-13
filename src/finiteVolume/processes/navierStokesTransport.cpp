@@ -7,6 +7,12 @@
 #include "utilities/mathUtilities.hpp"
 #include "utilities/petscUtilities.hpp"
 
+
+#define NOTE0EXIT(S, ...) {PetscFPrintf(MPI_COMM_WORLD, stderr,                                     \
+  "\x1b[1m(%s:%d, %s)\x1b[0m\n  \x1b[1m\x1b[90mexiting:\x1b[0m " S "\n",    \
+  __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__); exit(0);}
+
+
 ablate::finiteVolume::processes::NavierStokesTransport::NavierStokesTransport(const std::shared_ptr<parameters::Parameters>& parametersIn, std::shared_ptr<eos::EOS> eosIn,
                                                                               std::shared_ptr<fluxCalculator::FluxCalculator> fluxCalculatorIn,
                                                                               std::shared_ptr<eos::transport::TransportModel> transportModelIn,
@@ -102,7 +108,7 @@ PetscErrorCode ablate::finiteVolume::processes::NavierStokesTransport::Advection
     auto eulerAdvectionData = (AdvectionData*)ctx;
 
     const int EULER_FIELD = 0;
-
+//NOTE0EXIT("");
     // Compute the norm
     PetscReal norm[3];
     utilities::MathUtilities::NormVector(dim, fg->normal, norm);

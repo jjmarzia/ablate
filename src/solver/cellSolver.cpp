@@ -27,16 +27,32 @@ void ablate::solver::CellSolver::RegisterAuxFieldUpdate(ablate::solver::CellSolv
         functionDescription.inputFields.push_back(fieldId.id);
     }
 
-    // Don't add the same field more than once
-    auto location = std::find_if(auxFieldUpdateFunctionDescriptions.begin(), auxFieldUpdateFunctionDescriptions.end(), [&functionDescription](const auto& description) {
-        return functionDescription.auxFields == description.auxFields;
-    });
+    std::size_t i = 0;
+    while ( i < auxFieldUpdateFunctionDescriptions.size()) {
 
-    if (location == auxFieldUpdateFunctionDescriptions.end()) {
-        auxFieldUpdateFunctionDescriptions.push_back(functionDescription);
-    } else {
-        *location = functionDescription;
+      auto otherDescription = auxFieldUpdateFunctionDescriptions.data()[i];
+      auto otherAuxFields = otherDescription.auxFields;
+
+      std::size_t j;
+      for (j = 0; j < functionDescription.auxFields.size(); ++j) {
+        if (std::find(otherAuxFields.begin(), otherAuxFields.end(), functionDescription.auxFields.data()[j]) != otherAuxFields.end()) {
+          // The field exists. Delete it.
+
+          if (otherAuxFields.size() > 1) {
+            throw std::runtime_error("An AUX-field update containing more than one field is being deleted in ablate::solver::CellSolver::RegisterAuxFieldUpdate. This behavior has not been checked.");
+          }
+
+          auxFieldUpdateFunctionDescriptions.erase(auxFieldUpdateFunctionDescriptions.begin() + i);
+          break;
+        }
+      }
+      if (j == functionDescription.auxFields.size()) {
+        // Nothing was removed. Move to the next function description.
+        ++i;
+      }
     }
+
+    auxFieldUpdateFunctionDescriptions.push_back(functionDescription);
 }
 
 void ablate::solver::CellSolver::RegisterSolutionFieldUpdate(ablate::solver::CellSolver::SolutionFieldUpdateFunction function, void* context, const std::vector<std::string>& inputFields) {

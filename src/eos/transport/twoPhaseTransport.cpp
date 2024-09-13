@@ -1,8 +1,14 @@
 #include "twoPhaseTransport.hpp"
 #include "finiteVolume/processes/twoPhaseEulerAdvection.hpp"
 
+#define NOTE0EXIT(S, ...) {PetscFPrintf(MPI_COMM_WORLD, stderr,                                     \
+  "\x1b[1m(%s:%d, %s)\x1b[0m\n  \x1b[1m\x1b[90mexiting:\x1b[0m " S "\n",    \
+  __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__); exit(0);}
+
 ablate::eos::transport::TwoPhaseTransport::TwoPhaseTransport(std::shared_ptr<TransportModel> alphaTransportModel, std::shared_ptr<TransportModel> otherTransportModel)
     : alphaTransportModel(std::move(alphaTransportModel)), otherTransportModel(std::move(otherTransportModel)) {}
+
+
 
 PetscErrorCode ablate::eos::transport::TwoPhaseTransport::TwoPhaseFunction(const PetscReal *conserved, PetscReal *property, void *ctx) {
     PetscFunctionBeginUser;
@@ -51,7 +57,7 @@ ablate::eos::ThermodynamicFunction ablate::eos::transport::TwoPhaseTransport::Ge
     // Store the functions to keep the reference count up
     thermodynamicFunctionReference.push_back(alphaFunction);
     thermodynamicFunctionReference.push_back(otherFunction);
-
+//NOTE0EXIT("");
     // Find the volumeFraction field
     const auto volumeFractionField =
         std::find_if(fields.begin(), fields.end(), [](const auto &field) { return field.name == ablate::finiteVolume::processes::TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD; });

@@ -177,11 +177,13 @@ class TwoPhaseEulerAdvection : public Process {
      */
     std::shared_ptr<TwoPhaseDecoder> decoder;
 
+    std::vector<std::string> auxUpdateFields = {};
+
    public:
 
     static PetscErrorCode UpdateAuxFieldsTwoPhase(PetscReal time, PetscInt dim, const PetscFVCellGeom *cellGeom, const PetscInt uOff[], const PetscScalar *conservedValues, const PetscInt aOff[],
                                                      PetscScalar *auxField, void *ctx);
-    std::vector<std::string> auxUpdateFields = {};
+
 
 
     TwoPhaseEulerAdvection(std::shared_ptr<eos::EOS> eosTwoPhase, const std::shared_ptr<parameters::Parameters> &parameters, std::shared_ptr<fluxCalculator::FluxCalculator> fluxCalculatorGasGas,
