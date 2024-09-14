@@ -43,14 +43,18 @@ class CellSolver : public solver::Solver {
     //! list of auxField update functions
     std::vector<SolutionFieldUpdateFunctionDescription> solutionFieldUpdateFunctionDescriptions;
 
-   protected:
+    public:
+//   protected:
     //! Vector used to describe the entire cell geom of the dm.  This is constant and does not depend upon region.
     Vec cellGeomVec = nullptr;
 
     //! Vector used to describe the entire face geom of the dm.  This is constant and does not depend upon region.
     Vec faceGeomVec = nullptr;
 
-   public:
+//   public:
+
+//    void GetGeomVecs(Vec *cellGeomVecOut, Vec *faceGeomVecOut) { *cellGeomVecOut = cellGeomVec; *faceGeomVecOut = faceGeomVec; };
+
     /**
      * Create a base solver used for cell based solvers
      * @param solverId

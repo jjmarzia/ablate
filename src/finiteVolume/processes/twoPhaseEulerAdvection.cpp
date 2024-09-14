@@ -230,15 +230,7 @@ ablate::finiteVolume::processes::TwoPhaseEulerAdvection::TwoPhaseEulerAdvection(
     }
 }
 
-ablate::finiteVolume::processes::TwoPhaseEulerAdvection::~TwoPhaseEulerAdvection() {
-  if (eulerGradDM) {
-    DMDestroy(&eulerGradDM);
-  }
-
-  if (alphaRhoGradDM) {
-    DMDestroy(&alphaRhoGradDM);
-  }
-}
+ablate::finiteVolume::processes::TwoPhaseEulerAdvection::~TwoPhaseEulerAdvection() {}
 
 void ComputeFieldGradientDM(ablate::finiteVolume::FiniteVolumeSolver &flow, Vec faceGeomVec, Vec cellGeomVec, const std::string fieldName, DM *gradDM) {
 
@@ -262,12 +254,6 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Setup(ablate::fini
     // Create the decoder based upon the eoses
     decoder = CreateTwoPhaseDecoder(flow.GetSubDomain().GetDimensions(), eosGas, eosLiquid);
 
-    // DM used to calculate cell-center gradients
-    DMPlexComputeGeometryFVM(flow.GetSubDomain().GetDM(), &cellGeomVec, &faceGeomVec) >> utilities::PetscUtilities::checkError;
-    ComputeFieldGradientDM(flow, faceGeomVec, cellGeomVec, CompressibleFlowFields::EULER_FIELD, &eulerGradDM);
-    ComputeFieldGradientDM(flow, faceGeomVec, cellGeomVec, DENSITY_VF_FIELD, &eulerGradDM);
-
-
     // Currently, no option for species advection
 //    flow.RegisterRHSFunction(CompressibleFlowCompleteFlux, this);
     flow.RegisterRHSFunction(CompressibleFlowComputeEulerFlux, this, CompressibleFlowFields::EULER_FIELD, {VOLUME_FRACTION_FIELD, DENSITY_VF_FIELD, CompressibleFlowFields::EULER_FIELD}, {});
@@ -275,6 +261,10 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Setup(ablate::fini
     flow.RegisterComputeTimeStepFunction(ComputeCflTimeStep, &timeStepData, "cfl");
     timeStepData.computeSpeedOfSound = eosTwoPhase->GetThermodynamicFunction(eos::ThermodynamicProperty::SpeedOfSound, flow.GetSubDomain().GetFields());
 
+//const Vec faceGeomVec, cellGeomVec;
+//flow.GetGeomVecs(&cellGeomVec, &faceGeomVec);
+//printf("%d\n", flow.faceGeomVec==nullptr);
+//NOTE0EXIT("");
 
     if (flow.GetSubDomain().ContainsField(CompressibleFlowFields::VELOCITY_FIELD) && (flow.GetSubDomain().GetField(CompressibleFlowFields::VELOCITY_FIELD).location == ablate::domain::FieldLocation::AUX)) {
       auxUpdateFields.push_back(CompressibleFlowFields::VELOCITY_FIELD);

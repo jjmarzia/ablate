@@ -201,12 +201,6 @@ class TwoPhaseEulerAdvection : public Process {
     static PetscErrorCode CompressibleFlowComputeVFFlux(PetscInt dim, const PetscFVFaceGeom *fg, const PetscInt uOff[], const PetscScalar fieldL[], const PetscScalar fieldR[], const PetscInt aOff[],
                                                         const PetscScalar auxL[], const PetscScalar auxR[], PetscScalar *flux, void *ctx);
 
-    DM eulerGradDM = nullptr; // Used to compute the cell-center gradient for the Euler field which is then used for projection
-    DM alphaRhoGradDM = nullptr; // Used to compute the cell-center gradient for the alpha-g*rho-g field which is then used for projection
-
-    Vec faceGeomVec;
-    Vec cellGeomVec;
-
     // Compute the Euler and density-volume fraction fluxes
     static PetscErrorCode CompressibleFlowCompleteFlux(const ablate::finiteVolume::FiniteVolumeSolver &flow, DM dm, PetscReal time, Vec locXVec, Vec locFVec, void* ctx);
 
