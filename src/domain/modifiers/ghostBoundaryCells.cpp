@@ -4,6 +4,7 @@ ablate::domain::modifiers::GhostBoundaryCells::GhostBoundaryCells(std::string la
 void ablate::domain::modifiers::GhostBoundaryCells::Modify(DM &dm) {
     DM gdm;
     DMPlexConstructGhostCells(dm, labelName.empty() ? nullptr : labelName.c_str(), NULL, &gdm) >> utilities::PetscUtilities::checkError;
+    DMLocalizeCoordinates(gdm) >> utilities::PetscUtilities::checkError;
     ReplaceDm(dm, gdm);
 }
 
