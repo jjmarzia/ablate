@@ -226,6 +226,7 @@ DM ablate::domain::SubDomain::GetSubDM() {
     // If the subDM has not been created, create one
     if (!subDM) {
         // filter by label
+//        DMPlexFilter(GetDM(), label, labelValue, &subDM) >> utilities::PetscUtilities::checkError;
         DMPlexFilter(GetDM(), label, labelValue, PETSC_FALSE, PETSC_FALSE, NULL, &subDM) >> utilities::PetscUtilities::checkError;
 
         // copy over all fields that were in the main dm

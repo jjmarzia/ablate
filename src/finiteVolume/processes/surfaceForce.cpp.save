@@ -341,8 +341,6 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
     auto dim = solver.GetSubDomain().GetDimensions();
     const auto &ofield = subDomain->GetField("debug");
     const auto &ofield2 = subDomain->GetField("debug2");
-    const auto &ofield3 = subDomain->GetField("debug3");
-    const auto &ofield4 = subDomain->GetField("debug4");
     const auto &eulerField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
 
     DM auxDM = subDomain->GetAuxDM();
@@ -486,15 +484,15 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 
     bool verbose=false;
 
-    int rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank); //rank+=1;
+    int rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank); rank+=1;
 
-//PetscSynchronizedPrintf(PETSC_COMM_WORLD, "r %4d nn %4ld type %4d \n", rank, mNeighbors, celltype);
-//PetscSynchronizedFlush(PETSC_COMM_WORLD, PETSC_STDOUT);
-
-//std::cout << "\nr" << rank << " nn" << mNeighbors << " celltype" << celltype << "\n";
-
-
-//std::cout << "\nr"<<rank<<" nn="<<mNeighbors<<" type"<<celltype<<"\n";
+PetscInt mNeighbors = 0;
+PetscInt *meighbors;
+PetscInt mayers = 3;
+PetscInt cell = round(0.5*(cellRange.start + cellRange.end));
+DMPlexGetNeighbors(dm, cell, mayers, 0, 0, PETSC_FALSE, PETSC_FALSE, &mNeighbors, &meighbors);
+PetscSynchronizedPrintf(PETSC_COMM_WORLD, "Rank %4d: %" PetscInt_FMT "\n", rank, mNeighbors);
+PetscSynchronizedFlush(PETSC_COMM_WORLD, PETSC_STDOUT);
 
 
     for (PetscInt cell = cStart; cell < cEnd; ++cell){
@@ -529,27 +527,6 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
         PetscScalar *yptr; xDMPlexPointLocalRef(yDM, cell, -1, yLocalArray, &yptr);
         *xptr = xp; *yptr = yp;
     }
-
-if (rank==0){
-
-PetscInt tnNeighbors = 0;
-PetscInt *tneighbors;
-PetscInt tlayers = 3;
-PetscInt mycell=965; //within rank=0 this cell specifically resides 
-//PetscInt cell = round(0.5*(cellRange.start + cellRange.end));
-DMPlexGetNeighbors(dm, mycell, tlayers, 0, 0, PETSC_FALSE, PETSC_FALSE, &tnNeighbors, &tneighbors);
-DMPolytopeType celltype; DMPlexGetCellType(dm, mycell, &celltype);
-
-PetscScalar *myrptr; xDMPlexPointLocalRef(rankDM, mycell, -1, rankLocalArray, &myrptr); //this is equivalent to getting the rank, as evidenced by line 516
-PetscScalar *myxptr; xDMPlexPointLocalRef(xDM, mycell, -1, xLocalArray, &myxptr);
-PetscScalar *myyptr; xDMPlexPointLocalRef(yDM, mycell, -1, yLocalArray, &myyptr);
-
-if (*myrptr < 1e-2){
-std::cout << "\n r"<<*myrptr<<"c"<<mycell<<" x" << *myxptr << " y" << *myyptr << " nn" << tnNeighbors << "\n";
-}
-
-}
-
 //    //Mask field determines which cells will be operated on at all. auxDM (delete asap_
 //    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
 //        PetscInt cell = cellRange.GetPoint(c);
@@ -652,7 +629,6 @@ std::cout << "\n r"<<*myrptr<<"c"<<mycell<<" x" << *myxptr << " y" << *myyptr <<
         if (*phitildemask < 1e-10){ *phitilde = *phic; }
         else{
             PetscInt nNeighbors, *neighbors; DMPlexGetNeighbors(auxDM, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
-
             PetscReal weightedphi = 0; PetscReal Tw = 0;
             for (PetscInt j = 0; j < nNeighbors; ++j) {
                 PetscInt neighbor = neighbors[j];
@@ -663,18 +639,9 @@ std::cout << "\n r"<<*myrptr<<"c"<<mycell<<" x" << *myxptr << " y" << *myyptr <<
                 PetscReal wn; PhiNeighborGaussWeight(d, s, &wn);
                 Tw += wn;
                 weightedphi += (*phin * wn);
-
-//PetscInt bStart, bEnd; DMPlexGetCellTypeStratum(auxDM, DM_POLYTOPE_FV_GHOST, &bStart, &bEnd);
-//DMPolytopeType celltype; DMPlexGetCellType(auxDM, neighbor, &celltype);
-//std::cout << "\n   c"<<neighbor<<"   type"<<celltype<<"   r"<<rank<<"\n";
-
-//std::cout << "\n   bstart"<<bStart<<"   bend"<<bEnd<<"\n";
-//if ((rank==29) and (cell==0)){std::cout << "\n   c"<<cell<<" r"<<rank<<" n="<<neighbor<<" phin="<<*phin<<"\n";}
-
             }
             weightedphi /= Tw;
             *phitilde = weightedphi;
-
             DMPlexRestoreNeighbors(auxDM, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         }
     }
@@ -970,20 +937,9 @@ std::cout << "\n r"<<*myrptr<<"c"<<mycell<<" x" << *myxptr << " y" << *myyptr <<
 
         PetscScalar *optr; xDMPlexPointLocalRef(auxDM, cell, ofield.id, auxArray, &optr);
         PetscScalar *optr2; xDMPlexPointLocalRef(auxDM, cell, ofield2.id, auxArray, &optr2);
-        PetscScalar *optr3; xDMPlexPointLocalRef(auxDM, cell, ofield3.id, auxArray, &optr3);
-        PetscScalar *optr4; xDMPlexPointLocalRef(auxDM, cell, ofield4.id, auxArray, &optr4);
 //        PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(phitildemaskDM, cell, -1, phitildemaskLocalArray, &phitildemaskptr);
-
-        PetscScalar *phitildeptr; xDMPlexPointLocalRef(phitildeDM, cell, -1, phitildeLocalArray, &phitildeptr);
-
-        DMPolytopeType celltype; DMPlexGetCellType(dm, cell, &celltype);
-
         *optr = *phitildemaskptr;
-//        *optr = *phitildeptr;
         *optr2 = PetscSqrtReal(PetscSqr(*sfxptr) + PetscSqr(*sfyptr));
-//        *optr3 = celltype;
-        *optr3 = cell;
-        *optr4 = rank;
 
     }
     if (verbose){
