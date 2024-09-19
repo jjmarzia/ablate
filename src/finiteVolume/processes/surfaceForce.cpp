@@ -630,7 +630,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
                 PetscInt neighbor = neighbors[j];
                 PetscReal *phin; xDMPlexPointLocalRead(dm, neighbor, phiField.id, solArray, &phin);
 
-std::cout << "\n c" << cell << "   n" << neighbor << "   " << *phin << "\n";
+//std::cout << "\n c" << cell << "   n" << neighbor << "   " << *phin << "\n";
 
                 PetscReal xn, yn, zn; Get3DCoordinate(dm, neighbor, &xn, &yn, &zn);
                 PetscReal d = PetscSqrtReal(PetscSqr(xn - xc) + PetscSqr(yn - yc) + PetscSqr(zn - zc));  // distance
