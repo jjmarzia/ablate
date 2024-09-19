@@ -486,6 +486,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 
     int rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank); rank+=1;
 
+
     for (PetscInt cell = cStart; cell < cEnd; ++cell){
         PetscScalar *kappaptr; xDMPlexPointLocalRef(kappaDM, cell, -1, kappaLocalArray, &kappaptr);
         *kappaptr = 0;
@@ -620,10 +621,17 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
         if (*phitildemask < 1e-10){ *phitilde = *phic; }
         else{
             PetscInt nNeighbors, *neighbors; DMPlexGetNeighbors(auxDM, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
+
+//std::cout << "\n c" << cell << "   " << nNeighbors << "\n";
+
+
             PetscReal weightedphi = 0; PetscReal Tw = 0;
             for (PetscInt j = 0; j < nNeighbors; ++j) {
                 PetscInt neighbor = neighbors[j];
                 PetscReal *phin; xDMPlexPointLocalRead(dm, neighbor, phiField.id, solArray, &phin);
+
+std::cout << "\n c" << cell << "   n" << neighbor << "   " << *phin << "\n";
+
                 PetscReal xn, yn, zn; Get3DCoordinate(dm, neighbor, &xn, &yn, &zn);
                 PetscReal d = PetscSqrtReal(PetscSqr(xn - xc) + PetscSqr(yn - yc) + PetscSqr(zn - zc));  // distance
                 PetscReal s = C * h; //6*h
@@ -633,6 +641,9 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
             }
             weightedphi /= Tw;
             *phitilde = weightedphi;
+
+//std::cout << "\n c" << cell << "   " << *phitilde << "\n";
+
             DMPlexRestoreNeighbors(auxDM, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         }
     }
