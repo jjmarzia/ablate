@@ -108,7 +108,7 @@ PetscErrorCode ablate::finiteVolume::processes::NavierStokesTransport::Advection
     auto eulerAdvectionData = (AdvectionData*)ctx;
 
     const int EULER_FIELD = 0;
-//NOTE0EXIT("");
+
     // Compute the norm
     PetscReal norm[3];
     utilities::MathUtilities::NormVector(dim, fg->normal, norm);
@@ -451,6 +451,8 @@ double ablate::finiteVolume::processes::NavierStokesTransport::ComputeViscousDif
     return dtMin;
 }
 
+//#include <signal.h>
+
 PetscErrorCode ablate::finiteVolume::processes::NavierStokesTransport::DiffusionFlux(PetscInt dim, const PetscFVFaceGeom* fg, const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar field[],
                                                                                      const PetscScalar grad[], const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar aux[],
                                                                                      const PetscScalar gradAux[], PetscScalar flux[], void* ctx) {
@@ -458,7 +460,7 @@ PetscErrorCode ablate::finiteVolume::processes::NavierStokesTransport::Diffusion
     // this order is based upon the order that they are passed into RegisterRHSFunction
     const int T = 0;
     const int VEL = 1;
-
+//raise(SIGSEGV);
     auto flowParameters = (DiffusionData*)ctx;
 
     // Compute mu and k
@@ -470,6 +472,15 @@ PetscErrorCode ablate::finiteVolume::processes::NavierStokesTransport::Diffusion
     // Compute the stress tensor tau
     PetscReal tau[9];  // Maximum size without symmetry
     PetscCall(CompressibleFlowComputeStressTensor(dim, mu, gradAux + aOff_x[VEL], tau));
+
+if (flowParameters->face==30399 || flowParameters->face==30394){
+  printf("%d\n", flowParameters->face);
+  for (PetscInt d = 0; d < dim; ++d) {
+    printf("\t%+e\t", fg->normal[d]);
+  }
+  printf("\n");
+
+}
 
     // for each velocity component
     for (PetscInt c = 0; c < dim; ++c) {
@@ -501,6 +512,7 @@ PetscErrorCode ablate::finiteVolume::processes::NavierStokesTransport::Diffusion
 
         flux[CompressibleFlowFields::RHOE] += heatFlux;
     }
+
 
     // zero out the density flux
     flux[CompressibleFlowFields::RHO] = 0.0;

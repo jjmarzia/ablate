@@ -36,6 +36,9 @@ class NavierStokesTransport : public FlowProcess {
         eos::ThermodynamicTemperatureFunction kFunction;
         /* dynamic viscosity*/
         eos::ThermodynamicTemperatureFunction muFunction;
+
+        PetscInt face;
+
     };
 
    private:
