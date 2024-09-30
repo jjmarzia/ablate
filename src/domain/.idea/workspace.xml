@@ -7,13 +7,15 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="83cbe6e0-afed-46a5-a6da-d52b4628f6b1" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/subDomain.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/subDomain.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../finiteVolume/boundaryConditions/essentialGhost.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../finiteVolume/boundaryConditions/essentialGhost.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../finiteVolume/processes/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/../finiteVolume/processes/CMakeLists.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../finiteVolume/processes/intSharp.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../finiteVolume/processes/intSharp.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../finiteVolume/processes/intSharp.hpp" beforeDir="false" afterPath="$PROJECT_DIR$/../finiteVolume/processes/intSharp.hpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../finiteVolume/processes/surfaceForce.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../finiteVolume/processes/surfaceForce.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../utilities/petscSupport.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../utilities/petscSupport.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/boxMesh.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/boxMesh.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/boxMeshBoundaryCells.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/boxMeshBoundaryCells.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hdf5Initializer.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/hdf5Initializer.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/modifiers/printDomainSummary.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/modifiers/printDomainSummary.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../io/hdf5MultiFileSerializer.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../io/hdf5MultiFileSerializer.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../io/hdf5Serializer.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../io/hdf5Serializer.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../monitors/dmViewFromOptions.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../monitors/dmViewFromOptions.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../tests/testingResources/asserts/solutionVectorAssert.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../tests/testingResources/asserts/solutionVectorAssert.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../tests/testingResources/petscTestViewer.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../tests/testingResources/petscTestViewer.cpp" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -23,14 +25,17 @@
   <component name="ClangdSettings">
     <option name="formatViaClangd" value="false" />
   </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/../.." />
+  </component>
   <component name="ProjectApplicationVersion">
     <option name="ide" value="CLion" />
     <option name="majorVersion" value="2023" />
     <option name="minorVersion" value="2.1" />
   </component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 3
-}]]></component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 3
+}</component>
   <component name="ProjectId" id="2hhCg0xPzwgzccSP76l4IqVhORb" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
@@ -45,6 +50,7 @@
     "cf.advertisement.text.has.clang-format": "true",
     "cf.first.check.clang-format": "false",
     "cidr.known.project.marker": "true",
+    "git-widget-placeholder": "41aa5827",
     "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
@@ -57,6 +63,7 @@
       <option name="presentableId" value="Default" />
       <updated>1718037029994</updated>
       <workItem from="1718037032070" duration="3000" />
+      <workItem from="1727698201951" duration="1000" />
     </task>
     <servers />
   </component>

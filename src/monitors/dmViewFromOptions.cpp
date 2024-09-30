@@ -46,14 +46,18 @@ PetscErrorCode ablate::monitors::DmViewFromOptions::DMViewFromOptions(DM dm) {
     PetscBool flg;
     PetscViewerFormat format;
 
-    PetscCall(PetscOptionsGetViewer(PetscObjectComm((PetscObject)dm), petscOptions, nullptr, optionName.c_str(), &viewer, &format, &flg));
+//    PetscCall(PetscOptionsGetViewer(PetscObjectComm((PetscObject)dm), petscOptions, nullptr, optionName.c_str(), &viewer, &format, &flg));
+PetscCall(PetscOptionsCreateViewer(PetscObjectComm((PetscObject)dm), petscOptions, nullptr, optionName.c_str(), &viewer, &format, &flg));
+
 
     if (flg) {
         PetscCall(PetscViewerPushFormat(viewer, format));
         PetscCall(PetscObjectView((PetscObject)dm, viewer));
         PetscCall(PetscViewerFlush(viewer));
         PetscCall(PetscViewerPopFormat(viewer));
-        PetscCall(PetscOptionsRestoreViewer(&viewer));
+//        PetscCall(PetscOptionsRestoreViewer(&viewer));
+PetscCall(PetscViewerDestroy(&viewer));
+
     }
 
     PetscFunctionReturn(0);

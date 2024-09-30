@@ -11,6 +11,21 @@
 #include "utilities/petscUtilities.hpp"
 
 ablate::io::Hdf5Serializer::Hdf5Serializer(std::shared_ptr<ablate::io::interval::Interval> interval) : interval(std::move(interval)) {
+
+    // New petsc HDF5 Data Storage as of 09/23/24, for now we will default to the legacy version until I understand more of the different
+
+    // outputting version available and how they mesh with ablate
+
+    {
+
+        PetscBool hdf5VersionFound;
+
+        PetscOptionsHasName(nullptr, nullptr, "-dm_plex_view_hdf5_storage_version", &hdf5VersionFound);
+
+        if (!hdf5VersionFound) PetscOptionsSetValue(nullptr, "-dm_plex_view_hdf5_storage_version", "1.1.0");
+
+    }
+
     // Load the metadata from the file is available, otherwise set to 0
     auto restartFilePath = environment::RunEnvironment::Get().GetOutputDirectory() / "restart.rst";
 
@@ -151,7 +166,8 @@ ablate::io::Hdf5Serializer::Hdf5ObjectSerializer::~Hdf5ObjectSerializer() {
         // If this is the root process generate the xdmf file
         PetscMPIInt rank;
         MPI_Comm_rank(PetscObjectComm(PetscObject(petscViewer)), &rank);
-        PetscOptionsRestoreViewer(&petscViewer) >> utilities::PetscUtilities::checkError;
+//        PetscOptionsRestoreViewer(&petscViewer) >> utilities::PetscUtilities::checkError;
+PetscViewerDestroy(&petscViewer) >> utilities::PetscUtilities::checkError;
 
         if (rank == 0 && !filePath.empty() && std::filesystem::exists(filePath)) {
             xdmfGenerator::Generate(filePath);
