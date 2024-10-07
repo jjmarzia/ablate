@@ -157,6 +157,8 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     const auto &eulerField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
     const auto &densityVFField = subDomain->GetField("densityvolumeFraction");
     const auto &ofield = subDomain->GetField("debug");
+    const auto &ofield2 = subDomain->GetField("debug2");
+
 //    auto phifID = phiField.id;
     auto eulerfID = eulerField.id;
 
@@ -436,10 +438,24 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
                     PetscInt neighbor = neighbors[j];
                     PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(phitildemaskDM, neighbor, -1, phitildemaskLocalArray, &phitildemaskptr);
                     *phitildemaskptr = 1;
+
+PetscReal xc, yc, zc; GetCoordinate3D(dm, dim, cell, &xc, &yc, &zc);
+PetscReal xn, yn, zn; GetCoordinate3D(dm, dim, neighbor, &xn, &yn, &zn);
+if (xn < 0){ std::cout << "id="<<cell<< "  cellx " << xc +yc*yn*zc*zn*0 << "   neighborx " << xn << "\n";   }
+
                 }
                 DMPlexRestoreNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         }
     }
+
+for (PetscInt cell = cStart; cell < cEnd; ++cell) {
+PetscScalar *optr2; PetscScalar *phitildemaskptr; 
+xDMPlexPointLocalRef(phitildemaskDM, cell, -1, phitildemaskLocalArray, &phitildemaskptr); 
+xDMPlexPointLocalRef(auxDM, cell, ofield2.id, auxArray, &optr2);
+*optr2 = *phitildemaskptr;
+
+}
+
 //    PetscReal phitildemaskpenalty[cEnd];
     PushGhost(phitildemaskDM, phitildemaskLocalVec, phitildemaskGlobalVec, ADD_VALUES, false, false);
     if (verbose){SaveData(cellRange.start, cellRange.end, phitildemaskDM, phitildemaskLocalArray, "phitildemask", true);}

@@ -6,11 +6,7 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="83cbe6e0-afed-46a5-a6da-d52b4628f6b1" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/../finiteVolume/processes/intSharp.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../finiteVolume/processes/intSharp.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../utilities/petscSupport.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../utilities/petscSupport.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../utilities/petscSupport.hpp" beforeDir="false" afterPath="$PROJECT_DIR$/../utilities/petscSupport.hpp" afterDir="false" />
-    </list>
+    <list default="true" id="de0f0ab2-8602-4e23-aa4a-cfec6be25fe8" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -19,18 +15,15 @@
   <component name="ClangdSettings">
     <option name="formatViaClangd" value="false" />
   </component>
-  <component name="Git.Settings">
-    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/../.." />
-  </component>
   <component name="ProjectApplicationVersion">
     <option name="ide" value="CLion" />
     <option name="majorVersion" value="2023" />
-    <option name="minorVersion" value="2.1" />
+    <option name="minorVersion" value="2" />
   </component>
-  <component name="ProjectColorInfo">{
-  &quot;associatedIndex&quot;: 3
-}</component>
-  <component name="ProjectId" id="2hhCg0xPzwgzccSP76l4IqVhORb" />
+  <component name="ProjectColorInfo"><![CDATA[{
+  "associatedIndex": 2
+}]]></component>
+  <component name="ProjectId" id="2myhh00gMQNvCOIvvScvGJ9fH4J" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
@@ -41,27 +34,19 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.cidr.known.project.marker": "true",
     "WebServerToolWindowFactoryState": "false",
-    "cf.advertisement.text.has.clang-format": "true",
     "cf.first.check.clang-format": "false",
-    "cidr.known.project.marker": "true",
-    "git-widget-placeholder": "petsc3.22-fix",
-    "vue.rearranger.settings.migration": "true"
+    "cidr.known.project.marker": "true"
   }
 }]]></component>
   <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
-      <changelist id="83cbe6e0-afed-46a5-a6da-d52b4628f6b1" name="Changes" comment="" />
-      <created>1718037029994</created>
+      <changelist id="de0f0ab2-8602-4e23-aa4a-cfec6be25fe8" name="Changes" comment="" />
+      <created>1728054839148</created>
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
-      <updated>1718037029994</updated>
-      <workItem from="1718037032070" duration="3000" />
-      <workItem from="1727698201951" duration="1000" />
+      <updated>1728054839148</updated>
     </task>
     <servers />
-  </component>
-  <component name="TypeScriptGeneratedFilesManager">
-    <option name="version" value="3" />
   </component>
 </project>
