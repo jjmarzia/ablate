@@ -1,6 +1,7 @@
 #include "petscSupport.hpp"
 #include <petsc/private/vecimpl.h>
 #include <petscdm.h>  // For DMPolytopeTypeGetNumVertices
+#include "registrar.hpp"
 
 /**
  * Return the cell containing the location xyz
@@ -1025,6 +1026,8 @@ PetscErrorCode DMPlexVertexGradFromCell(DM dm, const PetscInt v, Vec data, Petsc
 
     PetscCall(DMGetDimension(dm, &dim));
 
+
+
     PetscCheck(dim > 0 && dim < 4, PETSC_COMM_SELF, PETSC_ERR_SUP, "DMPlexVertexGradFromVertex does not support a DM of dimension %" PetscInt_FMT, dim);
 
     for (PetscInt d = 0; d < dim; ++d) {
@@ -1043,11 +1046,30 @@ PetscErrorCode DMPlexVertexGradFromCell(DM dm, const PetscInt v, Vec data, Petsc
             PetscScalar N[3];
             PetscCall(DMPlexCornerSurfaceAreaNormal(dm, v, star[st], N));
 
+PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.15; PetscReal zmin = 0; PetscReal zmax = 0;
+PetscReal maxNorm = 0.75*(xmax-xmin);
+PetscReal vertexvol; PetscReal vcentroid[3]; DMPlexComputeCellGeometryFVM(dm, v, &vertexvol, vcentroid, nullptr);
+PetscReal cellvol; PetscReal ccentroid[3]; DMPlexComputeCellGeometryFVM(dm, star[st], &cellvol, ccentroid, nullptr);
+N[0] = ccentroid[0] - vcentroid[0];
+N[1] = ccentroid[1] - vcentroid[1];
+N[2] = ccentroid[2] - vcentroid[2];
+
+if (( PetscAbs(N[0]) > maxNorm) and (N[0] > 0)){  N[0] -= (xmax-xmin);  }
+if (( PetscAbs(N[0]) > maxNorm) and (N[0] < 0)){  N[0] += (xmax-xmin);  }
+if (dim>=2){
+if (( PetscAbs(N[1]) > maxNorm) and (N[1] > 0)){  N[1] -= (ymax-ymin);  }
+if (( PetscAbs(N[1]) > maxNorm) and (N[1] < 0)){  N[1] += (ymax-ymin);  } }
+if (dim==3){
+if (( PetscAbs(N[2]) > maxNorm) and (N[2] > 0)){  N[2] -= (zmax-zmin);  }
+if (( PetscAbs(N[2]) > maxNorm) and (N[2] < 0)){  N[2] += (zmax-zmin);  } }
+
+
             const PetscScalar *val;
             PetscCall(xDMPlexPointLocalRead(dm, star[st], fID, dataArray, &val));
 
             for (PetscInt d = 0; d < dim; ++d) {
                 g[d] += val[offset] * N[d];
+
             }
         }
     }
@@ -1060,6 +1082,7 @@ PetscErrorCode DMPlexVertexGradFromCell(DM dm, const PetscInt v, Vec data, Petsc
 
     for (PetscInt d = 0; d < dim; ++d) {
         g[d] /= cvVol;
+
     }
 
     PetscFunctionReturn(PETSC_SUCCESS);
@@ -1096,6 +1119,38 @@ PetscErrorCode DMPlexCellGradFromVertex(DM dm, const PetscInt c, Vec data, Petsc
         PetscReal N[3] = {0.0, 0.0, 0.0};
         PetscCall(DMPlexFaceCentroidOutwardAreaNormal(dm, c, faces[f], NULL, N));
 
+PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.15; PetscReal zmin = 0; PetscReal zmax = 0;
+PetscReal maxNorm = 0.75*(xmax-xmin);
+PetscReal centroid[3]; DMPlexComputeCellGeometryFVM(dm, faces[f], nullptr, centroid, nullptr);
+PetscReal ccentroid[3]; DMPlexComputeCellGeometryFVM(dm, c, nullptr, ccentroid, nullptr);
+
+
+//N[0] = fcentroid[0] - ccentroid[0];
+//N[1] = fcentroid[1] - ccentroid[1];
+//N[2] = fcentroid[2] - ccentroid[2];
+//if (( PetscAbs(N[0]) > maxNorm) and (N[0] > 0)){  N[0] -= (xmax-xmin);  }
+//if (( PetscAbs(N[0]) > maxNorm) and (N[0] < 0)){  N[0] += (xmax-xmin);  }
+//if (dim>=2){
+//if (( PetscAbs(N[1]) > maxNorm) and (N[1] > 0)){  N[1] -= (ymax-ymin);  }
+//if (( PetscAbs(N[1]) > maxNorm) and (N[1] < 0)){  N[1] += (ymax-ymin);  } }
+//if (dim==3){
+//if (( PetscAbs(N[2]) > maxNorm) and (N[2] > 0)){  N[2] -= (zmax-zmin);  }
+//if (( PetscAbs(N[2]) > maxNorm) and (N[2] < 0)){  N[2] += (zmax-zmin);  } }
+
+
+if (( PetscAbs(centroid[0] - ccentroid[0]) > maxNorm) and (centroid[0] - ccentroid[0] > 0)){  centroid[0] -= (xmax-xmin);  }
+if (( PetscAbs(centroid[0] - ccentroid[0]) > maxNorm) and (centroid[0] - ccentroid[0] < 0)){  centroid[0] += (xmax-xmin);  }
+if (dim>=2){
+if (( PetscAbs(centroid[1] - ccentroid[1]) > maxNorm) and (centroid[1] - ccentroid[1] > 0)){  centroid[1] -= (ymax-ymin);  }
+if (( PetscAbs(centroid[1] - ccentroid[1]) > maxNorm) and (centroid[1] - ccentroid[1] < 0)){  centroid[1] += (ymax-ymin);  } }
+if (dim==3){
+if (( PetscAbs(centroid[2] - ccentroid[2]) > maxNorm) and (centroid[2] - ccentroid[2] > 0)){  centroid[2] -= (zmax-zmin);  }
+if (( PetscAbs(centroid[2] - ccentroid[2]) > maxNorm) and (centroid[2] - ccentroid[2] < 0)){  centroid[2] += (zmax-zmin);  } }
+
+N[0] = centroid[0] - ccentroid[0];
+N[1] = centroid[1] - ccentroid[1];
+N[2] = centroid[2] - ccentroid[2];
+
         // All points associated with this face
         PetscInt nClosure, *closure = NULL;
         PetscCall(DMPlexGetTransitiveClosure(dm, faces[f], PETSC_TRUE, &nClosure, &closure));
@@ -1116,6 +1171,7 @@ PetscErrorCode DMPlexCellGradFromVertex(DM dm, const PetscInt c, Vec data, Petsc
         ave /= cnt;
         for (PetscInt d = 0; d < dim; ++d) {
             g[d] += ave * N[d];
+
         }
     }
 
@@ -1123,6 +1179,8 @@ PetscErrorCode DMPlexCellGradFromVertex(DM dm, const PetscInt c, Vec data, Petsc
 
     PetscReal vol;
     PetscCall(DMPlexComputeCellGeometryFVM(dm, c, &vol, NULL, NULL));
+
+
     for (PetscInt d = 0; d < dim; ++d) {
         g[d] /= vol;
     }
@@ -1158,6 +1216,46 @@ PetscErrorCode DMPlexCellGradFromCell(DM dm, const PetscInt c, Vec data, PetscIn
         PetscReal S[dim], centroid[dim];
         PetscCall(DMPlexFaceCentroidOutwardAreaNormal(dm, c, faces[f], centroid, S));
 
+
+
+PetscReal cellvol; PetscReal ccentroid[3]; DMPlexComputeCellGeometryFVM(dm, c, &cellvol, ccentroid, nullptr);
+
+//centroid = center of FACE, not center of cell; NEEDS FIXING depending on its distance to ccentroid
+//S = outward normal; NEEDS FIXING: manually set as distance between face centroid and cell centroid. then this will fix as centroid is fixed.
+//faces[f] = the ID of the face; DOES NOT NEED FIXING
+//c = the ID of the cell; DOES NOT NEED FIXING
+//sc = the ID of the shared cell that shares the face with c; DOES NOT NEED FIXING
+//x[] = the coordinate of the shared cell; NEEDS FIXING depending on its distance to ccentroid
+//dist = euclidean distance between shared cell and face; WILL BE AUTOMATICALLY FIXED AS X, CENTROID ARE FIXED
+
+
+PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.15; PetscReal zmin = 0; PetscReal zmax = 0;
+PetscReal maxNorm = 0.75*(xmax-xmin);
+
+if (( PetscAbs(centroid[0] - ccentroid[0]) > maxNorm) and (centroid[0] - ccentroid[0] > 0)){  centroid[0] -= (xmax-xmin);  }
+if (( PetscAbs(centroid[0] - ccentroid[0]) > maxNorm) and (centroid[0] - ccentroid[0] < 0)){  centroid[0] += (xmax-xmin);  }
+if (dim>=2){
+if (( PetscAbs(centroid[1] - ccentroid[1]) > maxNorm) and (centroid[1] - ccentroid[1] > 0)){  centroid[1] -= (ymax-ymin);  }
+if (( PetscAbs(centroid[1] - ccentroid[1]) > maxNorm) and (centroid[1] - ccentroid[1] < 0)){  centroid[1] += (ymax-ymin);  } }
+if (dim==3){
+if (( PetscAbs(centroid[2] - ccentroid[2]) > maxNorm) and (centroid[2] - ccentroid[2] > 0)){  centroid[2] -= (zmax-zmin);  }
+if (( PetscAbs(centroid[2] - ccentroid[2]) > maxNorm) and (centroid[2] - ccentroid[2] < 0)){  centroid[2] += (zmax-zmin);  } }
+
+S[0] = centroid[0] - ccentroid[0];
+S[1] = centroid[1] - ccentroid[1];
+S[2] = centroid[2] - ccentroid[2];
+
+//if (( PetscAbs(S[0]) > maxNorm) and (S[0] > 0)){  S[0] -= (xmax-xmin);  }
+//if (( PetscAbs(S[0]) > maxNorm) and (S[0] < 0)){  S[0] += (xmax-xmin);  }
+//if (dim>=2){
+//if (( PetscAbs(S[1]) > maxNorm) and (S[1] > 0)){  S[1] -= (ymax-ymin);  }
+//if (( PetscAbs(S[1]) > maxNorm) and (S[1] < 0)){  S[1] += (ymax-ymin);  } }
+//if (dim==3){
+//if (( PetscAbs(S[2]) > maxNorm) and (S[2] > 0)){  S[2] -= (zmax-zmin);  }
+//if (( PetscAbs(S[2]) > maxNorm) and (S[2] < 0)){  S[2] += (zmax-zmin);  } }
+
+
+
         // The cells sharing this face
         PetscInt nSharedCells;
         const PetscInt *sharedCells;
@@ -1171,6 +1269,15 @@ PetscErrorCode DMPlexCellGradFromCell(DM dm, const PetscInt c, Vec data, PetscIn
 
             PetscReal x[dim];
             PetscCall(DMPlexComputeCellGeometryFVM(dm, sc, NULL, x, NULL));  // Center of the candidate cell.
+
+if (( PetscAbs(x[0] - ccentroid[0]) > maxNorm) and (x[0] > ccentroid[0])){  x[0] -= (xmax-xmin);  }
+if (( PetscAbs(x[0] - ccentroid[0]) > maxNorm) and (x[0] < ccentroid[0])){  x[0] += (xmax-xmin);  }
+if (dim>=2){
+if (( PetscAbs(x[1] - ccentroid[1]) > maxNorm) and (x[1] > ccentroid[1])){  x[1] -= (ymax-ymin);  }
+if (( PetscAbs(x[1] - ccentroid[1]) > maxNorm) and (x[1] < ccentroid[1])){  x[1] += (ymax-ymin);  } }
+if (dim==3){
+if (( PetscAbs(x[2] - ccentroid[2]) > maxNorm) and (x[2] > ccentroid[2])){  x[2] -= (zmax-zmin);  }
+if (( PetscAbs(x[2] - ccentroid[2]) > maxNorm) and (x[2] < ccentroid[2])){  x[2] += (zmax-zmin);  } }
 
             PetscReal dist = 0.0;
             for (PetscInt d = 0; d < dim; ++d) dist += PetscSqr(x[d] - centroid[d]);

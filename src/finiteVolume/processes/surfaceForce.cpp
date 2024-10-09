@@ -339,8 +339,17 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 //    const auto &CSF1TildeField = subDomain->GetField("SF1Tilde");
 //    const auto &CSF2TildeField = subDomain->GetField("SF2Tilde");
     auto dim = solver.GetSubDomain().GetDimensions();
-    const auto &ofield = subDomain->GetField("debug");
-    const auto &ofield2 = subDomain->GetField("debug2");
+
+PetscReal xymin[dim], xymax[dim]; DMGetBoundingBox(dm, xymin, xymax);
+PetscReal xmin=xymin[0];
+PetscReal xmax=xymax[0];
+PetscReal ymin=xymin[1];
+PetscReal ymax=xymax[1];
+PetscReal zmin=xymin[2];
+PetscReal zmax=xymax[2];
+
+    const auto &ofield3 = subDomain->GetField("debug3");
+    const auto &ofield4 = subDomain->GetField("debug4");
     const auto &eulerField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
 
     DM auxDM = subDomain->GetAuxDM();
@@ -625,6 +634,20 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
                 PetscInt neighbor = neighbors[j];
                 PetscReal *phin; xDMPlexPointLocalRead(dm, neighbor, phiField.id, solArray, &phin);
                 PetscReal xn, yn, zn; Get3DCoordinate(dm, neighbor, &xn, &yn, &zn);
+
+
+//temporary fix addressing how multiple layers of neighbors for a periodic domain return coordinates on the opposite side
+PetscReal maxMask = 0.75*(xmax-xmin);
+if (( PetscAbs(xn-xc) > maxMask) and (xn > xc)){  xn -= (xmax-xmin);  }
+if (( PetscAbs(xn-xc) > maxMask) and (xn < xc)){  xn += (xmax-xmin);  }
+if (dim>=2){
+if (( PetscAbs(yn-yc) > maxMask) and (yn > yc)){  yn -= (ymax-ymin);  }
+if (( PetscAbs(yn-yc) > maxMask) and (yn < yc)){  yn += (ymax-ymin);  } }
+if (dim==3){
+if (( PetscAbs(zn-zc) > maxMask) and (zn > zc)){  zn -= (zmax-zmin);  }
+if (( PetscAbs(zn-zc) > maxMask) and (zn < zc)){  zn += (zmax-zmin);  } }
+
+
                 PetscReal d = PetscSqrtReal(PetscSqr(xn - xc) + PetscSqr(yn - yc) + PetscSqr(zn - zc));  // distance
                 PetscReal s = C * h; //6*h
                 PetscReal wn; PhiNeighborGaussWeight(d, s, &wn);
@@ -926,11 +949,11 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
         if (PetscAbs(*sfyptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += *sfyptr * uy;}
 //        if (PetscAbs(sfptr[2]) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += sfptr[2]*uz;}
 
-        PetscScalar *optr; xDMPlexPointLocalRef(auxDM, cell, ofield.id, auxArray, &optr);
-        PetscScalar *optr2; xDMPlexPointLocalRef(auxDM, cell, ofield2.id, auxArray, &optr2);
-//        PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(phitildemaskDM, cell, -1, phitildemaskLocalArray, &phitildemaskptr);
-        *optr = *phitildemaskptr;
-        *optr2 = PetscSqrtReal(PetscSqr(*sfxptr) + PetscSqr(*sfyptr));
+        PetscScalar *optr3; xDMPlexPointLocalRef(auxDM, cell, ofield3.id, auxArray, &optr3);
+        PetscScalar *optr4; xDMPlexPointLocalRef(auxDM, cell, ofield4.id, auxArray, &optr4);
+        PetscScalar *phitildeptr; xDMPlexPointLocalRef(phitildeDM, cell, -1, phitildeLocalArray, &phitildeptr);
+        *optr3 = *phitildeptr;
+        *optr4 = PetscSqrtReal(PetscSqr(*sfxptr) + PetscSqr(*sfyptr));
 
     }
     if (verbose){

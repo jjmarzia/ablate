@@ -153,6 +153,19 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     //process->vertexDM = aux DM
     //get fields
     auto dim = solver.GetSubDomain().GetDimensions();
+
+
+PetscReal xymin[dim], xymax[dim]; DMGetBoundingBox(dm, xymin, xymax);
+PetscReal xmin=xymin[0];
+PetscReal xmax=xymax[0];
+PetscReal ymin=xymin[1];
+PetscReal ymax=xymax[1];
+PetscReal zmin=xymin[2];
+PetscReal zmax=xymax[2];
+
+// std::cout << "computesource boxmeshcreate xymin0 xymin1 xymax0 xymax1: " << xymin[0] << " " << xymin[1] << " " << xymax[0] << " " << xymax[1] << "\n";
+
+
     const auto &phiField = subDomain->GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
     const auto &eulerField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
     const auto &densityVFField = subDomain->GetField("densityvolumeFraction");
@@ -441,20 +454,14 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
 
 PetscReal xc, yc, zc; GetCoordinate3D(dm, dim, cell, &xc, &yc, &zc);
 PetscReal xn, yn, zn; GetCoordinate3D(dm, dim, neighbor, &xn, &yn, &zn);
-if (xn < 0){ std::cout << "id="<<cell<< "  cellx " << xc +yc*yn*zc*zn*0 << "   neighborx " << xn << "\n";   }
+//if (xn < 0){ std::cout << "id="<<cell<< "  cellx " << xc +yc*yn*zc*zn*0 << "   neighborx " << xn << "\n";   }
 
                 }
                 DMPlexRestoreNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         }
     }
 
-for (PetscInt cell = cStart; cell < cEnd; ++cell) {
-PetscScalar *optr2; PetscScalar *phitildemaskptr; 
-xDMPlexPointLocalRef(phitildemaskDM, cell, -1, phitildemaskLocalArray, &phitildemaskptr); 
-xDMPlexPointLocalRef(auxDM, cell, ofield2.id, auxArray, &optr2);
-*optr2 = *phitildemaskptr;
 
-}
 
 //    PetscReal phitildemaskpenalty[cEnd];
     PushGhost(phitildemaskDM, phitildemaskLocalVec, phitildemaskGlobalVec, ADD_VALUES, false, false);
@@ -498,6 +505,21 @@ xDMPlexPointLocalRef(auxDM, cell, ofield2.id, auxArray, &optr2);
                 PetscInt neighbor = neighbors[j];
                 PetscReal *phin; xDMPlexPointLocalRead(dm, neighbor, phiField.id, solArray, &phin);
                 PetscReal xn, yn, zn; GetCoordinate3D(dm, dim, neighbor, &xn, &yn, &zn);
+
+
+//temporary fix addressing how multiple layers of neighbors for a periodic domain return coordinates on the opposite side
+
+PetscReal maxMask = 5*process->epsilon;
+if (( PetscAbs(xn-xc) > maxMask) and (xn > xc)){  xn -= (xmax-xmin);  }
+if (( PetscAbs(xn-xc) > maxMask) and (xn < xc)){  xn += (xmax-xmin);  }
+if (dim>=2){
+if (( PetscAbs(yn-yc) > maxMask) and (yn > yc)){  yn -= (ymax-ymin);  }
+if (( PetscAbs(yn-yc) > maxMask) and (yn < yc)){  yn += (ymax-ymin);  } }
+if (dim==3){
+if (( PetscAbs(zn-zc) > maxMask) and (zn > zc)){  zn -= (zmax-zmin);  }
+if (( PetscAbs(zn-zc) > maxMask) and (zn < zc)){  zn += (zmax-zmin);  } }
+
+
                 PetscReal d = PetscSqrtReal(PetscSqr(xn - xc) + PetscSqr(yn - yc) + PetscSqr(zn - zc));  // distance
                 PetscReal s = C * h; //6*h
                 PetscReal wn; PhiNeighborGauss(d, s, &wn);
@@ -512,7 +534,12 @@ xDMPlexPointLocalRef(auxDM, cell, ofield2.id, auxArray, &optr2);
     PushGhost(phitildeDM, phitildeLocalVec, phitildeGlobalVec, INSERT_VALUES, true, true);
     if (verbose){SaveData(cellRange.start, cellRange.end, phitildeDM, phitildeLocalArray, "phitilde", true);}
 
-
+for (PetscInt cell = cStart; cell < cEnd; ++cell) {
+PetscScalar *optr2; PetscScalar *phitildeptr; 
+xDMPlexPointLocalRef(phitildeDM, cell, -1, phitildeLocalArray, &phitildeptr); 
+xDMPlexPointLocalRef(auxDM, cell, ofield2.id, auxArray, &optr2);
+*optr2 = *phitildeptr;
+}
 
     //phitilde, auxDM (delete asap)
 
@@ -588,7 +615,21 @@ xDMPlexPointLocalRef(auxDM, cell, ofield2.id, auxArray, &optr2);
 //                gradphiv[0]=(*phikp1 - *phikm1)/(1*process->epsilon);
                 gradphiv[0]=(*phitildekp1 - *phitildekm1)/(xp1 - xm1);
             }
-            else{ DMPlexVertexGradFromCell(phitildeDM, vertex, phitildeLocalVec, -1, 0, gradphiv); }
+            else{ 
+DMPlexVertexGradFromCell(phitildeDM, vertex, phitildeLocalVec, -1, 0, gradphiv); 
+
+//PetscInt nCells, *thecells; DMPlexVertexGetCells(dm, vertex, &nCells, &thecells);
+//for (int j=0; j<nCells; ++j){
+//if (thecells[j]==3572){ 
+//PetscReal cx, cy, cz; GetCoordinate3D(dm, dim, thecells[j], &cx, &cy, &cz);
+//std::cout << "cellxy vertex vx vy gradphiv xy " << cx << "  " << cy << "  " << vertex << "  " << vx << "  " << vy << "  " << gradphiv[0] << "  " << gradphiv[1] <<"\n";  
+//}
+//}
+//DMPlexVertexRestoreCells(dm, vertex, &nCells, &thecells);
+
+
+
+}
             for (int k=0; k<dim; ++k){ normgradphi += PetscSqr(gradphiv[k]); }
             normgradphi = PetscSqrtReal(normgradphi);
         }
@@ -603,6 +644,20 @@ xDMPlexPointLocalRef(auxDM, cell, ofield2.id, auxArray, &optr2);
 //                for (int j=0; j<dim; ++j){ Uv[j] = 0; }
                 PetscInt neighbor = vertexneighbors[k];
                 PetscReal nx, ny, nz; GetCoordinate3D(dm, dim, neighbor, &nx, &ny, &nz);
+
+
+//temporary fix addressing how multiple layers of neighbors for a periodic domain return coordinates on the opposite side
+PetscReal maxMask = 5*process->epsilon;
+if (( PetscAbs(nx-vx) > maxMask) and (nx > vx)){  nx -= (xmax-xmin);  }
+if (( PetscAbs(nx-vx) > maxMask) and (nx < vx)){  nx += (xmax-xmin);  }
+if (dim>=2){
+if (( PetscAbs(ny-vy) > maxMask) and (ny > vy)){  ny -= (ymax-ymin);  }
+if (( PetscAbs(ny-vy) > maxMask) and (ny < vy)){  ny += (ymax-ymin);  } }
+if (dim==3){
+if (( PetscAbs(nz-vz) > maxMask) and (nz > vz)){  nz -= (zmax-zmin);  }
+if (( PetscAbs(nz-vz) > maxMask) and (nz < vz)){  nz += (zmax-zmin);  } }
+
+
                 PetscReal distance = PetscSqrtReal(PetscSqr(nx - vx) + PetscSqr(ny - vy) + PetscSqr(nz - vz));
                 if (distance < shortestdistance) { shortestdistance = distance; }
                 distances[k] = distance;
@@ -790,6 +845,9 @@ xDMPlexPointLocalRef(auxDM, cell, ofield2.id, auxArray, &optr2);
                     PetscReal nabla_ai[dim];
                     DMPlexCellGradFromVertex(aDM, cell, aLocalVec, -1, offset, nabla_ai);
                     *diva += nabla_ai[offset];
+
+//if (cell==3572){ std::cout << offset << "   " << *diva <<"\n";}
+
                 }
             }
         }
