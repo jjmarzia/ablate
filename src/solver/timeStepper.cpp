@@ -126,8 +126,6 @@ bool ablate::solver::TimeStepper::Initialize() {
     return justInitialized;
 }
 
-#include "finiteVolume/compressibleFlowFields.hpp"
-
 void ablate::solver::TimeStepper::Solve() {
     // Call initialize, this will only initialize if it has not been called
     Initialize();
@@ -187,55 +185,7 @@ void ablate::solver::TimeStepper::Solve() {
     auto logEvent = RegisterEvent((this->name + "::Solve").c_str());
     PetscLogEventSetDof(logEvent, 0, dof) >> utilities::PetscUtilities::checkError;
     PetscLogEventBegin(logEvent, 0, 0, 0, 0);
-printf("Starting solve\n");
-
-{
-  Vec r;
-  TSGetRHSFunction(ts, &r, NULL, NULL);
-  PetscScalar* rArray;
-  VecGetArray(r, &rArray) >> utilities::PetscUtilities::checkError;
-  auto& eulerField = domain->GetField("euler");
-  FILE *f1 = fopen("rhs.txt", "w");
-
-  for (PetscInt cell = 0; cell < 10000; ++cell) {
-
-    PetscReal x[3];
-    DMPlexComputeCellGeometryFVM(domain->GetDM(), cell, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-
-    PetscScalar *rhs;
-    DMPlexPointLocalFieldRef(domain->GetDM(), cell, eulerField.id, rArray, &rhs) >> utilities::PetscUtilities::checkError;
-    fprintf(f1, "%+.16f\t%+.16f\t%+.16f\t%+.16f\t%+.16f\t%+.16f\n", x[0], x[1], rhs[0], rhs[1], rhs[2], rhs[3]);
-  }
-  fclose(f1);
-  VecRestoreArray(r, &rArray) >> utilities::PetscUtilities::checkError;
-}
-
-//    TSSolve(ts, solutionVec) >> utilities::PetscUtilities::checkError;
-TSStep(ts) >> utilities::PetscUtilities::checkError;
-
-{
-  PetscScalar* rArray;
-  VecGetArray(solutionVec, &rArray) >> utilities::PetscUtilities::checkError;
-
-
-  auto& eulerField = domain->GetField("euler");
-
-  FILE *f1 = fopen("sol.txt", "w");
-
-  for (PetscInt cell = 0; cell < 10000; ++cell) {
-
-    PetscReal x[3];
-    PetscScalar *sol;
-    DMPlexComputeCellGeometryFVM(domain->GetDM(), cell, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-    DMPlexPointLocalFieldRef(domain->GetDM(), cell, eulerField.id, rArray, &sol) >> utilities::PetscUtilities::checkError;
-    fprintf(f1, "%+.16f\t%+.16f\t%+.16f\t%+.16f\t%+.16f\t%+.16f\n", x[0], x[1], sol[0], sol[1], sol[2], sol[3]);
-  }
-  fclose(f1);
-  VecRestoreArray(solutionVec, &rArray) >> utilities::PetscUtilities::checkError;
-}
-printf("timeStepper.cpp::244\n");
-exit(0);
-
+    TSSolve(ts, solutionVec) >> utilities::PetscUtilities::checkError;
     PetscLogEventEnd(logEvent, 0, 0, 0, 0);
 }
 
@@ -359,6 +309,7 @@ PetscErrorCode ablate::solver::TimeStepper::SolverComputeBoundaryFunctionLocal(D
 
 PetscErrorCode ablate::solver::TimeStepper::SolverComputeIFunctionLocal(DM, PetscReal time, Vec locX, Vec locX_t, Vec locF, void* timeStepperCtx) {
     PetscFunctionBeginUser;
+
     auto timeStepper = (ablate::solver::TimeStepper*)timeStepperCtx;
     for (auto& solver : timeStepper->iFunctionSolvers) {
         PetscCall(solver->ComputeIFunction(time, locX, locX_t, locF));

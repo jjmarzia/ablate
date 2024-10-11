@@ -3,9 +3,6 @@
 #include "finiteVolume/stencils/leastSquares.hpp"
 #include "finiteVolume/stencils/leastSquaresAverage.hpp"
 #include "utilities/mathUtilities.hpp"
-#define NOTE0EXIT(S, ...) {PetscFPrintf(MPI_COMM_WORLD, stderr,                                     \
-  "\x1b[1m(%s:%d, %s)\x1b[0m\n  \x1b[1m\x1b[90mexiting:\x1b[0m " S "\n",    \
-  __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__); exit(0);}
 
 ablate::finiteVolume::FaceInterpolant::FaceInterpolant(const std::shared_ptr<ablate::domain::SubDomain>& subDomain, const std::shared_ptr<domain::Region> solverRegion, Vec faceGeomVec,
                                                        Vec cellGeomVec)
@@ -249,8 +246,6 @@ void ablate::finiteVolume::FaceInterpolant::GetInterpolatedFaceVectors(Vec solut
         VecRestoreArray(faceAuxVec, &faceAuxArray);
         VecRestoreArray(faceAuxGradVec, &faceAuxGradArray);
     }
-
-//VecZeroEntries(faceAuxGradVec);
 }
 
 void ablate::finiteVolume::FaceInterpolant::RestoreInterpolatedFaceVectors(Vec, Vec, Vec& faceSolutionVec, Vec& faceAuxVec, Vec& faceSolutionGradVec, Vec& faceAuxGradVec) {
@@ -264,9 +259,6 @@ void ablate::finiteVolume::FaceInterpolant::RestoreInterpolatedFaceVectors(Vec, 
         DMRestoreLocalVector(faceAuxGradDm, &faceAuxGradVec) >> utilities::PetscUtilities::checkError;
     }
 }
-
-#include "finiteVolume/processes/navierStokesTransport.hpp"
-
 void ablate::finiteVolume::FaceInterpolant::ComputeRHS(PetscReal time, Vec locXVec, Vec locAuxVec, Vec locFVec, const std::shared_ptr<domain::Region>& solverRegion,
                                                        std::vector<FaceInterpolant::ContinuousFluxFunctionDescription>& rhsFunctions, const ablate::domain::Range& faceRange, Vec cellGeomVec,
                                                        Vec faceGeomVec) {
@@ -360,10 +352,6 @@ void ablate::finiteVolume::FaceInterpolant::ComputeRHS(PetscReal time, Vec locXV
         }
     }
 
-
-
-
-
     // march over each face
     for (PetscInt f = faceRange.start; f < faceRange.end; f++) {
         PetscInt face = faceRange.points ? faceRange.points[f] : f;
@@ -401,11 +389,8 @@ void ablate::finiteVolume::FaceInterpolant::ComputeRHS(PetscReal time, Vec locXV
         // March over each source function
         for (std::size_t fun = 0; fun < rhsFunctions.size(); fun++) {
             PetscArrayzero(flux.data(), totDim) >> utilities::PetscUtilities::checkError;
+
             const auto& rhsFluxFunctionDescription = rhsFunctions[fun];
-
-auto flowParameters = (ablate::finiteVolume::processes::NavierStokesTransport::DiffusionData*)(rhsFluxFunctionDescription.context);
-flowParameters->face = face;
-
             rhsFluxFunctionDescription.function(dim,
                                                 fg,
                                                 uOff[fun].data(),
@@ -444,46 +429,8 @@ flowParameters->face = face;
                 if (fL) fL[d] -= flux[d] / cgL->volume;
                 if (fR) fR[d] += flux[d] / cgR->volume;
             }
-
-//if (faceCells[0]==9994) printf("%+f\n", fL[2]);
-//if (faceCells[1]==9994) printf("%+f\n", fR[2]);
-
         }
     }
-
-// What the SHOULD be
-//{
-//  PetscInt cell = 9999;
-//  PetscScalar *euler;
-//  DMPlexPointLocalFieldRef(dm, cell, rhsFunctions[0].field, locFArray, &euler) >> utilities::PetscUtilities::checkError;
-//  euler[2] = 93750;
-
-//  cell = 99;
-//  DMPlexPointLocalFieldRef(dm, cell, rhsFunctions[0].field, locFArray, &euler) >> utilities::PetscUtilities::checkError;
-//  euler[2] = -93750;
-
-//  cell = 9899;
-//  DMPlexPointLocalFieldRef(dm, cell, rhsFunctions[0].field, locFArray, &euler) >> utilities::PetscUtilities::checkError;
-//  euler[2] = 46875;
-
-//  cell = 199;
-//  DMPlexPointLocalFieldRef(dm, cell, rhsFunctions[0].field, locFArray, &euler) >> utilities::PetscUtilities::checkError;
-//  euler[2] = -46875;
-//}
-
-FILE *f1 = fopen("faceInterpolant.txt", "w");
-for (PetscInt cell = 0; cell < 10000; ++cell) {
-  PetscReal x[3];
-  DMPlexComputeCellGeometryFVM(dm, cell, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-
-  PetscScalar *euler;
-  DMPlexPointLocalFieldRef(dm, cell, rhsFunctions[0].field, locFArray, &euler) >> utilities::PetscUtilities::checkError;
-
-  fprintf(f1, "%+f\t%+f\t%+f\t%+f\t%+f\t%+f\n", x[0], x[1], euler[0], euler[1], euler[2], euler[3]);
-
-}
-fclose(f1);
-
 
     VecRestoreArrayRead(faceSolutionVec, &faceSolutionArray);
     VecRestoreArrayRead(faceSolutionGradVec, &faceSolutionGradArray);

@@ -36,9 +36,6 @@ class NavierStokesTransport : public FlowProcess {
         eos::ThermodynamicTemperatureFunction kFunction;
         /* dynamic viscosity*/
         eos::ThermodynamicTemperatureFunction muFunction;
-
-        PetscInt face;
-
     };
 
     // static function to compute time step for euler advection
