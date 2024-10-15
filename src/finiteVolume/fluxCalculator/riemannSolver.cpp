@@ -214,11 +214,6 @@ if (cnt==135) printf("%ld: %+f\t%+e\t%+e\t%+e\n", i, pstar, alpha, f_L_0+f_R_0 +
 
     if (i > MAXIT) {
 
-
-
-
-
-
       raise(SIGSEGV);
       throw std::runtime_error("Can't find pstar; Iteration not converging; Go back and do it again");
     }
