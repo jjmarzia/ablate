@@ -70,9 +70,6 @@ class FiniteVolumeSolver : public solver::CellSolver,
     //! hold the class responsible for compute cell based values;
     std::unique_ptr<CellInterpolant> cellInterpolant = nullptr;
 
-    //! Store an region of all cells not in the ghost for faster iteration
-    std::shared_ptr<domain::Region> solverRegionMinusGhost;
-
     //! Store a dm for mesh characteristics specific to the fvm
     DM meshCharacteristicsDm = nullptr;
 

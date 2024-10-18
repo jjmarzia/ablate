@@ -13,8 +13,7 @@ ablate::finiteVolume::FiniteVolumeSolver::FiniteVolumeSolver(std::string solverI
                                                              std::vector<std::shared_ptr<boundaryConditions::BoundaryCondition>> boundaryConditions)
     : CellSolver(std::move(solverId), std::move(region), std::move(options)),
       processes(std::move(processes)),
-      boundaryConditions(std::move(boundaryConditions)),
-      solverRegionMinusGhost(std::make_shared<domain::Region>(solverId + "_minusGhost")) {}
+      boundaryConditions(std::move(boundaryConditions)) {}
 
 ablate::finiteVolume::FiniteVolumeSolver::~FiniteVolumeSolver() {
     if (meshCharacteristicsLocalVec) {
@@ -85,45 +84,6 @@ void ablate::finiteVolume::FiniteVolumeSolver::Initialize() {
                 }
             }
         }
-    }
-
-    {  // get the cell is for the solver minus ghost cell
-        // Get the original range
-        ablate::domain::Range cellRange;
-        GetCellRange(cellRange);
-
-        // create a new label
-        auto dm = GetSubDomain().GetDM();
-        DMCreateLabel(dm, solverRegionMinusGhost->GetName().c_str()) >> utilities::PetscUtilities::checkError;
-        DMLabel solverRegionMinusGhostLabel;
-        PetscInt solverRegionMinusGhostValue;
-        domain::Region::GetLabel(solverRegionMinusGhost, dm, solverRegionMinusGhostLabel, solverRegionMinusGhostValue);
-
-        // Get the ghost cell label
-        DMLabel ghostLabel;
-        DMGetLabel(subDomain->GetDM(), "ghost", &ghostLabel) >> utilities::PetscUtilities::checkError;
-
-        // check if it is an exterior boundary cell ghost
-        PetscInt boundaryCellStart;
-        DMPlexGetCellTypeStratum(dm, DM_POLYTOPE_FV_GHOST, &boundaryCellStart, nullptr) >> utilities::PetscUtilities::checkError;
-
-        // march over every cell
-        for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-            PetscInt cell = cellRange.points ? cellRange.points[c] : c;
-
-            // check if it is boundary ghost
-            PetscInt isGhost = -1;
-            if (ghostLabel) {
-                DMLabelGetValue(ghostLabel, cell, &isGhost) >> utilities::PetscUtilities::checkError;
-            }
-
-            PetscInt owned;
-            DMPlexGetPointGlobal(dm, cell, &owned, nullptr) >> utilities::PetscUtilities::checkError;
-            if (owned >= 0 && isGhost < 0 && (boundaryCellStart < 0 || cell < boundaryCellStart)) {
-                DMLabelSetValue(solverRegionMinusGhostLabel, cell, solverRegionMinusGhostValue);
-            }
-        }
-        RestoreRange(cellRange);
     }
 
     // march over process and link to the new mesh
@@ -235,6 +195,7 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
     ablate::domain::Range faceRange, cellRange;
     GetFaceRange(faceRange);
     GetCellRange(cellRange);
+
     try {
         StartEvent("FiniteVolumeSolver::ComputeRHSFunction::discontinuousFluxFunction");
         if (!discontinuousFluxFunctionDescriptions.empty()) {
@@ -262,7 +223,6 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
     } catch (std::exception& exception) {
         SETERRQ(PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in CellInterpolant pointFunctionDescriptions: %s", exception.what());
     }
-
     try {
         StartEvent("FiniteVolumeSolver::ComputeRHSFunction::continuousFluxFunctionDescriptions");
         if (!continuousFluxFunctionDescriptions.empty()) {
@@ -286,6 +246,8 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
         PetscCall(rhsFunction.first(*this, subDomain->GetDM(), time, locXVec, locFVec, rhsFunction.second));
     }
     EndEvent();
+
+
 
     PetscFunctionReturn(0);
 }
