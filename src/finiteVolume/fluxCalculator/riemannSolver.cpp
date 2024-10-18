@@ -170,9 +170,6 @@ static Direction riemannDirection(const PetscReal pstar, const PetscReal uL, con
     return (uX > 0 ? Direction::LEFT : Direction::RIGHT);
 }
 
-#include <signal.h>
-static PetscInt cnt = 0;
-
 // Solve the non-linear equation
 Direction RiemannSolver::riemannSolver(const PetscReal uL, const PetscReal aL, const PetscReal rhoL, const PetscReal p0L, const PetscReal pL, const PetscReal gammaL, const PetscReal uR,
                                        const PetscReal aR, const PetscReal rhoR, const PetscReal p0R, const PetscReal pR, const PetscReal gammaR, const PetscReal pstar0, PetscReal *massFlux,
@@ -184,7 +181,7 @@ Direction RiemannSolver::riemannSolver(const PetscReal uL, const PetscReal aL, c
     const PetscReal gamRm1 = gammaR - 1.0, gamRp1 = gammaR + 1.0;
     const PetscInt MAXIT = 100;
     PetscInt i = 0;
-++cnt;
+
     expansionShockCalculation(pstar, gammaL, gamLm1, gamLp1, p0L, pL, aL, rhoL, &f_L_0, &f_L_1);
     expansionShockCalculation(pstar, gammaR, gamRm1, gamRp1, p0R, pR, aR, rhoR, &f_R_0, &f_R_1);
     do  // Newton's method with simple damping
@@ -208,13 +205,12 @@ Direction RiemannSolver::riemannSolver(const PetscReal uL, const PetscReal aL, c
         if (pstar < 0 && (p0L < ablate::utilities::Constants::tiny || p0R < ablate::utilities::Constants::tiny)) {
             pstar = ablate::utilities::Constants::small;
         }
-if (cnt==135) printf("%ld: %+f\t%+e\t%+e\t%+e\n", i, pstar, alpha, f_L_0+f_R_0 + del_u, f_L_1 + f_R_1);
+
         i++;
     } while (PetscAbsReal(f_L_0 + f_R_0 + del_u) > tol && i <= MAXIT);
 
     if (i > MAXIT) {
 
-      raise(SIGSEGV);
       throw std::runtime_error("Can't find pstar; Iteration not converging; Go back and do it again");
     }
 

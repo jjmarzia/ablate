@@ -10,7 +10,7 @@
 
 #define NOTE0EXIT(S, ...) {PetscFPrintf(MPI_COMM_WORLD, stderr,                                     \
   "\x1b[1m(%s:%d, %s)\x1b[0m\n  \x1b[1m\x1b[90mexiting:\x1b[0m " S "\n",    \
-  __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__); exit(0);}
+  __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__); PetscFinalize(); exit(0);}
 
 
 ablate::finiteVolume::processes::NavierStokesTransport::NavierStokesTransport(const std::shared_ptr<parameters::Parameters>& parametersIn, std::shared_ptr<eos::EOS> eosIn,
