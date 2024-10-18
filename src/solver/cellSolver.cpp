@@ -96,7 +96,7 @@ void ablate::solver::CellSolver::UpdateAuxFields(PetscReal time, Vec locXVec, Ve
     VecGetDM(cellGeomVec, &dmCell) >> utilities::PetscUtilities::checkError;
     VecGetArrayRead(cellGeomVec, &cellGeomArray) >> utilities::PetscUtilities::checkError;
 
-    // extract the low flow and aux fields
+    // extract the low flow fields
     const PetscScalar* locFlowFieldArray;
     VecGetArrayRead(locXVec, &locFlowFieldArray) >> utilities::PetscUtilities::checkError;
 
@@ -124,14 +124,15 @@ void ablate::solver::CellSolver::UpdateAuxFields(PetscReal time, Vec locXVec, Ve
         }
     }
 
-    // March over each cell volume
+    // March over each cell volume.
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+
+        // Get the cell location
+        const PetscInt cell = cellRange.GetPoint(c);
+
         PetscFVCellGeom* cellGeom;
         const PetscReal* fieldValues;
         PetscReal* auxValues;
-
-        // Get the cell location
-        const PetscInt cell = cellRange.points ? cellRange.points[c] : c;
 
         DMPlexPointLocalRead(dmCell, cell, cellGeomArray, &cellGeom) >> utilities::PetscUtilities::checkError;
         DMPlexPointLocalRead(plex, cell, locFlowFieldArray, &fieldValues) >> utilities::PetscUtilities::checkError;

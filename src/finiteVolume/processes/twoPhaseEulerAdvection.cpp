@@ -488,7 +488,7 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Compress
 
 }
 
-static PetscInt cnt= 0;
+
 PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::CompressibleFlowComputeEulerFlux(PetscInt dim, const PetscFVFaceGeom *fg, const PetscInt *uOff, const PetscScalar *fieldL,
                                                                                                          const PetscScalar *fieldR, const PetscInt *aOff, const PetscScalar *auxL,
                                                                                                          const PetscScalar *auxR, PetscScalar *flux, void *ctx) {
@@ -498,7 +498,7 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Compress
     PetscReal norm[3];
     NormVector(dim, fg->normal, norm);
     const PetscReal areaMag = MagVector(dim, fg->normal);
-++cnt;
+
     // Decode left and right states
     PetscReal densityL;
     PetscReal densityG_L = 0.0;
@@ -551,9 +551,6 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Compress
     PetscReal tR;
     PetscReal alphaR;
 
-//if (cnt==3158) alphaR = -1.0;
-//else alphaR = +1.0;
-
     twoPhaseEulerAdvection->decoder->DecodeTwoPhaseEulerState(dim,
                                                               uOff,
                                                               fieldR,
@@ -579,10 +576,6 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Compress
     const PetscReal alphaGG = PetscMin(alphaR, alphaL);
     const PetscReal alphaGL = PetscAbs(alphaL - alphaR);
     const PetscReal alphaLL = 1.0 - alphaGG - alphaGL;
-
-//raise(SIGSEGV);
-
-//if (pL > 2e5 || pR >`
 
     // call flux calculator 3 times, gas-gas, gas-liquid, liquid-liquid regions
 
@@ -1220,6 +1213,7 @@ ablate::finiteVolume::processes::TwoPhaseEulerAdvection::StiffenedGasStiffenedGa
     liquidComputeSpeedOfSound = eosLiquid->GetThermodynamicTemperatureFunction(eos::ThermodynamicProperty::SpeedOfSound, {fakeEulerField});
     liquidComputePressure = eosLiquid->GetThermodynamicTemperatureFunction(eos::ThermodynamicProperty::Pressure, {fakeEulerField});
 }
+
 void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::StiffenedGasStiffenedGasDecoder::DecodeTwoPhaseEulerState(PetscInt dim, const PetscInt *uOff, const PetscReal *conservedValues,
                                                                                                                         const PetscReal *normal, PetscReal *density, PetscReal *densityG,
                                                                                                                         PetscReal *densityL, PetscReal *normalVelocity, PetscReal *velocity,
@@ -1229,11 +1223,27 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::StiffenedGasStiffe
     const int EULER_FIELD = 2;
     const int VF_FIELD = 1;
 
-++cntSNES;
     // decode
     *density = conservedValues[CompressibleFlowFields::RHO + uOff[EULER_FIELD]];
     PetscReal totalEnergy = conservedValues[CompressibleFlowFields::RHOE + uOff[EULER_FIELD]] / (*density);
     PetscReal densityVF = conservedValues[uOff[VF_FIELD]];
+
+
+    if (*density < PETSC_SMALL) { // This occurs when a cell hasn't been initialized yet. Usually FVM boundary cells
+        *densityG = 0.0;
+        *densityL = 0.0;
+        *internalEnergyG = 0.0;
+        *internalEnergyL = 0.0;
+        *alpha = 0.0;
+        *p = 0.0;
+        *aG = 0.0;
+        *aL = 0.0;
+        *MG = 0.0;
+        *ML = 0.0;
+
+        return;
+    }
+
 
     // Get the velocity in this direction, and kinetic energy
     (*normalVelocity) = 0.0;
@@ -1245,23 +1255,6 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::StiffenedGasStiffe
     }
     ke *= 0.5;
     (*internalEnergy) = (totalEnergy)-ke;
-
-if (cntSNES==10001) {
-  printf("%+f\n", *density);
-}
-
-//PetscScalar *array;
-//VecGetArray(locVec, &array);
-//for (PetscInt cell = 0; cell < 10000; ++cell) {
-//  PetscScalar *allFields = nullptr;
-//  DMPlexPointLocalRef(dm, cell, array, &allFields) >> utilities::PetscUtilities::checkError;
-//  for (PetscInt i = 0; i < 6; ++i) printf("%+f\t", allFields[i]);
-//  printf("\n");
-//}
-//VecRestoreArray(locVec, &array);
-
-//printf("domain::247\n");
-//exit(0);
 
     PetscReal cp1 = eosGas->GetSpecificHeatCp();
     PetscReal cp2 = eosLiquid->GetSpecificHeatCp();
@@ -1283,66 +1276,71 @@ if (cntSNES==10001) {
         .p0l = p02,
     };
 
-    SNES snes;
-    Vec x, r;
-    Mat J;
-    VecCreate(PETSC_COMM_SELF, &x);
-    VecSetSizes(x, PETSC_DECIDE, 4);
-    VecSetFromOptions(x);
+    PetscReal rhoG = NAN, rhoL = NAN, eG = NAN, eL = NAN;
 
-    { // Set the initial guess to the conserved energy and the internal energy
+    if (decodeDataStruct.Yg < PETSC_SMALL || decodeDataStruct.Yl < PETSC_SMALL) {
+        rhoL = decodeDataStruct.rhotot;
+        eL = decodeDataStruct.etot;
+        rhoG = decodeDataStruct.rhotot;
+        eG = decodeDataStruct.etot;
+    }
+    else {
+      SNES snes;
+      Vec x, r;
+      Mat J;
+      VecCreate(PETSC_COMM_SELF, &x) >> utilities::PetscUtilities::checkError;
+      VecSetSizes(x, PETSC_DECIDE, 4) >> utilities::PetscUtilities::checkError;
+      VecSetFromOptions(x) >> utilities::PetscUtilities::checkError;
+
+      // Set the initial guess to the conserved energy and the internal energy
       PetscScalar *ax;
-      VecGetArray(x, &ax);
+      VecGetArray(x, &ax) >> utilities::PetscUtilities::checkError;
       ax[0] = decodeDataStruct.rhotot; // rho 1
       ax[1] = decodeDataStruct.rhotot; // rho 2
       ax[2] = decodeDataStruct.etot;   // e1
       ax[3] = decodeDataStruct.etot;   // e2
-      VecRestoreArray(x, &ax);
+      VecRestoreArray(x, &ax) >> utilities::PetscUtilities::checkError;
+
+
+      VecDuplicate(x, &r) >> utilities::PetscUtilities::checkError;
+
+      MatCreate(PETSC_COMM_SELF, &J) >> utilities::PetscUtilities::checkError;
+      MatSetSizes(J, PETSC_DECIDE, PETSC_DECIDE, 4, 4) >> utilities::PetscUtilities::checkError;
+      MatSetFromOptions(J) >> utilities::PetscUtilities::checkError;
+      MatSetUp(J) >> utilities::PetscUtilities::checkError;
+
+      SNESCreate(PETSC_COMM_SELF, &snes) >> utilities::PetscUtilities::checkError;
+      SNESSetFunction(snes, r, FormFunctionStiff, &decodeDataStruct) >> utilities::PetscUtilities::checkError;
+      SNESSetJacobian(snes, J, J, FormJacobianStiff, &decodeDataStruct) >> utilities::PetscUtilities::checkError;
+      SNESSetTolerances(snes, 1E-8, 1E-12, 1E-8, 100, 1000) >> utilities::PetscUtilities::checkError;  // refine relative tolerance for more accurate pressure value
+      SNESSetFromOptions(snes) >> utilities::PetscUtilities::checkError;
+      SNESSolve(snes, NULL, x) >> utilities::PetscUtilities::checkError;
+
+      SNESConvergedReason reason;
+      SNESGetConvergedReason(snes, &reason) >> utilities::PetscUtilities::checkError;
+
+      if (reason < 0 || reason == SNES_CONVERGED_ITS) {
+        throw std::runtime_error("SNES for stiffened gas-stiffened gas decode failed.\n");
+      }
+
+      VecGetArray(x, &ax) >> utilities::PetscUtilities::checkError;
+      rhoG = ax[0];
+      rhoL = ax[1];
+      eG   = ax[2];
+      eL   = ax[3];
+      VecRestoreArray(x, &ax) >> utilities::PetscUtilities::checkError;
+
+      SNESDestroy(&snes) >> utilities::PetscUtilities::checkError;
+      VecDestroy(&x) >> utilities::PetscUtilities::checkError;
+      VecDestroy(&r) >> utilities::PetscUtilities::checkError;
+      MatDestroy(&J) >> utilities::PetscUtilities::checkError;
     }
-
-if (cntSNES==10001) raise(SIGSEGV);
-
-
-//    VecSet(x, (*density));  // set initial guess to conserved density, [rho1, rho2, e1, e2] = [rho, rho, rho, rho]
-    VecDuplicate(x, &r);
-
-    MatCreate(PETSC_COMM_SELF, &J);
-    MatSetSizes(J, PETSC_DECIDE, PETSC_DECIDE, 4, 4);
-    MatSetFromOptions(J);
-    MatSetUp(J);
-
-    SNESCreate(PETSC_COMM_SELF, &snes);
-    SNESSetFunction(snes, r, FormFunctionStiff, &decodeDataStruct);
-    SNESSetJacobian(snes, J, J, FormJacobianStiff, &decodeDataStruct);
-    SNESSetTolerances(snes, 1E-8, 1E-12, 1E-8, 100, 1000);  // refine relative tolerance for more accurate pressure value
-    SNESSetFromOptions(snes);
-    SNESSolve(snes, NULL, x);
-
-    SNESConvergedReason reason;
-    SNESGetConvergedReason(snes, &reason);
-
-    if (reason < 0 || reason == SNES_CONVERGED_ITS) {
-      raise(SIGSEGV);
-      throw std::runtime_error("SNES for stiffened gas-stiffened gas decode failed.\n");
-    }
-
-    const PetscScalar *ax;
-    VecGetArrayRead(x, &ax);
-    PetscReal rhoG = ax[0];
-    PetscReal rhoL = ax[1];
-    PetscReal eG = ax[2];
-    PetscReal eL = ax[3];
-
-    SNESDestroy(&snes);
-    VecDestroy(&x);
-    VecDestroy(&r);
-    MatDestroy(&J);
 
     PetscReal etG = eG + ke;
     PetscReal etL = eL + ke;
 
     PetscReal pG = 0;
-    PetscReal pL;
+    PetscReal pL = 0;
     PetscReal a1 = 0;
     PetscReal a2 = 0;
 
@@ -1387,7 +1385,6 @@ if (cntSNES==10001) raise(SIGSEGV);
     *aL = a2;
     *MG = (*normalVelocity) / (*aG);
     *ML = (*normalVelocity) / (*aL);
-//if (debugFlg) raise(SIGSEGV);
 }
 
 #include "registrar.hpp"
