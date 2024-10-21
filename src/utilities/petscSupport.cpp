@@ -1046,8 +1046,11 @@ PetscErrorCode DMPlexVertexGradFromCell(DM dm, const PetscInt v, Vec data, Petsc
             PetscScalar N[3];
             PetscCall(DMPlexCornerSurfaceAreaNormal(dm, v, star[st], N));
 
-PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.15; PetscReal zmin = 0; PetscReal zmax = 0;
-PetscReal maxNorm = 0.75*(xmax-xmin);
+bool periodicfix = true;
+
+if (periodicfix){
+PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.2; PetscReal zmin = 0; PetscReal zmax = 0;
+PetscReal maxNorm = 10*(xmax-xmin)/200; // [10(xmax-xmin)/ Nx] <--> corresponds to 10 cells.
 PetscReal vertexvol; PetscReal vcentroid[3]; DMPlexComputeCellGeometryFVM(dm, v, &vertexvol, vcentroid, nullptr);
 PetscReal cellvol; PetscReal ccentroid[3]; DMPlexComputeCellGeometryFVM(dm, star[st], &cellvol, ccentroid, nullptr);
 N[0] = ccentroid[0] - vcentroid[0];
@@ -1063,6 +1066,7 @@ if (dim==3){
 if (( PetscAbs(N[2]) > maxNorm) and (N[2] > 0)){  N[2] -= (zmax-zmin);  }
 if (( PetscAbs(N[2]) > maxNorm) and (N[2] < 0)){  N[2] += (zmax-zmin);  } }
 
+}
 
             const PetscScalar *val;
             PetscCall(xDMPlexPointLocalRead(dm, star[st], fID, dataArray, &val));
@@ -1119,8 +1123,13 @@ PetscErrorCode DMPlexCellGradFromVertex(DM dm, const PetscInt c, Vec data, Petsc
         PetscReal N[3] = {0.0, 0.0, 0.0};
         PetscCall(DMPlexFaceCentroidOutwardAreaNormal(dm, c, faces[f], NULL, N));
 
-PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.15; PetscReal zmin = 0; PetscReal zmax = 0;
-PetscReal maxNorm = 0.75*(xmax-xmin);
+
+bool periodicfix = true;
+
+if (periodicfix){
+
+PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.2; PetscReal zmin = 0; PetscReal zmax = 0;
+PetscReal maxNorm = 10*(xmax-xmin)/200; // [10(xmax-xmin)/ Nx] <--> corresponds to 10 cells.
 PetscReal centroid[3]; DMPlexComputeCellGeometryFVM(dm, faces[f], nullptr, centroid, nullptr);
 PetscReal ccentroid[3]; DMPlexComputeCellGeometryFVM(dm, c, nullptr, ccentroid, nullptr);
 
@@ -1150,6 +1159,8 @@ if (( PetscAbs(centroid[2] - ccentroid[2]) > maxNorm) and (centroid[2] - ccentro
 N[0] = centroid[0] - ccentroid[0];
 N[1] = centroid[1] - ccentroid[1];
 N[2] = centroid[2] - ccentroid[2];
+
+}
 
         // All points associated with this face
         PetscInt nClosure, *closure = NULL;
@@ -1217,8 +1228,13 @@ PetscErrorCode DMPlexCellGradFromCell(DM dm, const PetscInt c, Vec data, PetscIn
         PetscCall(DMPlexFaceCentroidOutwardAreaNormal(dm, c, faces[f], centroid, S));
 
 
+bool periodicfix = true;
 
 PetscReal cellvol; PetscReal ccentroid[3]; DMPlexComputeCellGeometryFVM(dm, c, &cellvol, ccentroid, nullptr);
+PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.2; PetscReal zmin = 0; PetscReal zmax = 0;
+PetscReal maxNorm = 10*(xmax-xmin)/200; // [10(xmax-xmin)/ Nx] <--> corresponds to 10 cells.
+
+if (periodicfix){
 
 //centroid = center of FACE, not center of cell; NEEDS FIXING depending on its distance to ccentroid
 //S = outward normal; NEEDS FIXING: manually set as distance between face centroid and cell centroid. then this will fix as centroid is fixed.
@@ -1227,10 +1243,6 @@ PetscReal cellvol; PetscReal ccentroid[3]; DMPlexComputeCellGeometryFVM(dm, c, &
 //sc = the ID of the shared cell that shares the face with c; DOES NOT NEED FIXING
 //x[] = the coordinate of the shared cell; NEEDS FIXING depending on its distance to ccentroid
 //dist = euclidean distance between shared cell and face; WILL BE AUTOMATICALLY FIXED AS X, CENTROID ARE FIXED
-
-
-PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.15; PetscReal zmin = 0; PetscReal zmax = 0;
-PetscReal maxNorm = 0.75*(xmax-xmin);
 
 if (( PetscAbs(centroid[0] - ccentroid[0]) > maxNorm) and (centroid[0] - ccentroid[0] > 0)){  centroid[0] -= (xmax-xmin);  }
 if (( PetscAbs(centroid[0] - ccentroid[0]) > maxNorm) and (centroid[0] - ccentroid[0] < 0)){  centroid[0] += (xmax-xmin);  }
@@ -1254,7 +1266,7 @@ S[2] = centroid[2] - ccentroid[2];
 //if (( PetscAbs(S[2]) > maxNorm) and (S[2] > 0)){  S[2] -= (zmax-zmin);  }
 //if (( PetscAbs(S[2]) > maxNorm) and (S[2] < 0)){  S[2] += (zmax-zmin);  } }
 
-
+}
 
         // The cells sharing this face
         PetscInt nSharedCells;
@@ -1270,6 +1282,8 @@ S[2] = centroid[2] - ccentroid[2];
             PetscReal x[dim];
             PetscCall(DMPlexComputeCellGeometryFVM(dm, sc, NULL, x, NULL));  // Center of the candidate cell.
 
+if (periodicfix){
+
 if (( PetscAbs(x[0] - ccentroid[0]) > maxNorm) and (x[0] > ccentroid[0])){  x[0] -= (xmax-xmin);  }
 if (( PetscAbs(x[0] - ccentroid[0]) > maxNorm) and (x[0] < ccentroid[0])){  x[0] += (xmax-xmin);  }
 if (dim>=2){
@@ -1278,6 +1292,9 @@ if (( PetscAbs(x[1] - ccentroid[1]) > maxNorm) and (x[1] < ccentroid[1])){  x[1]
 if (dim==3){
 if (( PetscAbs(x[2] - ccentroid[2]) > maxNorm) and (x[2] > ccentroid[2])){  x[2] -= (zmax-zmin);  }
 if (( PetscAbs(x[2] - ccentroid[2]) > maxNorm) and (x[2] < ccentroid[2])){  x[2] += (zmax-zmin);  } }
+
+}
+
 
             PetscReal dist = 0.0;
             for (PetscInt d = 0; d < dim; ++d) dist += PetscSqr(x[d] - centroid[d]);

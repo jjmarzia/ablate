@@ -340,13 +340,15 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 //    const auto &CSF2TildeField = subDomain->GetField("SF2Tilde");
     auto dim = solver.GetSubDomain().GetDimensions();
 
-PetscReal xymin[dim], xymax[dim]; DMGetBoundingBox(dm, xymin, xymax);
-PetscReal xmin=xymin[0];
-PetscReal xmax=xymax[0];
-PetscReal ymin=xymin[1];
-PetscReal ymax=xymax[1];
-PetscReal zmin=xymin[2];
-PetscReal zmax=xymax[2];
+//PetscReal xymin[dim], xymax[dim]; DMGetBoundingBox(dm, xymin, xymax);
+//PetscReal xmin=xymin[0];
+//PetscReal xmax=xymax[0];
+//PetscReal ymin=xymin[1];
+//PetscReal ymax=xymax[1];
+//PetscReal zmin=xymin[2];
+//PetscReal zmax=xymax[2];
+
+PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.2; PetscReal zmin = 0; PetscReal zmax = 0;
 
     const auto &ofield3 = subDomain->GetField("debug3");
     const auto &ofield4 = subDomain->GetField("debug4");
@@ -635,6 +637,9 @@ PetscReal zmax=xymax[2];
                 PetscReal *phin; xDMPlexPointLocalRead(dm, neighbor, phiField.id, solArray, &phin);
                 PetscReal xn, yn, zn; Get3DCoordinate(dm, neighbor, &xn, &yn, &zn);
 
+bool periodicfix = true;
+
+if (periodicfix){
 
 //temporary fix addressing how multiple layers of neighbors for a periodic domain return coordinates on the opposite side
 PetscReal maxMask = 0.75*(xmax-xmin);
@@ -646,6 +651,8 @@ if (( PetscAbs(yn-yc) > maxMask) and (yn < yc)){  yn += (ymax-ymin);  } }
 if (dim==3){
 if (( PetscAbs(zn-zc) > maxMask) and (zn > zc)){  zn -= (zmax-zmin);  }
 if (( PetscAbs(zn-zc) > maxMask) and (zn < zc)){  zn += (zmax-zmin);  } }
+
+}
 
 
                 PetscReal d = PetscSqrtReal(PetscSqr(xn - xc) + PetscSqr(yn - yc) + PetscSqr(zn - zc));  // distance

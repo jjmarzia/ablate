@@ -10,9 +10,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="de0f0ab2-8602-4e23-aa4a-cfec6be25fe8" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/../../domain/boxMesh.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../domain/boxMesh.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/intSharp.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/intSharp.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/surfaceForce.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/surfaceForce.cpp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../../utilities/petscSupport.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../utilities/petscSupport.cpp" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -68,6 +67,7 @@
       <workItem from="1728320537068" duration="429000" />
       <workItem from="1728321490409" duration="26000" />
       <workItem from="1728398323451" duration="2000" />
+      <workItem from="1729169992392" duration="712000" />
     </task>
     <servers />
   </component>
