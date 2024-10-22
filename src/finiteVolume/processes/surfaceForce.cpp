@@ -352,6 +352,10 @@ PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0
 
     const auto &ofield3 = subDomain->GetField("debug3");
     const auto &ofield4 = subDomain->GetField("debug4");
+
+    const auto &ofield5 = subDomain->GetField("debug5");
+    const auto &ofield6 = subDomain->GetField("debug6");
+
     const auto &eulerField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
 
     DM auxDM = subDomain->GetAuxDM();
@@ -637,7 +641,8 @@ PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0
                 PetscReal *phin; xDMPlexPointLocalRead(dm, neighbor, phiField.id, solArray, &phin);
                 PetscReal xn, yn, zn; Get3DCoordinate(dm, neighbor, &xn, &yn, &zn);
 
-bool periodicfix = true;
+
+bool periodicfix = false;
 
 if (periodicfix){
 
@@ -660,16 +665,36 @@ if (( PetscAbs(zn-zc) > maxMask) and (zn < zc)){  zn += (zmax-zmin);  } }
                 PetscReal wn; PhiNeighborGaussWeight(d, s, &wn);
                 Tw += wn;
                 weightedphi += (*phin * wn);
+
+//this is where phitilde is being actually calculated.
+PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
+//Whether this line is either included or commented out changes the result in the next loop
+if ((cell==0) and (*rankptr == 5)){  std::cout << "particular phitilde " << *phitilde << "  " << "nneighbors " << nNeighbors << "  " << neighbor << "  " << weightedphi << "  " << Tw << "\n";   }
+
             }
             weightedphi /= Tw;
             *phitilde = weightedphi;
+
+
             DMPlexRestoreNeighbors(auxDM, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         }
     }
     PushToGhost(phitildeDM, phitildeLocalVec, phitildeGlobalVec, INSERT_VALUES);
     if (verbose){SaveDataToFile(cellRange.start, cellRange.end, phitildeDM, phitildeLocalArray, "phitilde", true);}
 
-    //good up to this point
+//this is a check to see if phitilde is being recalled correctly.
+//whether the above check is either included or commented out changes the result in this loop
+for (PetscInt cell = cStart; cell < cEnd; ++cell) {
+PetscScalar *optr3; PetscScalar *phitildeptr; 
+xDMPlexPointLocalRef(phitildeDM, cell, -1, phitildeLocalArray, &phitildeptr); 
+xDMPlexPointLocalRef(auxDM, cell, ofield3.id, auxArray, &optr3);
+*optr3 = *phitildeptr;
+PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
+
+//this will return 0.701116 if the check is turned on (correct) or 0.986406 if the check is turned off (incorrect):
+if ((cell==0) and (*rankptr == 5)){  std::cout << "ofield3 sf phitilde " << *phitildeptr << "\n";   }
+
+}
 
     //auxdm (delete asap)
 //    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
@@ -958,9 +983,22 @@ if (( PetscAbs(zn-zc) > maxMask) and (zn < zc)){  zn += (zmax-zmin);  } }
 
         PetscScalar *optr3; xDMPlexPointLocalRef(auxDM, cell, ofield3.id, auxArray, &optr3);
         PetscScalar *optr4; xDMPlexPointLocalRef(auxDM, cell, ofield4.id, auxArray, &optr4);
+
+PetscScalar *optr5; xDMPlexPointLocalRef(auxDM, cell, ofield5.id, auxArray, &optr5);
+PetscScalar *optr6; xDMPlexPointLocalRef(auxDM, cell, ofield6.id, auxArray, &optr6);
+
         PetscScalar *phitildeptr; xDMPlexPointLocalRef(phitildeDM, cell, -1, phitildeLocalArray, &phitildeptr);
         *optr3 = *phitildeptr;
         *optr4 = PetscSqrtReal(PetscSqr(*sfxptr) + PetscSqr(*sfyptr));
+
+
+
+PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
+PetscScalar *kappaptr; xDMPlexPointLocalRef(kappaDM, cell, -1, kappaLocalArray, &kappaptr);
+
+*optr5 = *rankptr;
+*optr6 = *kappaptr;
+
 
     }
     if (verbose){

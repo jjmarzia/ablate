@@ -506,7 +506,7 @@ PetscReal xn, yn, zn; GetCoordinate3D(dm, dim, neighbor, &xn, &yn, &zn);
                 PetscReal *phin; xDMPlexPointLocalRead(dm, neighbor, phiField.id, solArray, &phin);
                 PetscReal xn, yn, zn; GetCoordinate3D(dm, dim, neighbor, &xn, &yn, &zn);
 
-bool periodicfix = true;
+bool periodicfix = false;
 
 if (periodicfix){
 
@@ -530,9 +530,15 @@ if (( PetscAbs(zn-zc) > maxMask) and (zn < zc)){  zn += (zmax-zmin);  } }
                 PetscReal wn; PhiNeighborGauss(d, s, &wn);
                 Tw += wn;
                 weightedphi += (*phin * wn);
+
+PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
+if ((cell==0) and (*rankptr == 5)){  std::cout << "particular is phitilde " << *phitilde << "  " << "nneighbors " << nNeighbors << "  " << neighbor << "  " << weightedphi << "  " << Tw << "\n";   }
+
             }
             weightedphi /= Tw;
             *phitilde = weightedphi;
+
+
             DMPlexRestoreNeighbors(auxDM, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         }
     }
@@ -544,6 +550,10 @@ PetscScalar *optr2; PetscScalar *phitildeptr;
 xDMPlexPointLocalRef(phitildeDM, cell, -1, phitildeLocalArray, &phitildeptr); 
 xDMPlexPointLocalRef(auxDM, cell, ofield2.id, auxArray, &optr2);
 *optr2 = *phitildeptr;
+PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
+
+if ((cell==0) and (*rankptr == 5)){  std::cout << "ofield2 is phitilde " << *phitildeptr << "\n";   }
+
 }
 
     //phitilde, auxDM (delete asap)
@@ -652,6 +662,11 @@ DMPlexVertexGradFromCell(phitildeDM, vertex, phitildeLocalVec, -1, 0, gradphiv);
 
 
 //temporary fix addressing how multiple layers of neighbors for a periodic domain return coordinates on the opposite side
+
+bool periodicfix = false;
+
+if (periodicfix){
+
 PetscReal maxMask = 5*process->epsilon;
 if (( PetscAbs(nx-vx) > maxMask) and (nx > vx)){  nx -= (xmax-xmin);  }
 if (( PetscAbs(nx-vx) > maxMask) and (nx < vx)){  nx += (xmax-xmin);  }
@@ -662,6 +677,7 @@ if (dim==3){
 if (( PetscAbs(nz-vz) > maxMask) and (nz > vz)){  nz -= (zmax-zmin);  }
 if (( PetscAbs(nz-vz) > maxMask) and (nz < vz)){  nz += (zmax-zmin);  } }
 
+}
 
                 PetscReal distance = PetscSqrtReal(PetscSqr(nx - vx) + PetscSqr(ny - vy) + PetscSqr(nz - vz));
                 if (distance < shortestdistance) { shortestdistance = distance; }
@@ -875,7 +891,6 @@ if (( PetscAbs(nz-vz) > maxMask) and (nz < vz)){  nz += (zmax-zmin);  } }
         if(*rhogphig > 1e-10){rhog = *rhogphig / *phik;}else{rhog = 0;}
         PetscScalar *diva; xDMPlexPointLocalRef(divaDM, cell, -1, divaLocalArray, &diva);
 
-//*diva *= -1; //IF periodicfix; DELETE ASAP
 
         *rhophiSource += rhog* *diva;
 
