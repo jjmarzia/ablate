@@ -666,10 +666,10 @@ if (( PetscAbs(zn-zc) > maxMask) and (zn < zc)){  zn += (zmax-zmin);  } }
                 Tw += wn;
                 weightedphi += (*phin * wn);
 
-//this is where phitilde is being actually calculated.
 PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
-//Whether this line is either included or commented out changes the result in the next loop
-if ((cell==0) and (*rankptr == 5)){  std::cout << "particular phitilde " << *phitilde << "  " << "nneighbors " << nNeighbors << "  " << neighbor << "  " << weightedphi << "  " << Tw << "\n";   }
+//this loop is where phitilde is being actually calculated.
+//Whether this next line is either included or commented out changes the result in the next loop
+//if ((cell==0) and (*rankptr == 5)){  std::cout << "weightedphi and Tw (surfaceForce)" << weightedphi << "  " << Tw << "\n";}
 
             }
             weightedphi /= Tw;
@@ -692,7 +692,7 @@ xDMPlexPointLocalRef(auxDM, cell, ofield3.id, auxArray, &optr3);
 PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
 
 //this will return 0.701116 if the check is turned on (correct) or 0.986406 if the check is turned off (incorrect):
-if ((cell==0) and (*rankptr == 5)){  std::cout << "ofield3 sf phitilde " << *phitildeptr << "\n";   }
+if ((cell==0) and (*rankptr == 5)){  std::cout << " surfaceforce phitilde " << *phitildeptr << "\n";   }
 
 }
 

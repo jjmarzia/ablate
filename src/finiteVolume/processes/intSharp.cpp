@@ -532,7 +532,7 @@ if (( PetscAbs(zn-zc) > maxMask) and (zn < zc)){  zn += (zmax-zmin);  } }
                 weightedphi += (*phin * wn);
 
 PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
-if ((cell==0) and (*rankptr == 5)){  std::cout << "particular is phitilde " << *phitilde << "  " << "nneighbors " << nNeighbors << "  " << neighbor << "  " << weightedphi << "  " << Tw << "\n";   }
+if ((cell==0) and (*rankptr == 5)){  std::cout << "weightedphi and Tw (intSharp) " << weightedphi << "  " << Tw << "\n";  }
 
             }
             weightedphi /= Tw;
@@ -552,7 +552,7 @@ xDMPlexPointLocalRef(auxDM, cell, ofield2.id, auxArray, &optr2);
 *optr2 = *phitildeptr;
 PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
 
-if ((cell==0) and (*rankptr == 5)){  std::cout << "ofield2 is phitilde " << *phitildeptr << "\n";   }
+if ((cell==0) and (*rankptr == 5)){  std::cout << "intsharp phitilde " << *phitildeptr << "\n";   }
 
 }
 
