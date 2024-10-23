@@ -642,7 +642,7 @@ PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0
                 PetscReal xn, yn, zn; Get3DCoordinate(dm, neighbor, &xn, &yn, &zn);
 
 
-bool periodicfix = false;
+bool periodicfix = true;
 
 if (periodicfix){
 
@@ -669,7 +669,7 @@ if (( PetscAbs(zn-zc) > maxMask) and (zn < zc)){  zn += (zmax-zmin);  } }
 PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
 //this loop is where phitilde is being actually calculated.
 //Whether this next line is either included or commented out changes the result in the next loop
-//if ((cell==0) and (*rankptr == 5)){  std::cout << "weightedphi and Tw (surfaceForce)" << weightedphi << "  " << Tw << "\n";}
+if ((cell!=-1) and (*rankptr != -1)){ std::cout << ""; }//std::cout << ""; }//  std::cout << "weightedphi and Tw (surfaceForce)" << weightedphi << "  " << Tw << "\n";}
 
             }
             weightedphi /= Tw;
@@ -681,6 +681,8 @@ PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &ra
     }
     PushToGhost(phitildeDM, phitildeLocalVec, phitildeGlobalVec, INSERT_VALUES);
     if (verbose){SaveDataToFile(cellRange.start, cellRange.end, phitildeDM, phitildeLocalArray, "phitilde", true);}
+
+//MPI_Barrier(PETSC_COMM_WORLD);
 
 //this is a check to see if phitilde is being recalled correctly.
 //whether the above check is either included or commented out changes the result in this loop

@@ -506,13 +506,15 @@ PetscReal xn, yn, zn; GetCoordinate3D(dm, dim, neighbor, &xn, &yn, &zn);
                 PetscReal *phin; xDMPlexPointLocalRead(dm, neighbor, phiField.id, solArray, &phin);
                 PetscReal xn, yn, zn; GetCoordinate3D(dm, dim, neighbor, &xn, &yn, &zn);
 
-bool periodicfix = false;
+bool periodicfix = true;
 
 if (periodicfix){
 
 //temporary fix addressing how multiple layers of neighbors for a periodic domain return coordinates on the opposite side
 
-PetscReal maxMask = 10*(xmax-xmin)/160; // [10(xmax-xmin)/ Nx] <--> corresponds to 10 cells.
+//PetscReal maxMask = 10*(xmax-xmin)/160; // [10(xmax-xmin)/ Nx] <--> corresponds to 10 cells.
+PetscReal maxMask = 10*process->epsilon;
+
 if (( PetscAbs(xn-xc) > maxMask) and (xn > xc)){  xn -= (xmax-xmin);  }
 if (( PetscAbs(xn-xc) > maxMask) and (xn < xc)){  xn += (xmax-xmin);  }
 if (dim>=2){
@@ -532,7 +534,7 @@ if (( PetscAbs(zn-zc) > maxMask) and (zn < zc)){  zn += (zmax-zmin);  } }
                 weightedphi += (*phin * wn);
 
 PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
-if ((cell==0) and (*rankptr == 5)){  std::cout << "weightedphi and Tw (intSharp) " << weightedphi << "  " << Tw << "\n";  }
+if ((cell==0) and (*rankptr == 5)){ std::cout << "";} //std::cout << "weightedphi and Tw (intSharp) " << weightedphi << "  " << Tw << "\n";  }
 
             }
             weightedphi /= Tw;
@@ -544,6 +546,7 @@ if ((cell==0) and (*rankptr == 5)){  std::cout << "weightedphi and Tw (intSharp)
     }
     PushGhost(phitildeDM, phitildeLocalVec, phitildeGlobalVec, INSERT_VALUES, true, true);
     if (verbose){SaveData(cellRange.start, cellRange.end, phitildeDM, phitildeLocalArray, "phitilde", true);}
+
 
 for (PetscInt cell = cStart; cell < cEnd; ++cell) {
 PetscScalar *optr2; PetscScalar *phitildeptr; 
@@ -663,11 +666,11 @@ DMPlexVertexGradFromCell(phitildeDM, vertex, phitildeLocalVec, -1, 0, gradphiv);
 
 //temporary fix addressing how multiple layers of neighbors for a periodic domain return coordinates on the opposite side
 
-bool periodicfix = false;
+bool periodicfix = true;
 
 if (periodicfix){
 
-PetscReal maxMask = 5*process->epsilon;
+PetscReal maxMask = 10*process->epsilon;
 if (( PetscAbs(nx-vx) > maxMask) and (nx > vx)){  nx -= (xmax-xmin);  }
 if (( PetscAbs(nx-vx) > maxMask) and (nx < vx)){  nx += (xmax-xmin);  }
 if (dim>=2){
