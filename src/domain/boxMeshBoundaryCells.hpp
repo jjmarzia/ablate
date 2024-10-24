@@ -9,7 +9,7 @@
 namespace ablate::domain {
 class BoxMeshBoundaryCells : public Domain {
    private:
-    static DM CreateBoxDM(const std::string& name, std::vector<int> faces, std::vector<double> lower, std::vector<double> upper, bool simplex = true);
+    static DM CreateBoxDM(const std::string& name, std::vector<int> faces, std::vector<double> lower, std::vector<double> upper, std::vector<std::string> boundary = {}, bool simplex = true);
 
     /**
      *
@@ -20,7 +20,7 @@ class BoxMeshBoundaryCells : public Domain {
      * @param postModifiers
      * @return
      */
-    static std::vector<std::shared_ptr<modifiers::Modifier>> AddBoundaryModifiers(std::vector<double> lower, std::vector<double> upper, double scaleFactor,
+    static std::vector<std::shared_ptr<modifiers::Modifier>> AddBoundaryModifiers(std::vector<double> lower, std::vector<double> upper, std::vector<std::string> boundary, double scaleFactor,
                                                                                   std::vector<std::shared_ptr<modifiers::Modifier>> preModifiers,
                                                                                   std::vector<std::shared_ptr<modifiers::Modifier>> postModifiers);
 
@@ -37,7 +37,7 @@ class BoxMeshBoundaryCells : public Domain {
 
    public:
     BoxMeshBoundaryCells(const std::string& name, const std::vector<std::shared_ptr<FieldDescriptor>>& fieldDescriptors, std::vector<std::shared_ptr<modifiers::Modifier>> preModifiers,
-                         std::vector<std::shared_ptr<modifiers::Modifier>> postModifiers, std::vector<int> faces, const std::vector<double>& lower, const std::vector<double>& upper,
+                         std::vector<std::shared_ptr<modifiers::Modifier>> postModifiers, std::vector<int> faces, const std::vector<double>& lower, const std::vector<double>& upper, std::vector<std::string> boundary,
                          const std::shared_ptr<parameters::Parameters>& options = {});
 
     ~BoxMeshBoundaryCells() override;
