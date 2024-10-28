@@ -290,11 +290,14 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Setup(ablate::fini
 
 }
 
-
+#include <signal.h>
 // Update the volume fraction, velocity, temperature, and pressure fields (if they exist).
 PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::UpdateAuxFieldsTwoPhase(PetscReal time, PetscInt dim, const PetscFVCellGeom *cellGeom, const PetscInt uOff[],
                                                                                                    const PetscScalar *conservedValues, const PetscInt aOff[], PetscScalar *auxField, void *ctx) {
     PetscFunctionBeginUser;
+
+    if (!auxField) PetscFunctionReturn(0);
+
     auto twoPhaseEulerAdvection = (TwoPhaseEulerAdvection *)ctx;
 
     // For cell center, the norm is unity
@@ -303,34 +306,37 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::UpdateAu
     norm[1] = 1;
     norm[2] = 1;
 
-    PetscReal density;
-    PetscReal densityG;
-    PetscReal densityL;
-    PetscReal normalVelocity;  // uniform velocity in cell
-    PetscReal velocity[3];
-    PetscReal internalEnergy;
-    PetscReal internalEnergyG;
-    PetscReal internalEnergyL;
-    PetscReal aG;
-    PetscReal aL;
-    PetscReal MG;
-    PetscReal ML;
-    PetscReal p;  // pressure equilibrium
-    PetscReal T;  // temperature equilibrium, Tg = TL
-    PetscReal alpha;
+    PetscReal density = 1.0;
+    PetscReal densityG = 0.0;
+    PetscReal densityL = 0.0;
+    PetscReal normalVelocity = 0.0;  // uniform velocity in cell
+    PetscReal velocity[3] = {0.0, 0.0, 0.0};
+    PetscReal internalEnergy = 0.0;
+    PetscReal internalEnergyG = 0.0;
+    PetscReal internalEnergyL = 0.0;
+    PetscReal aG = 0.0;
+    PetscReal aL = 0.0;
+    PetscReal MG = 0.0;
+    PetscReal ML = 0.0;
+    PetscReal p = 0.0;  // pressure equilibrium
+    PetscReal T = 0.0;  // temperature equilibrium, Tg = TL
+    PetscReal alpha = 0.0;
 
-    twoPhaseEulerAdvection->decoder->DecodeTwoPhaseEulerState(
+    if (conservedValues) {
+      twoPhaseEulerAdvection->decoder->DecodeTwoPhaseEulerState(
         dim, uOff, conservedValues, norm, &density, &densityG, &densityL, &normalVelocity, velocity, &internalEnergy, &internalEnergyG, &internalEnergyL, &aG, &aL, &MG, &ML, &p, &T, &alpha);
+
+      density = conservedValues[CompressibleFlowFields::RHO];
+      for (PetscInt d = 0; d < dim; d++) velocity[d] = conservedValues[CompressibleFlowFields::RHOU + d] / density;
+
+    }
 
     auto fields = twoPhaseEulerAdvection->auxUpdateFields.data();
 
     for (std::size_t f = 0; f < twoPhaseEulerAdvection->auxUpdateFields.size(); ++f) {
       if (fields[f] == CompressibleFlowFields::VELOCITY_FIELD) {
-
-        PetscReal density = conservedValues[CompressibleFlowFields::RHO];
-
         for (PetscInt d = 0; d < dim; d++) {
-          auxField[aOff[f] + d] = conservedValues[CompressibleFlowFields::RHOU + d] / density;
+          auxField[aOff[f] + d] = velocity[d];
         }
       }
       else if (fields[f] == CompressibleFlowFields::TEMPERATURE_FIELD) {
@@ -1016,6 +1022,8 @@ ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffenedGasD
     liquidComputePressure = eosLiquid->GetThermodynamicTemperatureFunction(eos::ThermodynamicProperty::Pressure, {fakeEulerField});
 }
 
+#include <signal.h>
+
 void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffenedGasDecoder::DecodeTwoPhaseEulerState(PetscInt dim, const PetscInt *uOff, const PetscReal *conservedValues,
                                                                                                                       const PetscReal *normal, PetscReal *density, PetscReal *densityG,
                                                                                                                       PetscReal *densityL, PetscReal *normalVelocity, PetscReal *velocity,
@@ -1080,6 +1088,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffene
 
         eL = ((*internalEnergy) - Yg * eG) / Yl;
         if (eL < 0) {
+          raise(SIGSEGV);
             throw std::invalid_argument("ablate::finiteVolume::twoPhaseEulerAdvection PerfectGas/StiffenedGas DecodeState cannot result in negative internal energy eL");
         }
     } else {  // else if Yl<10e-5,
@@ -1096,6 +1105,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffene
             } else {
                 eL = PetscMax(root1, root2);  // take positive root
                 if (eL < 0) {                 // negative internal energy not physical
+                  raise(SIGSEGV);
                     throw std::invalid_argument("ablate::finiteVolume::twoPhaseEulerAdvection PerfectGas/StiffenedGas DecodeState cannot result in negative internal energy eL");
                 }
             }
@@ -1118,16 +1128,17 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffene
         rhoG = -cr / br;
     } else {
         rhoG = PetscMax(root1r, root2r);
-        if (rhoG < 1E-5) {  // negative density not physical
+        if (rhoG < 0) {  // negative density not physical
+          raise(SIGSEGV);
             throw std::invalid_argument("ablate::finiteVolume::twoPhaseEulerAdvection PerfectGas/StiffenedGas DecodeState cannot result in negative density rhoG");
         }
     }
     PetscReal rhoL = ((gamma1 - 1) * eG * rhoG + gamma2 * p02) / (gamma2 - 1) / eL;
-    if (rhoL < 1E-5) {  // negative density not physical
+    if (rhoL < 0) {  // negative density not physical
         throw std::invalid_argument("ablate::finiteVolume::twoPhaseEulerAdvection PerfectGas/StiffenedGas DecodeState cannot result in negative density rhoL");
     }
     PetscReal pG = 0;
-    PetscReal pL;
+    PetscReal pL = 0;
     PetscReal a1 = 0;
     PetscReal a2 = 0;
 

@@ -7,6 +7,8 @@
 #include "utilities/mathUtilities.hpp"
 #include "utilities/mpiUtilities.hpp"
 #include "utilities/petscUtilities.hpp"
+#include "utilities/petscSupport.hpp"
+#include "compressibleFlowFields.hpp"
 
 ablate::finiteVolume::FiniteVolumeSolver::FiniteVolumeSolver(std::string solverId, std::shared_ptr<domain::Region> region, std::shared_ptr<parameters::Parameters> options,
                                                              std::vector<std::shared_ptr<processes::Process>> processes,
@@ -49,10 +51,9 @@ void ablate::finiteVolume::FiniteVolumeSolver::Initialize() {
 
     // add each boundary condition
     for (const auto& boundary : boundaryConditions) {
-        const auto& fieldId = subDomain->GetField(boundary->GetFieldName());
-
-        // Setup the boundary condition
-        boundary->SetupBoundary(subDomain->GetDM(), subDomain->GetDiscreteSystem(), fieldId.id);
+      const auto& fieldId = subDomain->GetField(boundary->GetFieldName());
+      // Setup the boundary condition
+      boundary->SetupBoundary(subDomain, fieldId.id);
     }
 
     // copy over any boundary information from the dm, to the aux dm and set the sideset
@@ -78,7 +79,8 @@ void ablate::finiteVolume::FiniteVolumeSolver::Initialize() {
             PetscDSGetBoundary(flowProblem, bc, nullptr, &type, &name, &label, &numberIds, &ids, &field, nullptr, nullptr, nullptr, nullptr, nullptr) >> utilities::PetscUtilities::checkError;
 
             // If this is for euler and DM_BC_NATURAL_RIEMANN add it to the aux
-            if (type == DM_BC_NATURAL_RIEMANN && field == 0) {
+            auto eulerField = subDomain->GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
+            if (type == DM_BC_NATURAL_RIEMANN && field == eulerField.id) {
                 for (PetscInt af = 0; af < numberAuxFields; af++) {
                     PetscDSAddBoundary(auxProblem, type, name, label, numberIds, ids, af, 0, nullptr, nullptr, nullptr, nullptr, nullptr) >> utilities::PetscUtilities::checkError;
                 }
@@ -190,6 +192,8 @@ void ablate::finiteVolume::FiniteVolumeSolver::Initialize() {
     DMRestoreLocalVector(subDomain->GetDM(), &locXVec) >> utilities::PetscUtilities::checkError;
 }
 
+//static PetscInt cnt = 0;
+
 PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(PetscReal time, Vec locXVec, Vec locFVec) {
     PetscFunctionBeginUser;
     ablate::domain::Range faceRange, cellRange;
@@ -202,7 +206,6 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
             if (cellInterpolant == nullptr) {
                 cellInterpolant = std::make_unique<CellInterpolant>(subDomain, GetRegion(), faceGeomVec, cellGeomVec);
             }
-
             cellInterpolant->ComputeRHS(time, locXVec, subDomain->GetAuxVector(), locFVec, GetRegion(), discontinuousFluxFunctionDescriptions, faceRange, cellRange, cellGeomVec, faceGeomVec);
         }
         EndEvent();
@@ -223,6 +226,7 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
     } catch (std::exception& exception) {
         SETERRQ(PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in CellInterpolant pointFunctionDescriptions: %s", exception.what());
     }
+
     try {
         StartEvent("FiniteVolumeSolver::ComputeRHSFunction::continuousFluxFunctionDescriptions");
         if (!continuousFluxFunctionDescriptions.empty()) {
@@ -236,6 +240,58 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
     } catch (std::exception& exception) {
         SETERRQ(PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in FaceInterpolant continuousFluxFunctionDescriptions: %s", exception.what());
     }
+//PetscScalar *array;
+//VecGetArray(locFVec, &array);
+//for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+//  PetscInt cell = cellRange.GetPoint(c);
+//  PetscReal x[2];
+//  DMPlexComputeCellGeometryFVM(subDomain->GetDM(), cell, NULL, x, NULL);
+//  if (PetscAbsReal(x[0] - 0.0025)<1e-6 && PetscAbsReal(x[1] + 0.0495)<1e-6) {
+//    PetscScalar *vals;
+//    DMPlexPointLocalRef(subDomain->GetDM(), cell, array, &vals) >> utilities::PetscUtilities::checkError;
+//    for (PetscInt i=0; i < 6; ++i) printf("%+e\t", vals[i]);
+//    printf("\n");
+//  }
+//}
+//VecRestoreArray(locFVec, &array);
+
+
+
+//{
+//++cnt;
+//  PetscMPIInt  rank;
+//  MPI_Comm_rank(PETSC_COMM_WORLD, &rank) >> ablate::utilities::PetscUtilities::checkError;
+
+//  char fname[255];
+//  sprintf(fname, "rank%d_%ld.txt", rank, cnt);
+//  FILE *f1 = fopen(fname, "w");
+
+//  auto eulerField = subDomain->GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
+
+//  PetscInt cStart, cEnd;
+//  DMPlexGetHeightStratum(subDomain->GetDM(), 0, &cStart, &cEnd);
+//  PetscScalar *array;
+//  VecGetArray(locFVec, &array);
+
+//  for (PetscInt cell = cStart; cell < cEnd; ++cell) {
+////  for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+////    PetscInt cell = cellRange.GetPoint(c);
+//    PetscScalar *euler;
+//    xDMPlexPointLocalRef(subDomain->GetDM(), cell, eulerField.id, array, &euler);
+//    PetscReal x[3];
+//    DMPlexComputeCellGeometryFVM(subDomain->GetDM(), cell, NULL, x, NULL);
+//    fprintf(f1, "%+e\t%+e\t%+e\t%+e\t%+e\t%+e\n", x[0], x[1], euler[0], euler[1], euler[2], euler[3]);
+//  }
+//  VecRestoreArray(locFVec, &array);
+//  fclose(f1);
+//  MPI_Barrier(PETSC_COMM_WORLD);
+
+//if(cnt==10) {
+//  printf("finiteVolumeSolver::300\n");
+//  exit(0);
+//}
+//}
+
 
     RestoreRange(faceRange);
     RestoreRange(cellRange);
@@ -246,8 +302,6 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
         PetscCall(rhsFunction.first(*this, subDomain->GetDM(), time, locXVec, locFVec, rhsFunction.second));
     }
     EndEvent();
-
-
 
     PetscFunctionReturn(0);
 }
@@ -398,12 +452,22 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::Restore(PetscViewer vie
     PetscFunctionReturn(0);
 }
 
+
 PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeBoundary(PetscReal time, Vec locX, Vec locX_t) {
     PetscFunctionBeginUser;
+
+    // Do any ghost cells first
     auto dm = subDomain->GetDM();
     auto ds = subDomain->GetDiscreteSystem();
+
     /* Handle non-essential (e.g. outflow) boundary values.  This should be done before the auxFields are updated so that boundary values can be updated */
     PetscCall(ablate::solver::Solver::DMPlexInsertBoundaryValues_Plex(dm, ds, PETSC_FALSE, locX, time, faceGeomVec, cellGeomVec, nullptr));
+
+    // Now apply any boundaryCell conditions
+    for (auto bc : boundaryConditions) {
+      bc->ComputeBoundary(time, locX, locX_t, cellGeomVec);
+    }
+
     PetscFunctionReturn(0);
 }
 

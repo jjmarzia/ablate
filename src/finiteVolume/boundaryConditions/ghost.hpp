@@ -23,6 +23,9 @@ class Ghost : public BoundaryCondition {
     PetscInt fieldOffset;
 
    public:
+    BoundaryCondition::Type type() const override { return BoundaryCondition::Type::GHOST; }
+
+
     Ghost(std::string fieldName, std::string boundaryName, std::vector<int> labelIds, UpdateFunction updateFunction, void* updateContext, std::string labelName = {});
 
     Ghost(std::string fieldName, std::string boundaryName, int labelId, UpdateFunction updateFunction, void* updateContext, std::string labelName = {});
@@ -30,6 +33,9 @@ class Ghost : public BoundaryCondition {
     virtual ~Ghost() override = default;
 
     void SetupBoundary(DM dm, PetscDS problem, PetscInt fieldId) override;
+    void SetupBoundary(std::shared_ptr<ablate::domain::SubDomain> subDomain, PetscInt fieldId) override { SetupBoundary(subDomain->GetDM(), subDomain->GetDiscreteSystem(), fieldId); }
+    void ComputeBoundary(PetscReal time, Vec locX, Vec locX_t, Vec cellGeomVec) override {};
+
 };
 
 }  // namespace ablate::finiteVolume::boundaryConditions

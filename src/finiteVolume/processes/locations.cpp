@@ -24,6 +24,7 @@ PetscErrorCode ablate::finiteVolume::processes::locations::ComputeSource(const F
 
     const ablate::domain::Field *cellLocs = &(subDomain->GetField("cellLocations"));
     const ablate::domain::Field *vertLocs = &(subDomain->GetField("vertexLocations"));
+    const ablate::domain::Field *rankLocs = &(subDomain->GetField("rank"));
 
     ablate::domain::Range cellRange, vertRange;
     solver.GetCellRangeWithoutGhost(cellRange);
@@ -34,7 +35,11 @@ PetscErrorCode ablate::finiteVolume::processes::locations::ComputeSource(const F
     Vec auxVec = subDomain->GetAuxVector();
     PetscScalar *auxArray = nullptr;
 
+    PetscMPIInt  rank;
+    MPI_Comm_rank(PetscObjectComm((PetscObject)dm), &rank) >> ablate::utilities::PetscUtilities::checkError;
+
     VecGetArray(auxVec, &auxArray);
+
 
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c){
       const PetscInt cell = cellRange.GetPoint(c);
@@ -43,9 +48,12 @@ PetscErrorCode ablate::finiteVolume::processes::locations::ComputeSource(const F
       xDMPlexPointLocalRef(auxDM, cell, cellLocs->id, auxArray, &x) >> ablate::utilities::PetscUtilities::checkError;
       DMPlexComputeCellGeometryFVM(dm, cell, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
 
+
+      xDMPlexPointLocalRef(auxDM, cell, rankLocs->id, auxArray, &x) >> ablate::utilities::PetscUtilities::checkError;
+      *x = rank;
+
     }
 
-//    VecRestoreArrayRead(locX, &xArray) >> utilities::PetscUtilities::checkError;
 
     for (PetscInt v = vertRange.start; v < vertRange.end; ++v){
       const PetscInt vert = vertRange.GetPoint(v);

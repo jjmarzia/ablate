@@ -13,12 +13,12 @@ class EssentialGhost : public Ghost {
     const std::shared_ptr<ablate::mathFunctions::FieldFunction> boundaryFunction;
 
     /**
-     * Uses linear interpolation to force the value at the face
+     * Uses linear extrapolation to force the value at the cell center
      */
-    const bool enforceAtFace;
+    const bool enforceAtCell;
 
    public:
-    EssentialGhost(std::string boundaryName, std::vector<int> labelId, std::shared_ptr<ablate::mathFunctions::FieldFunction> boundaryFunction, std::string labelName = {}, bool enforceAtFace = false);
+    EssentialGhost(std::string boundaryName, std::vector<int> labelId, std::shared_ptr<ablate::mathFunctions::FieldFunction> boundaryFunction, std::string labelName = {}, bool enforceAtCell = true);
 };
 }  // namespace ablate::finiteVolume::boundaryConditions
 #endif  // ABLATELIBRARY_ESSENTIALGHOST_HPP

@@ -1,9 +1,13 @@
 target_sources(ablateLibrary
         PRIVATE
+        boundaryCell.cpp
         ghost.cpp
         essentialGhost.cpp
+        essentialBoundary.cpp
         PUBLIC
+        boundaryCell.hpp
         boundaryCondition.hpp
         ghost.hpp
         essentialGhost.hpp
+        essentialBoundary.hpp
         )
