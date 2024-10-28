@@ -66,7 +66,6 @@ ablate::finiteVolume::FaceInterpolant::FaceInterpolant(const std::shared_ptr<abl
 
         faceStencilGenerator->Generate(face, stencil, *subDomain, solverRegion, cellDM, cellGeomArray, faceDM, faceGeomArray);
     }
-
     // clean up the geom
     VecRestoreArrayRead(cellGeomVec, &cellGeomArray) >> utilities::PetscUtilities::checkError;
     VecRestoreArrayRead(faceGeomVec, &faceGeomArray) >> utilities::PetscUtilities::checkError;
@@ -354,7 +353,7 @@ void ablate::finiteVolume::FaceInterpolant::ComputeRHS(PetscReal time, Vec locXV
 
     // march over each face
     for (PetscInt f = faceRange.start; f < faceRange.end; f++) {
-        PetscInt face = faceRange.points ? faceRange.points[f] : f;
+        PetscInt face = faceRange.GetPoint(f);
 
         // make sure that this is a valid face
         PetscInt ghost, nsupp, nchild;

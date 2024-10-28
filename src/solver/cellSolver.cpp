@@ -86,10 +86,6 @@ void ablate::solver::CellSolver::UpdateAuxFields(PetscReal time, Vec locXVec, Ve
     // Convert to a dmplex
     DMConvert(GetSubDomain().GetDM(), DMPLEX, &plex) >> utilities::PetscUtilities::checkError;
 
-    // Get the valid cell range over this region
-    ablate::domain::Range cellRange;
-    GetCellRange(cellRange);
-
     // Extract the cell geometry, and the dm that holds the information
     DM dmCell;
     const PetscScalar* cellGeomArray;
@@ -124,12 +120,16 @@ void ablate::solver::CellSolver::UpdateAuxFields(PetscReal time, Vec locXVec, Ve
         }
     }
 
+    // Get the valid cell range over this region. Need to get all of the cells, not just the interior ones
+    ablate::domain::Range cellRange;
+    GetSubDomain().GetCellRange(nullptr, cellRange);
+
+
     // March over each cell volume.
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
 
         // Get the cell location
         const PetscInt cell = cellRange.GetPoint(c);
-
         PetscFVCellGeom* cellGeom;
         const PetscReal* fieldValues;
         PetscReal* auxValues;

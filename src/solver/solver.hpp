@@ -41,11 +41,12 @@ class Solver {
     // The constructor to be call by any Solve implementation
     explicit Solver(std::string solverId, std::shared_ptr<domain::Region> = {}, std::shared_ptr<parameters::Parameters> options = nullptr);
 
-    // Replacement calls for PETSC versions allowing multiple DS
+  public:
+
+  // Replacement calls for PETSC versions allowing multiple DS
     static PetscErrorCode DMPlexInsertBoundaryValues_Plex(DM dm, PetscDS ds, PetscBool insertEssential, Vec locX, PetscReal time, Vec faceGeomFVM, Vec cellGeomFVM, Vec gradFVM);
     static PetscErrorCode DMPlexInsertTimeDerivativeBoundaryValues_Plex(DM dm, PetscDS ds, PetscBool insertEssential, Vec locX, PetscReal time, Vec faceGeomFVM, Vec cellGeomFVM, Vec gradFVM);
 
-   public:
     virtual ~Solver();
 
     /** Register all needed fields with the subDomain **/

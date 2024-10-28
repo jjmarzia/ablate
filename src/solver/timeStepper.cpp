@@ -5,6 +5,10 @@
 #include "adaptPhysicsConstrained.hpp"
 #include "utilities/petscUtilities.hpp"
 
+#define NOTE0EXIT(S, ...) {PetscFPrintf(MPI_COMM_WORLD, stderr,                                     \
+  "\x1b[1m(%s:%d, %s)\x1b[0m\n  \x1b[1m\x1b[90mexiting:\x1b[0m " S "\n",    \
+  __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__); PetscFinalize(); exit(0);}
+
 ablate::solver::TimeStepper::TimeStepper(std::shared_ptr<ablate::domain::Domain> domain, const std::shared_ptr<ablate::parameters::Parameters>& arguments, std::shared_ptr<io::Serializer> serializer,
                                          std::shared_ptr<ablate::domain::Initializer> initializations, std::vector<std::shared_ptr<mathFunctions::FieldFunction>> exactSolutions,
                                          std::vector<std::shared_ptr<mathFunctions::FieldFunction>> absoluteTolerances, std::vector<std::shared_ptr<mathFunctions::FieldFunction>> relativeTolerances,
@@ -185,6 +189,47 @@ void ablate::solver::TimeStepper::Solve() {
     auto logEvent = RegisterEvent((this->name + "::Solve").c_str());
     PetscLogEventSetDof(logEvent, 0, dof) >> utilities::PetscUtilities::checkError;
     PetscLogEventBegin(logEvent, 0, 0, 0, 0);
+
+//for (PetscInt iter=0;iter<10;++iter) {
+
+//  printf("%ld\t", iter);
+
+//  TSStep(ts);
+
+//  PetscMPIInt  rank;
+//  MPI_Comm_rank(PETSC_COMM_WORLD, &rank) >> ablate::utilities::PetscUtilities::checkError;
+//  PetscScalar *array;
+//  VecGetArray(solutionVec, &array);
+
+//  char fname[255];
+//  sprintf(fname, "sol%ld.txt", iter);
+//  FILE *f1 = fopen(fname, "w");
+
+//  DM dm = domain->GetDM();
+//  PetscInt cStart, cEnd;
+//  DMPlexGetHeightStratum(dm, 0, &cStart, &cEnd);
+//  for (PetscInt c = cStart; c < cEnd; ++c) {
+//    PetscReal x[3];
+//    DMPlexComputeCellGeometryFVM(dm, c, NULL, x, NULL);
+
+//    PetscScalar *vals;
+//    DMPlexPointLocalRef(dm, c, array, &vals) >> utilities::PetscUtilities::checkError;
+
+//    fprintf(f1, "%+f\t%+f\t", x[0], x[1]);
+//    for (PetscInt i=0; i < 6; ++i) fprintf(f1,"%+e\t", vals[i]);
+//    fprintf(f1, "\n");
+
+//    if (PetscAbsReal(x[0] - 0.0025)<1e-6 && PetscAbsReal(x[1] + 0.0495)<1e-6) {
+//      for (PetscInt i=0; i < 6; ++i) printf("%+e\t", vals[i]);
+//      printf("\n");
+//    }
+//  }
+//  fclose(f1);
+//  VecRestoreArray(solutionVec, &array);
+//}
+//NOTE0EXIT("");
+
+
     TSSolve(ts, solutionVec) >> utilities::PetscUtilities::checkError;
     PetscLogEventEnd(logEvent, 0, 0, 0, 0);
 }
@@ -378,6 +423,7 @@ PetscErrorCode ablate::solver::TimeStepper::SolverComputeRHSFunction(TS ts, Pets
     DMRestoreLocalVector(dm, &locX);
     DMRestoreLocalVector(dm, &locF);
     timeStepper->EndEvent();
+
 
     if (timeStepper->verboseSourceCheck) {
         timeStepper->StartEvent("SolverComputeRHSFunction::CheckFieldValues");

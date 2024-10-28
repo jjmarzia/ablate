@@ -110,7 +110,7 @@ PetscErrorCode ablate::finiteVolume::processes::NavierStokesTransport::Advection
     auto eulerAdvectionData = (AdvectionData*)ctx;
 
     const int EULER_FIELD = 0;
-//NOTE0EXIT("");    const int TEMP_FIELD = 0;
+    const int TEMP_FIELD = 0;
 
     // Compute the norm
     PetscReal norm[3];
@@ -457,6 +457,8 @@ double ablate::finiteVolume::processes::NavierStokesTransport::ComputeViscousDif
     return dtMin;
 }
 
+static const PetscFVFaceGeom* debugFG;
+
 PetscErrorCode ablate::finiteVolume::processes::NavierStokesTransport::DiffusionFlux(PetscInt dim, const PetscFVFaceGeom* fg, const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar field[],
                                                                                      const PetscScalar grad[], const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar aux[],
                                                                                      const PetscScalar gradAux[], PetscScalar flux[], void* ctx) {
@@ -472,7 +474,7 @@ PetscErrorCode ablate::finiteVolume::processes::NavierStokesTransport::Diffusion
     flowParameters->muFunction.function(field, aux[aOff[T]], &mu, flowParameters->muFunction.context.get());
     PetscReal k = 0.0;
     flowParameters->kFunction.function(field, aux[aOff[T]], &k, flowParameters->kFunction.context.get());
-
+debugFG = fg;
     // Compute the stress tensor tau
     PetscReal tau[9];  // Maximum size without symmetry
     PetscCall(CompressibleFlowComputeStressTensor(dim, mu, gradAux + aOff_x[VEL], tau));
@@ -510,6 +512,15 @@ PetscErrorCode ablate::finiteVolume::processes::NavierStokesTransport::Diffusion
 
     // zero out the density flux
     flux[CompressibleFlowFields::RHO] = 0.0;
+
+
+//if (PetscAbsReal(fg->centroid[0] - 0.002)<1e-6 && PetscAbsReal(fg->centroid[1] + 0.0495)<1e-6) {
+//  printf("navierStokesTransport:: 510 %+e\t%+e\t%+e\t%+e\n", flux[CompressibleFlowFields::RHO], flux[CompressibleFlowFields::RHOE], flux[CompressibleFlowFields::RHOU], flux[CompressibleFlowFields::RHOU+1]);
+//  printf("navierStokesTransport::517\n");
+//  exit(0);
+//}
+
+
     PetscFunctionReturn(0);
 }
 
@@ -520,6 +531,18 @@ PetscErrorCode ablate::finiteVolume::processes::NavierStokesTransport::Compressi
     for (PetscInt c = 0; c < dim; ++c) {
         divVel += gradVel[c * dim + c];
     }
+
+//if (debugFG->centroid[1] < -0.0497) printf("%+f\t%+f\n", debugFG->centroid[0], debugFG->centroid[1]);
+//if (PetscAbsReal(debugFG->centroid[0] - 0.0025)<1e-6 && PetscAbsReal(debugFG->centroid[1] + 0.05)<1e-6) {
+//  for (PetscInt c = 0; c < dim; ++c) {
+//    for (PetscInt d = 0; d < dim; ++d) {
+//      printf("%+e\t", gradVel[c*dim+d]);
+//    }
+//  }
+//  printf("\n");
+////  printf("navierStokesTransport::524\n");
+////  exit(0);6
+//}
 
     // March over each velocity component, u, v, w
     for (PetscInt c = 0; c < dim; ++c) {
