@@ -17,6 +17,7 @@ target_sources(ablateLibrary
         surfaceForce.cpp
         soot.cpp
         intSharp.cpp
+#        locations.cpp
 
         PUBLIC
         process.hpp
@@ -37,5 +38,6 @@ target_sources(ablateLibrary
         surfaceForce.hpp
         soot.hpp
         intSharp.hpp
+#        locations.hpp
 
         )

@@ -193,16 +193,23 @@ PetscReal zmax=xymax[2];
     IS_CopyDM(process->vertexDM, vStart, vEnd, 1, &vxDM);
     DM vyDM;
     IS_CopyDM(process->vertexDM, vStart, vEnd, 1, &vyDM);
+    DM vzDM;
+    IS_CopyDM(process->vertexDM, vStart, vEnd, 1, &vzDM);
     Vec vxLocalVec; DMCreateLocalVector(vxDM, &vxLocalVec);
     Vec vxGlobalVec; DMCreateGlobalVector(vxDM, &vxGlobalVec);
     Vec vyLocalVec; DMCreateLocalVector(vyDM, &vyLocalVec);
     Vec vyGlobalVec; DMCreateGlobalVector(vyDM, &vyGlobalVec);
+    Vec vzLocalVec; DMCreateLocalVector(vzDM, &vzLocalVec);
+    Vec vzGlobalVec; DMCreateGlobalVector(vzDM, &vzGlobalVec);
     VecZeroEntries(vxLocalVec);
     VecZeroEntries(vxGlobalVec);
     VecZeroEntries(vyLocalVec);
     VecZeroEntries(vyGlobalVec);
+    VecZeroEntries(vzLocalVec);
+    VecZeroEntries(vzGlobalVec);
     PetscScalar *vxLocalArray; VecGetArray(vxLocalVec, &vxLocalArray);
     PetscScalar *vyLocalArray; VecGetArray(vyLocalVec, &vyLocalArray);
+    PetscScalar *vzLocalArray; VecGetArray(vzLocalVec, &vzLocalArray);
 
     DM aDM;
     IS_CopyDM(process->vertexDM, vStart, vEnd, dim, &aDM);
@@ -286,16 +293,24 @@ PetscReal zmax=xymax[2];
     IS_CopyDM(auxDM, cStart, cEnd, 1, &xDM);
     DM yDM;
     IS_CopyDM(auxDM, cStart, cEnd, 1, &yDM);
+    DM zDM;
+    IS_CopyDM(auxDM, cStart, cEnd, 1, &zDM);
     Vec xLocalVec; DMCreateLocalVector(xDM, &xLocalVec);
     Vec xGlobalVec; DMCreateGlobalVector(xDM, &xGlobalVec);
     Vec yLocalVec; DMCreateLocalVector(yDM, &yLocalVec);
     Vec yGlobalVec; DMCreateGlobalVector(yDM, &yGlobalVec);
+    Vec zLocalVec; DMCreateLocalVector(zDM, &zLocalVec);
+    Vec zGlobalVec; DMCreateGlobalVector(zDM, &zGlobalVec);
     VecZeroEntries(xLocalVec);
     VecZeroEntries(xGlobalVec);
     VecZeroEntries(yLocalVec);
     VecZeroEntries(yGlobalVec);
+    VecZeroEntries(zLocalVec);
+    VecZeroEntries(zGlobalVec);
     PetscScalar *xLocalArray; VecGetArray(xLocalVec, &xLocalArray);
     PetscScalar *yLocalArray; VecGetArray(yLocalVec, &yLocalArray);
+    PetscScalar *zLocalArray; VecGetArray(zLocalVec, &zLocalArray);
+
     //field ID for non field calls is -1.
 
     int rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank); rank+=1;
@@ -330,11 +345,13 @@ PetscReal zmax=xymax[2];
             PetscReal xp, yp, zp; GetCoordinate3D(dm, dim, cell, &xp, &yp, &zp);
             PetscScalar *xptr; xDMPlexPointLocalRef(xDM, cell, -1, xLocalArray, &xptr);
             PetscScalar *yptr; xDMPlexPointLocalRef(yDM, cell, -1, yLocalArray, &yptr);
-            *xptr = xp; *yptr = yp;
+            PetscScalar *zptr; xDMPlexPointLocalRef(zDM, cell, -1, zLocalArray, &zptr);
+            *xptr = xp; *yptr = yp; *zptr = zp;
     }
 
     if (verbose){SaveData(cellRange.start, cellRange.end, xDM, xLocalArray, "x", false);}
     if (verbose){SaveData(cellRange.start, cellRange.end, yDM, yLocalArray, "y", false);}
+    if (verbose){SaveData(cellRange.start, cellRange.end, zDM, zLocalArray, "z", false);}
     if (verbose){SaveData(cellRange.start, cellRange.end, cellidDM, cellidLocalArray, "xcellid", false);}
     if (verbose){SaveData(cellRange.start, cellRange.end, phiDM, phiLocalArray, "phi", true);}
 
@@ -506,7 +523,7 @@ PetscReal xn, yn, zn; GetCoordinate3D(dm, dim, neighbor, &xn, &yn, &zn);
                 PetscReal *phin; xDMPlexPointLocalRead(dm, neighbor, phiField.id, solArray, &phin);
                 PetscReal xn, yn, zn; GetCoordinate3D(dm, dim, neighbor, &xn, &yn, &zn);
 
-bool periodicfix = true;
+bool periodicfix = false;
 
 if (periodicfix){
 
@@ -603,12 +620,14 @@ if ((cell==0) and (*rankptr == 5)){  std::cout << "intsharp phitilde " << *phiti
         PetscReal vx, vy, vz; GetCoordinate3D(dm, dim, vertex, &vx, &vy, &vz);
         PetscScalar *vxptr; xDMPlexPointLocalRef(vxDM, vertex, -1, vxLocalArray, &vxptr);
         PetscScalar *vyptr; xDMPlexPointLocalRef(vyDM, vertex, -1, vyLocalArray, &vyptr);
-        *vxptr = vx; *vyptr = vy;
+        PetscScalar *vzptr; xDMPlexPointLocalRef(vzDM, vertex, -1, vzLocalArray, &vzptr);
+        *vxptr = vx; *vyptr = vy; *vzptr = vz;
         PetscScalar *aptr; xDMPlexPointLocalRef(aDM, vertex, -1, aLocalArray, &aptr);
         *aptr = 0;
     }
     if (verbose){SaveData(vStart, vEnd, vxDM, vxLocalArray, "vx", false);}
     if (verbose){SaveData(vStart, vEnd, vyDM, vyLocalArray, "vy", false);}
+    if (verbose){SaveData(vStart, vEnd, vzDM, vzLocalArray, "vz", false);}
 
     //calculate phiv, gradphiv, av (auxDM COPY)
     for (PetscInt vertex = vStart; vertex < vEnd; vertex++) {
@@ -666,7 +685,7 @@ DMPlexVertexGradFromCell(phitildeDM, vertex, phitildeLocalVec, -1, 0, gradphiv);
 
 //temporary fix addressing how multiple layers of neighbors for a periodic domain return coordinates on the opposite side
 
-bool periodicfix = true;
+bool periodicfix = false;
 
 if (periodicfix){
 
@@ -1124,6 +1143,11 @@ if (( PetscAbs(nz-vz) > maxMask) and (nz < vz)){  nz += (zmax-zmin);  } }
     DMRestoreGlobalVector(yDM, &yGlobalVec);
     DMDestroy(&yDM);
 
+    VecRestoreArray(zLocalVec, &zLocalArray);
+    DMRestoreLocalVector(zDM, &zLocalVec);
+    DMRestoreGlobalVector(zDM, &zGlobalVec);
+    DMDestroy(&zDM);
+
     VecRestoreArray(vxLocalVec, &vxLocalArray);
     DMRestoreLocalVector(vxDM, &vxLocalVec);
     DMRestoreGlobalVector(vxDM, &vxGlobalVec);
@@ -1133,6 +1157,11 @@ if (( PetscAbs(nz-vz) > maxMask) and (nz < vz)){  nz += (zmax-zmin);  } }
     DMRestoreLocalVector(vyDM, &vyLocalVec);
     DMRestoreGlobalVector(vyDM, &vyGlobalVec);
     DMDestroy(&vyDM);
+
+    VecRestoreArray(vzLocalVec, &vzLocalArray);
+    DMRestoreLocalVector(vzDM, &vzLocalVec);
+    DMRestoreGlobalVector(vzDM, &vzGlobalVec);
+    DMDestroy(&vzDM);
 
     VecRestoreArray(aLocalVec, &aLocalArray);
     DMRestoreLocalVector(aDM, &aLocalVec);

@@ -62,7 +62,6 @@ void Get3DCoordinate(DM dm, PetscInt p, PetscReal *xp, PetscReal *yp, PetscReal 
     *xp = centroid[0];
     *yp = centroid[1];
     *zp = centroid[2];
-
 }
 
 void GetVertexRange(DM dm, const std::shared_ptr<ablate::domain::Region> &region, ablate::domain::Range &vertexRange) {
@@ -349,7 +348,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 //PetscReal zmin=xymin[2];
 //PetscReal zmax=xymax[2];
 
-PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.2; PetscReal zmin = 0; PetscReal zmax = 0.2;
+PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.2; PetscReal zmin = 0; PetscReal zmax = 0;
 
     const auto &ofield3 = subDomain->GetField("debug3");
     const auto &ofield4 = subDomain->GetField("debug4");
@@ -415,14 +414,6 @@ PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0
     VecZeroEntries(sfyGlobalVec);
     PetscScalar *sfyLocalArray; VecGetArray(sfyLocalVec, &sfyLocalArray);
 
-    DM sfzDM;
-    SF_CopyDM(auxDM, cStart, cEnd, 1, &sfzDM);
-    Vec sfzLocalVec; DMCreateLocalVector(sfzDM, &sfzLocalVec);
-    Vec sfzGlobalVec; DMCreateGlobalVector(sfzDM, &sfzGlobalVec);
-    VecZeroEntries(sfzLocalVec);
-    VecZeroEntries(sfzGlobalVec);
-    PetscScalar *sfzLocalArray; VecGetArray(sfzLocalVec, &sfzLocalArray);
-
     DM rankDM;
     SF_CopyDM(auxDM, cStart, cEnd, 1, &rankDM);
     Vec rankLocalVec; DMCreateLocalVector(rankDM, &rankLocalVec);
@@ -483,23 +474,16 @@ PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0
     SF_CopyDM(auxDM, cStart, cEnd, 1, &xDM);
     DM yDM;
     SF_CopyDM(auxDM, cStart, cEnd, 1, &yDM);
-    DM zDM;
-    SF_CopyDM(auxDM, cStart, cEnd, 1, &zDM);
     Vec xLocalVec; DMCreateLocalVector(xDM, &xLocalVec);
     Vec xGlobalVec; DMCreateGlobalVector(xDM, &xGlobalVec);
     Vec yLocalVec; DMCreateLocalVector(yDM, &yLocalVec);
     Vec yGlobalVec; DMCreateGlobalVector(yDM, &yGlobalVec);
-    Vec zLocalVec; DMCreateLocalVector(zDM, &zLocalVec);
-    Vec zGlobalVec; DMCreateGlobalVector(zDM, &zGlobalVec);
     VecZeroEntries(xLocalVec);
     VecZeroEntries(xGlobalVec);
     VecZeroEntries(yLocalVec);
     VecZeroEntries(yGlobalVec);
-    VecZeroEntries(zLocalVec);
-    VecZeroEntries(zGlobalVec);
     PetscScalar *xLocalArray; VecGetArray(xLocalVec, &xLocalArray);
     PetscScalar *yLocalArray; VecGetArray(yLocalVec, &yLocalArray);
-    PetscScalar *zLocalArray; VecGetArray(zLocalVec, &zLocalArray);
 
 //    if (interpCellList == nullptr) {
 //        BuildInterpCellList(auxDM, cellRange);
@@ -528,8 +512,6 @@ PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0
         *sfxptr = 0;
         PetscScalar *sfyptr; xDMPlexPointLocalRef(sfyDM, cell, -1, sfyLocalArray, &sfyptr);
         *sfyptr = 0;
-        PetscScalar *sfzptr; xDMPlexPointLocalRef(sfzDM, cell, -1, sfzLocalArray, &sfzptr);
-        *sfzptr = 0;
 
         PetscSection globalSection; DMGetGlobalSection(dm, &globalSection);
         PetscInt owned = 1; PetscSectionGetOffset(globalSection, cell, &owned);
@@ -549,8 +531,7 @@ PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0
         PetscReal xp, yp, zp; Get3DCoordinate(dm, cell, &xp, &yp, &zp);
         PetscScalar *xptr; xDMPlexPointLocalRef(xDM, cell, -1, xLocalArray, &xptr);
         PetscScalar *yptr; xDMPlexPointLocalRef(yDM, cell, -1, yLocalArray, &yptr);
-        PetscScalar *zptr; xDMPlexPointLocalRef(zDM, cell, -1, zLocalArray, &zptr);
-        *xptr = xp; *yptr = yp; *zptr = zp;
+        *xptr = xp; *yptr = yp;
     }
 //    //Mask field determines which cells will be operated on at all. auxDM (delete asap_
 //    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
@@ -688,7 +669,7 @@ if (( PetscAbs(zn-zc) > maxMask) and (zn < zc)){  zn += (zmax-zmin);  } }
 PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
 //this loop is where phitilde is being actually calculated.
 //Whether this next line is either included or commented out changes the result in the next loop
-if ((cell!=-1) and (*rankptr != -1)){ std::cout << ""; }//std::cout << ""; }//  std::cout << "weightedphi and Tw (surfaceForce)" << weightedphi << "  " << Tw << "\n";}
+//if ((cell==0) and (*rankptr == 5)){  std::cout << "weightedphi and Tw (surfaceForce)" << weightedphi << "  " << Tw << "\n";}
 
             }
             weightedphi /= Tw;
@@ -701,7 +682,7 @@ if ((cell!=-1) and (*rankptr != -1)){ std::cout << ""; }//std::cout << ""; }//  
     PushToGhost(phitildeDM, phitildeLocalVec, phitildeGlobalVec, INSERT_VALUES);
     if (verbose){SaveDataToFile(cellRange.start, cellRange.end, phitildeDM, phitildeLocalArray, "phitilde", true);}
 
-//MPI_Barrier(PETSC_COMM_WORLD);
+MPI_Barrier(PETSC_COMM_WORLD);
 
 //this is a check to see if phitilde is being recalled correctly.
 //whether the above check is either included or commented out changes the result in this loop
@@ -847,7 +828,6 @@ if ((cell==0) and (*rankptr == 5)){  std::cout << " surfaceforce phitilde " << *
 
     if (verbose){SaveDataToFile(cellRange.start, cellRange.end, xDM, xLocalArray, "x", false);}
     if (verbose){SaveDataToFile(cellRange.start, cellRange.end, yDM, yLocalArray, "y", false);}
-    if (verbose){SaveDataToFile(cellRange.start, cellRange.end, zDM, zLocalArray, "z", false);}
     if (verbose){SaveDataToFile(cellRange.start, cellRange.end, kappaDM, kappaLocalArray, "kappa", true);}
 
     //auxDM (delete asap)
@@ -968,17 +948,15 @@ if ((cell==0) and (*rankptr == 5)){  std::cout << " surfaceforce phitilde " << *
         PetscScalar *nptr; xDMPlexPointLocalRef(nDM, cell, -1, nLocalArray, &nptr);
         PetscScalar *sfxptr; xDMPlexPointLocalRef(sfxDM, cell, -1, sfxLocalArray, &sfxptr);
         PetscScalar *sfyptr; xDMPlexPointLocalRef(sfyDM, cell, -1, sfyLocalArray, &sfyptr);
-        PetscScalar *sfzptr; xDMPlexPointLocalRef(sfzDM, cell, -1, sfzLocalArray, &sfzptr);
         if(*phitildemaskptr > 0.5){
             *sfxptr = process->sigma * *kappaptr * -nptr[0];
             *sfyptr = process->sigma * *kappaptr * -nptr[1];
-            *sfzptr = process->sigma * *kappaptr * -nptr[2];
+            //            sfptr[2] = process->sigma * *kappaptr * -nptr[2];
         }
-        else{ *sfxptr = 0; *sfyptr = 0; *sfzptr = 0; } //sfptr[2]=0; }
+        else{ *sfxptr = 0; *sfyptr = 0; } //sfptr[2]=0; }
     }
     PushToGhost(sfxDM, sfxLocalVec, sfxGlobalVec, INSERT_VALUES);
     PushToGhost(sfyDM, sfyLocalVec, sfyGlobalVec, INSERT_VALUES);
-    PushToGhost(sfzDM, sfzLocalVec, sfzGlobalVec, INSERT_VALUES);
 
     //add to rhs (auxdm copy)
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
@@ -989,7 +967,6 @@ if ((cell==0) and (*rankptr == 5)){  std::cout << " surfaceforce phitilde " << *
 //        PetscScalar *nptr; xDMPlexPointLocalRef(nDM, cell, -1, nLocalArray, &nptr);
         PetscScalar *sfxptr; xDMPlexPointLocalRef(sfxDM, cell, -1, sfxLocalArray, &sfxptr);
         PetscScalar *sfyptr; xDMPlexPointLocalRef(sfyDM, cell, -1, sfyLocalArray, &sfyptr);
-        PetscScalar *sfzptr; xDMPlexPointLocalRef(sfzDM, cell, -1, sfzLocalArray, &sfzptr);
 
         const PetscScalar *euler = nullptr;
         PetscScalar *eulerSource = nullptr;
@@ -998,13 +975,13 @@ if ((cell==0) and (*rankptr == 5)){  std::cout << " surfaceforce phitilde " << *
         auto density = euler[ablate::finiteVolume::CompressibleFlowFields::RHO];
         PetscReal ux = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 0] / density;
         PetscReal uy = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 1] / density;
-        PetscReal uz = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 2] / density;
+//        PetscReal uz = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 2] / density;
         if (PetscAbs(*sfxptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOU] += *sfxptr;}
         if (PetscAbs(*sfyptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOV] += *sfyptr;}
-        if (dim==3){if (PetscAbs(*sfzptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOW] += *sfzptr;}}
+//        if (PetscAbs(sfptr[2]) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOW] += sfptr[2];}
         if (PetscAbs(*sfxptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += *sfxptr * ux;}
         if (PetscAbs(*sfyptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += *sfyptr * uy;}
-        if (dim==3){if (PetscAbs(*sfzptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += *sfzptr * uz;}}
+//        if (PetscAbs(sfptr[2]) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += sfptr[2]*uz;}
 
         PetscScalar *optr3; xDMPlexPointLocalRef(auxDM, cell, ofield3.id, auxArray, &optr3);
         PetscScalar *optr4; xDMPlexPointLocalRef(auxDM, cell, ofield4.id, auxArray, &optr4);
@@ -1014,8 +991,7 @@ PetscScalar *optr6; xDMPlexPointLocalRef(auxDM, cell, ofield6.id, auxArray, &opt
 
         PetscScalar *phitildeptr; xDMPlexPointLocalRef(phitildeDM, cell, -1, phitildeLocalArray, &phitildeptr);
         *optr3 = *phitildeptr;
-        if (dim==3){*optr4 = PetscSqrtReal(PetscSqr(*sfxptr) + PetscSqr(*sfyptr) + PetscSqr(*sfzptr));}
-        if (dim<3){*optr4 = PetscSqrtReal(PetscSqr(*sfxptr) + PetscSqr(*sfyptr));}
+        *optr4 = PetscSqrtReal(PetscSqr(*sfxptr) + PetscSqr(*sfyptr));
 
 
 
@@ -1030,7 +1006,6 @@ PetscScalar *kappaptr; xDMPlexPointLocalRef(kappaDM, cell, -1, kappaLocalArray, 
     if (verbose){
         SaveDataToFile(cellRange.start, cellRange.end, sfxDM, sfxLocalArray, "sfx", true);
         SaveDataToFile(cellRange.start, cellRange.end, sfyDM, sfyLocalArray, "sfy", true);
-        SaveDataToFile(cellRange.start, cellRange.end, sfzDM, sfzLocalArray, "sfz", true);
     }
 
 
@@ -1280,11 +1255,6 @@ PetscScalar *kappaptr; xDMPlexPointLocalRef(kappaDM, cell, -1, kappaLocalArray, 
     DMRestoreLocalVector(sfyDM, &sfyLocalVec);
     DMRestoreGlobalVector(sfyDM, &sfyGlobalVec);
     DMDestroy(&sfyDM);
-
-    VecRestoreArray(sfzLocalVec, &sfzLocalArray);
-    DMRestoreLocalVector(sfzDM, &sfzLocalVec);
-    DMRestoreGlobalVector(sfzDM, &sfzGlobalVec);
-    DMDestroy(&sfzDM);
     
     VecRestoreArray(kappaLocalVec, &kappaLocalArray);
     DMRestoreLocalVector(kappaDM, &kappaLocalVec);
@@ -1330,11 +1300,6 @@ PetscScalar *kappaptr; xDMPlexPointLocalRef(kappaDM, cell, -1, kappaLocalArray, 
     DMRestoreLocalVector(yDM, &yLocalVec);
     DMRestoreGlobalVector(yDM, &yGlobalVec);
     DMDestroy(&yDM);
-
-    VecRestoreArray(zLocalVec, &zLocalArray);
-    DMRestoreLocalVector(zDM, &zLocalVec);
-    DMRestoreGlobalVector(zDM, &zGlobalVec);
-    DMDestroy(&zDM);
 
     VecRestoreArrayRead(locX, &solArray) >> ablate::utilities::PetscUtilities::checkError;
     VecRestoreArray(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;

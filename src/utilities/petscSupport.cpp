@@ -1046,7 +1046,7 @@ PetscErrorCode DMPlexVertexGradFromCell(DM dm, const PetscInt v, Vec data, Petsc
             PetscScalar N[3];
             PetscCall(DMPlexCornerSurfaceAreaNormal(dm, v, star[st], N));
 
-bool periodicfix = true;
+bool periodicfix = false;
 
 if (periodicfix){
 PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.2; PetscReal zmin = 0; PetscReal zmax = 0;
@@ -1124,7 +1124,7 @@ PetscErrorCode DMPlexCellGradFromVertex(DM dm, const PetscInt c, Vec data, Petsc
         PetscCall(DMPlexFaceCentroidOutwardAreaNormal(dm, c, faces[f], NULL, N));
 
 
-bool periodicfix = true;
+bool periodicfix = false;
 
 if (periodicfix){
 
@@ -1228,7 +1228,7 @@ PetscErrorCode DMPlexCellGradFromCell(DM dm, const PetscInt c, Vec data, PetscIn
         PetscCall(DMPlexFaceCentroidOutwardAreaNormal(dm, c, faces[f], centroid, S));
 
 
-bool periodicfix = true;
+bool periodicfix = false;
 
 PetscReal cellvol; PetscReal ccentroid[3]; DMPlexComputeCellGeometryFVM(dm, c, &cellvol, ccentroid, nullptr);
 PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.2; PetscReal zmin = 0; PetscReal zmax = 0;
