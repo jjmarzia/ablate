@@ -352,7 +352,7 @@ void ablate::finiteVolume::FaceInterpolant::ComputeRHS(PetscReal time, Vec locXV
 
     // march over each face
     for (PetscInt f = faceRange.start; f < faceRange.end; f++) {
-        PetscInt face = faceRange.points ? faceRange.points[f] : f;
+        PetscInt face = faceRange.GetPoint(f);
 
         // make sure that this is a valid face
         PetscInt ghost, nsupp, nchild;

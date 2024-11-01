@@ -3,6 +3,9 @@
 ablate::finiteVolume::boundaryConditions::EssentialGhost::EssentialGhost(std::string boundaryName, std::vector<int> labelIds, std::shared_ptr<ablate::mathFunctions::FieldFunction> boundaryFunction,
                                                                          std::string labelName, bool enforceAtFace)
     : Ghost(boundaryFunction->GetName(), boundaryName, labelIds, EssentialGhostUpdate, this, labelName), boundaryFunction(boundaryFunction), enforceAtFace(enforceAtFace) {}
+
+#include <signal.h>
+
 PetscErrorCode ablate::finiteVolume::boundaryConditions::EssentialGhost::EssentialGhostUpdate(PetscReal time, const PetscReal *c, const PetscReal *n, const PetscScalar *a_xI, PetscScalar *a_xG,
                                                                                               void *ctx) {
     PetscFunctionBeginUser;

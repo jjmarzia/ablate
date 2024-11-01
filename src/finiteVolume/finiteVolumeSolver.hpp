@@ -70,8 +70,6 @@ class FiniteVolumeSolver : public solver::CellSolver,
     //! hold the class responsible for compute cell based values;
     std::unique_ptr<CellInterpolant> cellInterpolant = nullptr;
 
-    //! Store an region of all cells not in the ghost for faster iteration
-    std::shared_ptr<domain::Region> solverRegionMinusGhost;
 
     //! Store a dm for mesh characteristics specific to the fvm
     DM meshCharacteristicsDm = nullptr;
@@ -205,14 +203,6 @@ class FiniteVolumeSolver : public solver::CellSolver,
      */
     PetscErrorCode Restore(PetscViewer viewer, PetscInt sequenceNumber, PetscReal time) override;
 
-    /**
-     * Get the cellIS and range over valid cells in this region without ghost cells (boundary or mpi)
-     * @param cellIS
-     * @param pStart
-     * @param pEnd
-     * @param points
-     */
-    void GetCellRangeWithoutGhost(ablate::domain::Range& faceRange) const;
 
     /**
      * Returns first instance of process of type specifed

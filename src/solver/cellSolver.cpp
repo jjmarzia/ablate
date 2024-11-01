@@ -27,16 +27,32 @@ void ablate::solver::CellSolver::RegisterAuxFieldUpdate(ablate::solver::CellSolv
         functionDescription.inputFields.push_back(fieldId.id);
     }
 
-    // Don't add the same field more than once
-    auto location = std::find_if(auxFieldUpdateFunctionDescriptions.begin(), auxFieldUpdateFunctionDescriptions.end(), [&functionDescription](const auto& description) {
-        return functionDescription.auxFields == description.auxFields;
-    });
+    std::size_t i = 0;
+    while ( i < auxFieldUpdateFunctionDescriptions.size()) {
 
-    if (location == auxFieldUpdateFunctionDescriptions.end()) {
-        auxFieldUpdateFunctionDescriptions.push_back(functionDescription);
-    } else {
-        *location = functionDescription;
+      auto otherDescription = auxFieldUpdateFunctionDescriptions.data()[i];
+      auto otherAuxFields = otherDescription.auxFields;
+
+      std::size_t j;
+      for (j = 0; j < functionDescription.auxFields.size(); ++j) {
+        if (std::find(otherAuxFields.begin(), otherAuxFields.end(), functionDescription.auxFields.data()[j]) != otherAuxFields.end()) {
+          // The field exists. Delete it.
+
+          if (otherAuxFields.size() > 1) {
+            throw std::runtime_error("An AUX-field update containing more than one field is being deleted in ablate::solver::CellSolver::RegisterAuxFieldUpdate. This behavior has not been checked.");
+          }
+
+          auxFieldUpdateFunctionDescriptions.erase(auxFieldUpdateFunctionDescriptions.begin() + i);
+          break;
+        }
+      }
+      if (j == functionDescription.auxFields.size()) {
+        // Nothing was removed. Move to the next function description.
+        ++i;
+      }
     }
+
+    auxFieldUpdateFunctionDescriptions.push_back(functionDescription);
 }
 
 void ablate::solver::CellSolver::RegisterSolutionFieldUpdate(ablate::solver::CellSolver::SolutionFieldUpdateFunction function, void* context, const std::vector<std::string>& inputFields) {
@@ -70,17 +86,13 @@ void ablate::solver::CellSolver::UpdateAuxFields(PetscReal time, Vec locXVec, Ve
     // Convert to a dmplex
     DMConvert(GetSubDomain().GetDM(), DMPLEX, &plex) >> utilities::PetscUtilities::checkError;
 
-    // Get the valid cell range over this region
-    ablate::domain::Range cellRange;
-    GetCellRange(cellRange);
-
     // Extract the cell geometry, and the dm that holds the information
     DM dmCell;
     const PetscScalar* cellGeomArray;
     VecGetDM(cellGeomVec, &dmCell) >> utilities::PetscUtilities::checkError;
     VecGetArrayRead(cellGeomVec, &cellGeomArray) >> utilities::PetscUtilities::checkError;
 
-    // extract the low flow and aux fields
+    // extract the low flow fields
     const PetscScalar* locFlowFieldArray;
     VecGetArrayRead(locXVec, &locFlowFieldArray) >> utilities::PetscUtilities::checkError;
 
@@ -108,14 +120,19 @@ void ablate::solver::CellSolver::UpdateAuxFields(PetscReal time, Vec locXVec, Ve
         }
     }
 
-    // March over each cell volume
+    // Get the valid cell range over this region. Need to get all of the cells, not just the interior ones
+    ablate::domain::Range cellRange;
+    GetSubDomain().GetCellRange(nullptr, cellRange);
+
+
+    // March over each cell volume.
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+
+        // Get the cell location
+        const PetscInt cell = cellRange.GetPoint(c);
         PetscFVCellGeom* cellGeom;
         const PetscReal* fieldValues;
         PetscReal* auxValues;
-
-        // Get the cell location
-        const PetscInt cell = cellRange.points ? cellRange.points[c] : c;
 
         DMPlexPointLocalRead(dmCell, cell, cellGeomArray, &cellGeom) >> utilities::PetscUtilities::checkError;
         DMPlexPointLocalRead(plex, cell, locFlowFieldArray, &fieldValues) >> utilities::PetscUtilities::checkError;

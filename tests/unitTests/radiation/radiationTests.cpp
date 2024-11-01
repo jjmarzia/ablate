@@ -180,6 +180,9 @@ TEST_P(RadiationTestFixture, ShouldComputeCorrectSourceTerm) {
                                                                                  GetParam().meshFaces,
                                                                                  GetParam().meshStart,
                                                                                  GetParam().meshEnd,
+
+                                                                                 std::vector<std::string>{},
+
                                                                                  ablate::parameters::MapParameters::Create({{"dm_plex_hash_location", "true"}}));
 
             // Setup the flow data

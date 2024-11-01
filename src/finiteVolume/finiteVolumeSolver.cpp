@@ -7,14 +7,15 @@
 #include "utilities/mathUtilities.hpp"
 #include "utilities/mpiUtilities.hpp"
 #include "utilities/petscUtilities.hpp"
+#include "utilities/petscSupport.hpp"
+#include "compressibleFlowFields.hpp"
 
 ablate::finiteVolume::FiniteVolumeSolver::FiniteVolumeSolver(std::string solverId, std::shared_ptr<domain::Region> region, std::shared_ptr<parameters::Parameters> options,
                                                              std::vector<std::shared_ptr<processes::Process>> processes,
                                                              std::vector<std::shared_ptr<boundaryConditions::BoundaryCondition>> boundaryConditions)
     : CellSolver(std::move(solverId), std::move(region), std::move(options)),
       processes(std::move(processes)),
-      boundaryConditions(std::move(boundaryConditions)),
-      solverRegionMinusGhost(std::make_shared<domain::Region>(solverId + "_minusGhost")) {}
+boundaryConditions(std::move(boundaryConditions)) {}
 
 ablate::finiteVolume::FiniteVolumeSolver::~FiniteVolumeSolver() {
     if (meshCharacteristicsLocalVec) {
@@ -50,10 +51,10 @@ void ablate::finiteVolume::FiniteVolumeSolver::Initialize() {
 
     // add each boundary condition
     for (const auto& boundary : boundaryConditions) {
-        const auto& fieldId = subDomain->GetField(boundary->GetFieldName());
+      const auto& fieldId = subDomain->GetField(boundary->GetFieldName());
+      // Setup the boundary condition
+      boundary->SetupBoundary(subDomain, fieldId.id);
 
-        // Setup the boundary condition
-        boundary->SetupBoundary(subDomain->GetDM(), subDomain->GetDiscreteSystem(), fieldId.id);
     }
 
     // copy over any boundary information from the dm, to the aux dm and set the sideset
@@ -79,7 +80,8 @@ void ablate::finiteVolume::FiniteVolumeSolver::Initialize() {
             PetscDSGetBoundary(flowProblem, bc, nullptr, &type, &name, &label, &numberIds, &ids, &field, nullptr, nullptr, nullptr, nullptr, nullptr) >> utilities::PetscUtilities::checkError;
 
             // If this is for euler and DM_BC_NATURAL_RIEMANN add it to the aux
-            if (type == DM_BC_NATURAL_RIEMANN && field == 0) {
+            auto eulerField = subDomain->GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
+            if (type == DM_BC_NATURAL_RIEMANN && field == eulerField.id) {
                 for (PetscInt af = 0; af < numberAuxFields; af++) {
                     PetscDSAddBoundary(auxProblem, type, name, label, numberIds, ids, af, 0, nullptr, nullptr, nullptr, nullptr, nullptr) >> utilities::PetscUtilities::checkError;
                 }
@@ -87,44 +89,6 @@ void ablate::finiteVolume::FiniteVolumeSolver::Initialize() {
         }
     }
 
-    {  // get the cell is for the solver minus ghost cell
-        // Get the original range
-        ablate::domain::Range cellRange;
-        GetCellRange(cellRange);
-
-        // create a new label
-        auto dm = GetSubDomain().GetDM();
-        DMCreateLabel(dm, solverRegionMinusGhost->GetName().c_str()) >> utilities::PetscUtilities::checkError;
-        DMLabel solverRegionMinusGhostLabel;
-        PetscInt solverRegionMinusGhostValue;
-        domain::Region::GetLabel(solverRegionMinusGhost, dm, solverRegionMinusGhostLabel, solverRegionMinusGhostValue);
-
-        // Get the ghost cell label
-        DMLabel ghostLabel;
-        DMGetLabel(subDomain->GetDM(), "ghost", &ghostLabel) >> utilities::PetscUtilities::checkError;
-
-        // check if it is an exterior boundary cell ghost
-        PetscInt boundaryCellStart;
-        DMPlexGetCellTypeStratum(dm, DM_POLYTOPE_FV_GHOST, &boundaryCellStart, nullptr) >> utilities::PetscUtilities::checkError;
-
-        // march over every cell
-        for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-            PetscInt cell = cellRange.points ? cellRange.points[c] : c;
-
-            // check if it is boundary ghost
-            PetscInt isGhost = -1;
-            if (ghostLabel) {
-                DMLabelGetValue(ghostLabel, cell, &isGhost) >> utilities::PetscUtilities::checkError;
-            }
-
-            PetscInt owned;
-            DMPlexGetPointGlobal(dm, cell, &owned, nullptr) >> utilities::PetscUtilities::checkError;
-            if (owned >= 0 && isGhost < 0 && (boundaryCellStart < 0 || cell < boundaryCellStart)) {
-                DMLabelSetValue(solverRegionMinusGhostLabel, cell, solverRegionMinusGhostValue);
-            }
-        }
-        RestoreRange(cellRange);
-    }
 
     // march over process and link to the new mesh
     for (const auto& process : processes) {
@@ -428,30 +392,18 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::Restore(PetscViewer vie
     PetscFunctionReturn(0);
 }
 
-void ablate::finiteVolume::FiniteVolumeSolver::GetCellRangeWithoutGhost(ablate::domain::Range& faceRange) const {
-    // Get the point range
-    DMLabel solverRegionMinusGhostLabel;
-    PetscInt solverRegionMinusGhostValue;
-    domain::Region::GetLabel(solverRegionMinusGhost, GetSubDomain().GetDM(), solverRegionMinusGhostLabel, solverRegionMinusGhostValue);
-
-    DMLabelGetStratumIS(solverRegionMinusGhostLabel, solverRegionMinusGhostValue, &faceRange.is) >> utilities::PetscUtilities::checkError;
-    if (faceRange.is == nullptr) {
-        // There are no points in this region, so skip
-        faceRange.start = 0;
-        faceRange.end = 0;
-        faceRange.points = nullptr;
-    } else {
-        // Get the range
-        ISGetPointRange(faceRange.is, &faceRange.start, &faceRange.end, &faceRange.points) >> utilities::PetscUtilities::checkError;
-    }
-}
-
 PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeBoundary(PetscReal time, Vec locX, Vec locX_t) {
     PetscFunctionBeginUser;
     auto dm = subDomain->GetDM();
     auto ds = subDomain->GetDiscreteSystem();
     /* Handle non-essential (e.g. outflow) boundary values.  This should be done before the auxFields are updated so that boundary values can be updated */
     PetscCall(ablate::solver::Solver::DMPlexInsertBoundaryValues_Plex(dm, ds, PETSC_FALSE, locX, time, faceGeomVec, cellGeomVec, nullptr));
+
+    // Now apply any boundaryCell conditions
+    for (auto bc : boundaryConditions) {
+      bc->ComputeBoundary(time, locX, locX_t, cellGeomVec);
+    }
+
     PetscFunctionReturn(0);
 }
 
