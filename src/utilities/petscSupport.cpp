@@ -1046,10 +1046,10 @@ PetscErrorCode DMPlexVertexGradFromCell(DM dm, const PetscInt v, Vec data, Petsc
             PetscScalar N[3];
             PetscCall(DMPlexCornerSurfaceAreaNormal(dm, v, star[st], N));
 
-bool periodicfix = false;
+bool periodicfix = true;
 
 if (periodicfix){
-PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.2; PetscReal zmin = 0; PetscReal zmax = 0;
+PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.2; PetscReal zmin = 0; PetscReal zmax = 0.2;
 PetscReal maxNorm = 10*(xmax-xmin)/200; // [10(xmax-xmin)/ Nx] <--> corresponds to 10 cells.
 PetscReal vertexvol; PetscReal vcentroid[3]; DMPlexComputeCellGeometryFVM(dm, v, &vertexvol, vcentroid, nullptr);
 PetscReal cellvol; PetscReal ccentroid[3]; DMPlexComputeCellGeometryFVM(dm, star[st], &cellvol, ccentroid, nullptr);
@@ -1124,11 +1124,11 @@ PetscErrorCode DMPlexCellGradFromVertex(DM dm, const PetscInt c, Vec data, Petsc
         PetscCall(DMPlexFaceCentroidOutwardAreaNormal(dm, c, faces[f], NULL, N));
 
 
-bool periodicfix = false;
+bool periodicfix = true;
 
 if (periodicfix){
 
-PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.2; PetscReal zmin = 0; PetscReal zmax = 0;
+PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.2; PetscReal zmin = 0; PetscReal zmax = 0.2;
 PetscReal maxNorm = 10*(xmax-xmin)/200; // [10(xmax-xmin)/ Nx] <--> corresponds to 10 cells.
 PetscReal centroid[3]; DMPlexComputeCellGeometryFVM(dm, faces[f], nullptr, centroid, nullptr);
 PetscReal ccentroid[3]; DMPlexComputeCellGeometryFVM(dm, c, nullptr, ccentroid, nullptr);
@@ -1228,10 +1228,10 @@ PetscErrorCode DMPlexCellGradFromCell(DM dm, const PetscInt c, Vec data, PetscIn
         PetscCall(DMPlexFaceCentroidOutwardAreaNormal(dm, c, faces[f], centroid, S));
 
 
-bool periodicfix = false;
+bool periodicfix = true;
 
 PetscReal cellvol; PetscReal ccentroid[3]; DMPlexComputeCellGeometryFVM(dm, c, &cellvol, ccentroid, nullptr);
-PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.2; PetscReal zmin = 0; PetscReal zmax = 0;
+PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.2; PetscReal zmin = 0; PetscReal zmax = 0.2;
 PetscReal maxNorm = 10*(xmax-xmin)/200; // [10(xmax-xmin)/ Nx] <--> corresponds to 10 cells.
 
 if (periodicfix){

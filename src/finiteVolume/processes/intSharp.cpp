@@ -523,7 +523,7 @@ PetscReal xn, yn, zn; GetCoordinate3D(dm, dim, neighbor, &xn, &yn, &zn);
                 PetscReal *phin; xDMPlexPointLocalRead(dm, neighbor, phiField.id, solArray, &phin);
                 PetscReal xn, yn, zn; GetCoordinate3D(dm, dim, neighbor, &xn, &yn, &zn);
 
-bool periodicfix = false;
+bool periodicfix = true;
 
 if (periodicfix){
 
@@ -685,7 +685,7 @@ DMPlexVertexGradFromCell(phitildeDM, vertex, phitildeLocalVec, -1, 0, gradphiv);
 
 //temporary fix addressing how multiple layers of neighbors for a periodic domain return coordinates on the opposite side
 
-bool periodicfix = false;
+bool periodicfix = true;
 
 if (periodicfix){
 

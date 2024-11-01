@@ -661,7 +661,7 @@ PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0
                 PetscReal xn, yn, zn; Get3DCoordinate(dm, neighbor, &xn, &yn, &zn);
 
 
-bool periodicfix = false;
+bool periodicfix = true;
 
 if (periodicfix){
 
