@@ -11,7 +11,6 @@
 #include "parameters/emptyParameters.hpp"
 #include "utilities/petscSupport.hpp"
 
-static PetscInt cntSNES = 0;
 #include <signal.h>
 
 #define NOTE0EXIT(S, ...) {PetscFPrintf(MPI_COMM_WORLD, stderr,                                     \
@@ -147,7 +146,7 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::FormFunc
     aF[2] = Y1 * rho * rhoL + Y2 * rho * rhoG - rhoG * rhoL;
     aF[3] = Y1 * eG + Y2 * eL - e;
 
-if (cntSNES==10001) raise(SIGSEGV);
+//printf("%+e\t%+e\t%+e\t%+e\n", rhoG, rhoL, eG, eL);
 
     VecRestoreArrayRead(x, &ax);
     VecRestoreArray(F, &aF);
@@ -199,6 +198,7 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::FormJaco
     MatAssemblyBegin(P, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(P, MAT_FINAL_ASSEMBLY);
     if (J != P) {
+        MatSetValues(J, 4, row, 4, col, v, INSERT_VALUES);
         MatAssemblyBegin(J, MAT_FINAL_ASSEMBLY);
         MatAssemblyEnd(J, MAT_FINAL_ASSEMBLY);
     }
@@ -1316,7 +1316,8 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::StiffenedGasStiffe
       VecDuplicate(x, &r) >> utilities::PetscUtilities::checkError;
 
       MatCreate(PETSC_COMM_SELF, &J) >> utilities::PetscUtilities::checkError;
-      MatSetSizes(J, PETSC_DECIDE, PETSC_DECIDE, 4, 4) >> utilities::PetscUtilities::checkError;
+      MatSetSizes(J, 4, 4, 4, 4) >> utilities::PetscUtilities::checkError;
+      MatSetType(J, MATDENSE) >> utilities::PetscUtilities::checkError; // The KSP fails is this isn't a dense matrix
       MatSetFromOptions(J) >> utilities::PetscUtilities::checkError;
       MatSetUp(J) >> utilities::PetscUtilities::checkError;
 
