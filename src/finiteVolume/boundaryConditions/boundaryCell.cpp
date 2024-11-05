@@ -66,6 +66,7 @@ void ablate::finiteVolume::boundaryConditions::BoundaryCell::SetupBoundary(std::
 
     // Now create the points list
     ISConcatenate(PETSC_COMM_SELF, labelIds.size(), &listISs[0], &pointsIS) >> utilities::PetscUtilities::checkError;
+    ISSortRemoveDups(pointsIS) >> utilities::PetscUtilities::checkError;
 
     for (size_t l = 0; l < labelIds.size(); ++l) {
       ISDestroy(&listISs[l]);
