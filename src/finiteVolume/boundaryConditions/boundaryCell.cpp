@@ -36,12 +36,18 @@ void ablate::finiteVolume::boundaryConditions::BoundaryCell::SetupBoundary(std::
         DMLabel label;
         DMGetLabel(dm, id.c_str(), &label) >> utilities::PetscUtilities::checkError;
 
+        if (!label) {
+          throw std::runtime_error("Label " + id + " can not be found when setting up the boundary conditions.");
+        }
+
         // Get the values this label can take
         PetscInt numValues;
         IS valuesIS;
         const PetscInt *values;
-        DMLabelGetNumValues(label, &numValues) >> utilities::PetscUtilities::checkError;
+
         DMLabelGetNonEmptyStratumValuesIS(label, &valuesIS) >> utilities::PetscUtilities::checkError;
+
+        ISGetSize(valuesIS, &numValues) >> utilities::PetscUtilities::checkError;
         ISGetIndices(valuesIS, &values) >> utilities::PetscUtilities::checkError;
 
         std::vector<IS> subISs(numValues, nullptr);
@@ -53,6 +59,7 @@ void ablate::finiteVolume::boundaryConditions::BoundaryCell::SetupBoundary(std::
           // Remove any points not in the range.
           ISGeneralFilter(subISs[v], pStart, pEnd) >> utilities::PetscUtilities::checkError;
         }
+
         ISRestoreIndices(valuesIS, &values) >> utilities::PetscUtilities::checkError;
         ISDestroy(&valuesIS) >> utilities::PetscUtilities::checkError;
 
