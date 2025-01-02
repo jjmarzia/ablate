@@ -24,15 +24,15 @@ class TwoPhaseEulerAdvection : public Process {
 
    private:
     struct DecodeDataStructGas {
-        PetscReal etot;
-        PetscReal rhotot;
+        PetscReal internalEnergy;
+        PetscReal density;
         PetscReal Yg;
         PetscReal Yl;
-        PetscReal gam1;
-        PetscReal gam2;
-        PetscReal cvg;
-        PetscReal cpl;
-        PetscReal p0l;
+        PetscReal gamG;
+        PetscReal gamL;
+        PetscReal cvG;
+        PetscReal cpL;
+        PetscReal p0L;
     };
     struct DecodeDataStructStiff {
         PetscReal etot;
@@ -121,6 +121,12 @@ class TwoPhaseEulerAdvection : public Process {
         eos::ThermodynamicTemperatureFunction liquidComputeInternalEnergy;
         eos::ThermodynamicTemperatureFunction liquidComputeSpeedOfSound;
         eos::ThermodynamicTemperatureFunction liquidComputePressure;
+
+
+        void MixedDecodeIncompressible(const PetscReal density, const PetscReal internalEnergy, const PetscReal Yg, const PetscReal Yl, PetscReal *rhoG, PetscReal *rhoL, PetscReal *eG, PetscReal *eL);
+
+        void MixedDecodeQuadratic(const PetscReal density, const PetscReal internalEnergy, const PetscReal Yg, const PetscReal Yl, PetscReal *rhoG, PetscReal *rhoL, PetscReal *eG, PetscReal *eL);
+        void MixedDecodeSNES(const PetscReal density, const PetscReal internalEnergy, const PetscReal Yg, const PetscReal Yl, PetscReal *rhoG, PetscReal *rhoL, PetscReal *eG, PetscReal *eL);
 
        public:
         PerfectGasStiffenedGasDecoder(PetscInt dim, const std::shared_ptr<eos::PerfectGas> &perfectGasEos1, const std::shared_ptr<eos::StiffenedGas> &perfectGasEos2);
