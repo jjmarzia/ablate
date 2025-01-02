@@ -376,14 +376,19 @@ void ablate::finiteVolume::CellInterpolant::ComputeFieldGradients(const domain::
             DMLabelGetValue(ghostLabel, face, &ghost);
         }
         DMIsBoundaryPoint(dm, face, &boundary);
-        PetscInt numChildren;
+        PetscInt numChildren, numCells;
+        DMPlexGetSupportSize(dm, face, &numCells);
         DMPlexGetTreeChildren(dm, face, &numChildren, nullptr);
-        if (ghost >= 0 || boundary || numChildren) continue;
+        if (ghost >= 0 || boundary || numChildren || numCells!=2) continue;
 
         // Do a sanity check on the number of cells connected to this face
-        PetscInt numCells;
-        DMPlexGetSupportSize(dm, face, &numCells);
         if (numCells != 2) {
+//PetscFVFaceGeom* fg;
+//DMPlexPointLocalRead(dmFace, face, faceGeometryArray, &fg);
+//printf("%+f\t%+f\n", fg->centroid[0], fg->centroid[1]);
+//printf("cellInterpolant::393\n");
+//exit(0);
+
             throw std::runtime_error("face " + std::to_string(face) + " has " + std::to_string(numCells) + " support points (cells): expected 2");
         }
 
@@ -475,6 +480,9 @@ void ablate::finiteVolume::CellInterpolant::ComputeFieldGradients(const domain::
     DMRestoreGlobalVector(dmGrad, &gradGlobVec) >> utilities::PetscUtilities::checkError;
 }
 
+
+static PetscInt cnt = 0;
+
 void ablate::finiteVolume::CellInterpolant::ComputeFluxSourceTerms(DM dm, PetscDS ds, PetscInt totDim, const PetscScalar* xArray, DM dmAux, PetscDS dsAux, PetscInt totDimAux,
                                                                    const PetscScalar* auxArray, DM faceDM, const PetscScalar* faceGeomArray, DM cellDM, const PetscScalar* cellGeomArray,
                                                                    std::vector<DM>& dmGrads, std::vector<const PetscScalar*>& locGradArrays, PetscScalar* locFArray,
@@ -514,6 +522,7 @@ void ablate::finiteVolume::CellInterpolant::ComputeFluxSourceTerms(DM dm, PetscD
             fluxComponentSize[fun].push_back(field.numberComponents);
             fluxId[fun].push_back(field.id);
         }
+
         for (std::size_t f = 0; f < rhsFunctions[fun].inputFields.size(); f++) {
             uOff[fun].push_back(uOffTotal[rhsFunctions[fun].inputFields[f]]);
         }
@@ -536,6 +545,13 @@ void ablate::finiteVolume::CellInterpolant::ComputeFluxSourceTerms(DM dm, PetscD
     DMLabel regionLabel = nullptr;
     PetscInt regionValue = 0;
     domain::Region::GetLabel(solverRegion, subDomain->GetDM(), regionLabel, regionValue);
+
+//PetscMPIInt  rank;
+//MPI_Comm_rank(PETSC_COMM_WORLD, &rank) >> ablate::utilities::PetscUtilities::checkError;
+
+++cnt;
+
+//static PetscReal flux3104 = 0;
     // March over each face in this region
     for (PetscInt f = faceRange.start; f < faceRange.end; ++f) {
         const PetscInt face = faceRange.points ? faceRange.points[f] : f;
