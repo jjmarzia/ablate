@@ -192,7 +192,7 @@ void ablate::finiteVolume::FiniteVolumeSolver::Initialize() {
     DMRestoreLocalVector(subDomain->GetDM(), &locXVec) >> utilities::PetscUtilities::checkError;
 }
 
-//static PetscInt cnt = 0;
+static PetscInt cnt = 0;
 
 PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(PetscReal time, Vec locXVec, Vec locFVec) {
     PetscFunctionBeginUser;
@@ -292,7 +292,33 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
 //}
 //}
 
+{
+  PetscScalar* locFArray;
+  VecGetArray(locFVec, &locFArray) >> utilities::PetscUtilities::checkError;
+  ++cnt;
+  DM dm = subDomain->GetDM();
+  PetscMPIInt  rank;
+  MPI_Comm_rank(PETSC_COMM_WORLD, &rank) >> ablate::utilities::PetscUtilities::checkError;
+  PetscReal maxF[5] = {-1, -1, -1, -1, -1};
+  for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+    PetscInt cell = cellRange.GetPoint(c);
+    PetscScalar *f = nullptr;
+    DMPlexPointLocalFieldRef(dm, cell, 0, locFArray, &f) >> utilities::PetscUtilities::checkError;
+    for (PetscInt i = 0; i < 4; ++i) {
+      maxF[i] = PetscMax(PetscAbsReal(f[i]), maxF[i]);
+    }
 
+    DMPlexPointLocalFieldRef(dm, cell, 1, locFArray, &f) >> utilities::PetscUtilities::checkError;
+    maxF[4] = PetscMax(PetscAbsReal(f[0]), maxF[4]);
+  }
+  VecRestoreArray(locFVec, &locFArray);
+
+  MPIU_Allreduce(MPI_IN_PLACE, maxF, 5, MPIU_REAL, MPIU_MAX, PETSC_COMM_WORLD);
+
+  if (cnt%100==0 && rank==0) {
+    printf("%10ld\t%+e\t%+e\t%+e\t%+e\t%+e\n", cnt, maxF[0], maxF[1], maxF[2], maxF[3], maxF[4]);
+  }
+}
     RestoreRange(faceRange);
     RestoreRange(cellRange);
 
@@ -302,6 +328,8 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
         PetscCall(rhsFunction.first(*this, subDomain->GetDM(), time, locXVec, locFVec, rhsFunction.second));
     }
     EndEvent();
+
+
 
     PetscFunctionReturn(0);
 }
