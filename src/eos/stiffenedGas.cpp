@@ -186,8 +186,11 @@ PetscErrorCode ablate::eos::StiffenedGas::PressureTemperatureFunction(const Pets
     auto functionContext = (FunctionContext *)ctx;
 
     PetscReal density = conserved[functionContext->eulerOffset + ablate::finiteVolume::CompressibleFlowFields::RHO];
-    PetscReal internalEnergy = T * functionContext->parameters.Cp / functionContext->parameters.gamma + functionContext->parameters.p0 / density;
-    *p = (functionContext->parameters.gamma - 1.0) * density * internalEnergy - functionContext->parameters.gamma * functionContext->parameters.p0;
+
+    PetscReal gamma = functionContext->parameters.gamma;
+    PetscReal cp = functionContext->parameters.Cp;
+    *p = (gamma-1)*density*cp*T/gamma - functionContext->parameters.p0;
+
     PetscFunctionReturn(0);
 }
 
@@ -316,8 +319,9 @@ PetscErrorCode ablate::eos::StiffenedGas::SpeedOfSoundTemperatureFunction(const 
     auto functionContext = (FunctionContext *)ctx;
 
     PetscReal density = conserved[functionContext->eulerOffset + ablate::finiteVolume::CompressibleFlowFields::RHO];
-    PetscReal internalEnergy = T * functionContext->parameters.Cp / functionContext->parameters.gamma + functionContext->parameters.p0 / density;
-    PetscReal p = (functionContext->parameters.gamma - 1.0) * density * internalEnergy - functionContext->parameters.gamma * functionContext->parameters.p0;
+    PetscReal p;
+    PetscCall(PressureTemperatureFunction(conserved, T, &p, ctx));
+
     *a = PetscSqrtReal(functionContext->parameters.gamma * (p + functionContext->parameters.p0) / density);
     PetscFunctionReturn(0);
 }

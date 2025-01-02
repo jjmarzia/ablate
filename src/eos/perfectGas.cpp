@@ -169,7 +169,7 @@ PetscErrorCode ablate::eos::PerfectGas::SpeedOfSoundTemperatureFunction(const Pe
     PetscReal p;
     PetscCall(PressureTemperatureFunction(conserved, T, &p, ctx));
 
-    *speedOfSound = PetscSqrtReal(functionContext->parameters.gamma * (p) / density);
+    *speedOfSound = PetscSqrtReal(functionContext->parameters.gamma * p / density);
     PetscFunctionReturn(0);
 }
 PetscErrorCode ablate::eos::PerfectGas::SpeciesSensibleEnthalpyFunction(const PetscReal *conserved, PetscReal *hi, void *ctx) {
