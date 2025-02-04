@@ -195,3 +195,13 @@ PetscErrorCode DMProjectFunctionLocalMixedCells(DM, PetscReal, PetscErrorCode (*
  * Note: This is an extension of ComputeGradientFVM in plexgeometry with the addition of label information
  */
 PetscErrorCode ComputeGradientFVM(DM dm, DMLabel regionLabel, PetscInt regionValue, PetscFV fvm, Vec faceGeometry, Vec cellGeometry, DM* dmGrad);
+
+/**
+ * The outward facing surface area normal
+ * @param dm - The DM of the data stored in vec
+ * @param cell - The cell to return the outward normal to
+ * @param face - Face of the cell
+ * @param centroid - Centroid of the face
+ * @param n - Outward facing surface area normal
+ */
+PetscErrorCode DMPlexFaceCentroidOutwardAreaNormal(DM dm, PetscInt cell, PetscInt face, PetscReal *centroid, PetscReal *n);
