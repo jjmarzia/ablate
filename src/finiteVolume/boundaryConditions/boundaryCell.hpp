@@ -27,6 +27,8 @@ class BoundaryCell : public BoundaryCondition {
     PetscInt fieldSize = -1;
 
     virtual void updateFunction(PetscReal, const PetscReal*, PetscScalar*) = 0;
+    virtual void updateFunction(PetscReal, const PetscReal*, PetscScalar*, PetscInt*, PetscInt*){throw std::logic_error("this BC isn't asking for petscint point or petscint fieldid"); }
+
 
    public:
 

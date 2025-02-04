@@ -184,10 +184,20 @@ PetscErrorCode ablate::eos::StiffenedGas::PressureFunction(const PetscReal *cons
 PetscErrorCode ablate::eos::StiffenedGas::PressureTemperatureFunction(const PetscReal *conserved, PetscReal T, PetscReal *p, void *ctx) {
     PetscFunctionBeginUser;
     auto functionContext = (FunctionContext *)ctx;
-
+//T=300;
     PetscReal density = conserved[functionContext->eulerOffset + ablate::finiteVolume::CompressibleFlowFields::RHO];
-    PetscReal internalEnergy = T * functionContext->parameters.Cp / functionContext->parameters.gamma + functionContext->parameters.p0 / density;
-    *p = (functionContext->parameters.gamma - 1.0) * density * internalEnergy - functionContext->parameters.gamma * functionContext->parameters.p0;
+
+//density=998.23; //if you fix this then things work fine
+
+//    PetscReal internalEnergy = T * functionContext->parameters.Cp / functionContext->parameters.gamma + functionContext->parameters.p0 / density;
+//if ((abs(T-300) > 1e-4) or (abs(density-998.23) > 1e-4)){std::cout << "eos stiffened T density " << T << " " << density << "\n";}
+//    *p = (functionContext->parameters.gamma - 1.0) * density * internalEnergy - functionContext->parameters.gamma * functionContext->parameters.p0;
+// *p=1e5 + 0*internalEnergy;
+
+    PetscReal gamma = functionContext->parameters.gamma;
+    PetscReal cp = functionContext->parameters.Cp;
+    *p = (gamma-1)*density*cp*T/gamma - functionContext->parameters.p0;
+
     PetscFunctionReturn(0);
 }
 
@@ -316,8 +326,12 @@ PetscErrorCode ablate::eos::StiffenedGas::SpeedOfSoundTemperatureFunction(const 
     auto functionContext = (FunctionContext *)ctx;
 
     PetscReal density = conserved[functionContext->eulerOffset + ablate::finiteVolume::CompressibleFlowFields::RHO];
-    PetscReal internalEnergy = T * functionContext->parameters.Cp / functionContext->parameters.gamma + functionContext->parameters.p0 / density;
-    PetscReal p = (functionContext->parameters.gamma - 1.0) * density * internalEnergy - functionContext->parameters.gamma * functionContext->parameters.p0;
+//    PetscReal internalEnergy = T * functionContext->parameters.Cp / functionContext->parameters.gamma + functionContext->parameters.p0 / density;
+//    PetscReal p = (functionContext->parameters.gamma - 1.0) * density * internalEnergy - functionContext->parameters.gamma * functionContext->parameters.p0;
+
+    PetscReal p;
+    PetscCall(PressureTemperatureFunction(conserved, T, &p, ctx));
+
     *a = PetscSqrtReal(functionContext->parameters.gamma * (p + functionContext->parameters.p0) / density);
     PetscFunctionReturn(0);
 }

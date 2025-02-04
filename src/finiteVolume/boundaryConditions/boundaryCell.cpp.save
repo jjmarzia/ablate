@@ -44,7 +44,7 @@ void ablate::finiteVolume::boundaryConditions::BoundaryCell::SetupBoundary(std::
         PetscInt numValues;
         IS valuesIS;
         const PetscInt *values;
-//        DMLabelGetNumValues(label, &numValues) >> utilities::PetscUtilities::checkError;
+        DMLabelGetNumValues(label, &numValues) >> utilities::PetscUtilities::checkError;
         DMLabelGetNonEmptyStratumValuesIS(label, &valuesIS) >> utilities::PetscUtilities::checkError;
         ISGetSize(valuesIS, &numValues) >> utilities::PetscUtilities::checkError;
         ISGetIndices(valuesIS, &values) >> utilities::PetscUtilities::checkError;
@@ -112,14 +112,11 @@ void ablate::finiteVolume::boundaryConditions::BoundaryCell::ComputeBoundary(Pet
 
     // zerograd wants the fieldID and the point ID, whereas essentialboundary only cares about the coordinate and the time.
     // the dynamic cast basically checks of the object updateFunction belongs to zerogradientboundary or not
-//    if (auto *iszerograd = dynamic_cast<zeroGradientBoundary*>(this)) {
-//        iszerograd->updateFunction(points[p], field.id, ); //and dmData and array?
-//    } else { 
+    if (auto *iszerograd = dynamic_cast<zeroGradientBoundary*>(this)) {
+        iszerograd->updateFunction(time, cg->centroid, vals, points[p], field.id); //and dmData and array?
+    } else {
         updateFunction(time, cg->centroid, vals);
-//    }
-
-  //  VecGetDM(locX, &dmData) >> utilities::PetscUtilities::checkError;
-
+    }
 
       //updateFunction(time, cg->centroid, vals); //old
 

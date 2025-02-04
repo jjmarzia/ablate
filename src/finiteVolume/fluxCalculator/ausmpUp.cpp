@@ -39,10 +39,21 @@ ablate::finiteVolume::fluxCalculator::Direction ablate::finiteVolume::fluxCalcul
     if (m12 > 0) {
         direction = LEFT;
         *massFlux = a12 * m12 * rhoL;
+//std::cout<<"fluxcalc LEFT (m12>0) " << uL << " " << uR << " " << a12 << " " << aL << " " << aR << " " << pgsAlpha << " " << m12 << " " << rhoL<<"\n";
     } else {
         direction = RIGHT;
         *massFlux = a12 * m12 * rhoR;
+//std::cout<<"fluxcalc RIGHT (m12<0) " << uL << " " << uR << " " << a12 << " " << aL << " " << aR << " " << pgsAlpha << " " << m12 << " " << rhoR<<"\n";
+
+/*if (abs(*massFlux) < 1e-5 && abs(*massFlux) != 0){
+std::cout << "slightly off " << *massFlux << " ";
+*massFlux = std::round(abs(*massFlux) * 1e6) / 1e6;
+std::cout << "new " << *massFlux << "\n";
+}*/
+
     }
+
+//std::cout << "mdot m12 aL aR rhoL rhoR uL uR a12 ML MR M0 fa Mp rho12 pR pL " << *massFlux << " " << m12  << " " << aL  << " " << aR << " " << rhoL  << " " << rhoR << " " <<  uL << " " << uR << " " << mL  << " " << mR << " " << PetscMin(1.0, PetscSqrtReal(PetscMax(mBar2, PetscSqr(mInf))))  << " " << fa  << " " << (Kp / fa) * PetscMax(1.0 - (sigma * mBar2), 0) * (pR - pL) / (rho12 * a12 * a12 * pgsAlpha * pgsAlpha) << " " << rho12 << " " << pR << " " << pL << "\n";
 
     // Pressure
     if (p12) {

@@ -16,9 +16,10 @@ class Neumann : public Ghost {
      * Uses linear interpolation to force the value at the face
      */
     const bool enforceAtFace;
+    const bool zeroMomentum;
 
    public:
-    Neumann(std::string boundaryName, std::vector<int> labelId, std::shared_ptr<ablate::mathFunctions::FieldFunction> boundaryFunction, std::string labelName = {}, bool enforceAtFace = false);
+    Neumann(std::string boundaryName, std::vector<int> labelId, std::shared_ptr<ablate::mathFunctions::FieldFunction> boundaryFunction, std::string labelName = {}, bool enforceAtFace = false, bool zeroMomentum = false);
 };
 }  // namespace ablate::finiteVolume::boundaryConditions
 #endif  // ABLATELIBRARY_ESSENTIALGHOST_HPP

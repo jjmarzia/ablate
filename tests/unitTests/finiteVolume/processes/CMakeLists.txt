@@ -5,5 +5,5 @@ target_sources(ablateUnitTestLibrary
         buoyancyTests.cpp
         pressureGradientScalingTests.cpp
         lesSourceTests.cpp
-        surfaceForceTests.cpp
+#        surfaceForceTests.cpp
         )

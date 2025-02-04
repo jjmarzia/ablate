@@ -100,6 +100,7 @@ void ablate::finiteVolume::processes::NavierStokesTransport::Setup(ablate::finit
     }
 }
 
+#include <signal.h>
 PetscErrorCode ablate::finiteVolume::processes::NavierStokesTransport::AdvectionFlux(PetscInt dim, const PetscFVFaceGeom* fg, const PetscInt* uOff, const PetscScalar* fieldL,
                                                                                      const PetscScalar* fieldR, const PetscInt* aOff, const PetscScalar* auxL, const PetscScalar* auxR,
                                                                                      PetscScalar* flux, void* ctx) {
@@ -451,7 +452,7 @@ double ablate::finiteVolume::processes::NavierStokesTransport::ComputeViscousDif
     return dtMin;
 }
 
-static const PetscFVFaceGeom* debugFG;
+//static const PetscFVFaceGeom* debugFG;
 
 PetscErrorCode ablate::finiteVolume::processes::NavierStokesTransport::DiffusionFlux(PetscInt dim, const PetscFVFaceGeom* fg, const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar field[],
                                                                                      const PetscScalar grad[], const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar aux[],
@@ -468,9 +469,11 @@ PetscErrorCode ablate::finiteVolume::processes::NavierStokesTransport::Diffusion
     flowParameters->muFunction.function(field, aux[aOff[T]], &mu, flowParameters->muFunction.context.get());
     PetscReal k = 0.0;
     flowParameters->kFunction.function(field, aux[aOff[T]], &k, flowParameters->kFunction.context.get());
-debugFG = fg;
+//debugFG = fg;
     // Compute the stress tensor tau
-    PetscReal tau[9];  // Maximum size without symmetry
+//    PetscReal tau[9];  // Maximum size without symmetry
+    PetscReal tau[9] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};  // Maximum size without symmetry
+
     PetscCall(CompressibleFlowComputeStressTensor(dim, mu, gradAux + aOff_x[VEL], tau));
 
     // for each velocity component

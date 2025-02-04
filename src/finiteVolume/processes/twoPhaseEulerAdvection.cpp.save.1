@@ -1,4 +1,5 @@
 #include "twoPhaseEulerAdvection.hpp"
+
 #include <utility>
 #include "eos/perfectGas.hpp"
 #include "eos/stiffenedGas.hpp"
@@ -373,12 +374,13 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Multipha
 
     for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
         const PetscInt cell = cellRange.GetPoint(i);
-
         PetscScalar *allFields = nullptr;
         DMPlexPointLocalRef(dm, cell, flowArray, &allFields) >> utilities::PetscUtilities::checkError;
         auto density = allFields[ablate::finiteVolume::CompressibleFlowFields::RHO];
         PetscReal velocity[3];
-        for (PetscInt d = 0; d < dim; d++) {            velocity[d] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] / density;        }
+        for (PetscInt d = 0; d < dim; d++) {
+            velocity[d] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] / density;
+        }
         // Decode state
         //         PetscReal density;
         PetscReal densityG;
@@ -395,62 +397,10 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Multipha
         PetscReal p;  // pressure equilibrium
         PetscReal t;
         PetscReal alpha;
-
-/* PetscReal cellvol, centroid[3], normal[3];
-DMPlexComputeCellGeometryFVM(dm, cell, &cellvol, centroid, normal);
-
-PetscReal upx=10000; //1.8;
-PetscReal downx=-upx;
-PetscReal upy=upx;
-PetscReal downy=downx;
-
-bool isoutside = ((centroid[0] > upx) or (centroid[0] < downx) or (centroid[1] > upy) or (centroid[1] < downy));
-if (isoutside){
-//density=998.23;
-densityG=1.1614401858304297;
-//densityL=998.23;
-densityL = density = densityG;
-
-normalVelocity=0;
-velocity[0]=0.0;
-if (dim>1){velocity[1] = 0.0;}
-if (dim>2){velocity[2] = 0.0;}
-
-//PetscReal waterGamma = 1.932;
-//PetscReal waterCp = 8095.08;
-PetscReal airCv = 717.5;
-PetscReal airGamma = 1.4;
-
-PetscReal waterGamma=airGamma;
-PetscReal waterCp = airCv/airGamma;
-
-t=300;
-p=1e5;
-PetscReal waterP0 = ( (waterGamma - 1)*densityL*waterCp*t/waterGamma - p);
-
-internalEnergy= (waterCp/waterGamma)*t + waterP0/densityL;
-internalEnergyG= airCv*t;
-internalEnergyL= (waterCp/waterGamma)*t + waterP0/densityL;
-aG=PetscSqrtReal(airGamma*p/densityG);
-aL=PetscSqrtReal(waterGamma*(p + waterP0)/densityL);
-MG=0;
-ML=0;
-alpha=0;
-} */
-
-//else {
-decoder->DecodeTwoPhaseEulerState(dim, uOff, allFields, norm, &density, &densityG, &densityL, &normalVelocity, velocity, &internalEnergy, &internalEnergyG, &internalEnergyL, &aG, &aL, &MG, &ML, &p, &t, &alpha);
-//}
-//std::cout <<"prestage velocity 0 1 "<<velocity[0] << " "<<velocity[1] << "\n";
-//    if (PetscAbs(velocity[0]-10) > 1e-1) {
-//      throw std::runtime_error("TEMP RUNTIME ERROR: At this exact line in MultiphaseFlowPreStage velocity is wrong.\n");
-//    }
-
-
-// decoder->DecodeTwoPhaseEulerState(dim, uOff, allFields, norm, &density, &densityG, &densityL, &normalVelocity, velocity, &internalEnergy, &internalEnergyG, &internalEnergyL, &aG, &aL, &MG, &ML, &p, &t, &alpha);
-allFields[uOff[0]] = alpha;  // sets volumeFraction field, does every iteration of time step (euler=1, rk=4)
-
-
+        decoder->DecodeTwoPhaseEulerState(
+            dim, uOff, allFields, norm, &density, &densityG, &densityL, &normalVelocity, velocity, &internalEnergy, &internalEnergyG, &internalEnergyL, &aG, &aL, &MG, &ML, &p, &t, &alpha);
+        // maybe save other values for use later, would interpolation to the face be the same as calculating at face?
+        allFields[uOff[0]] = alpha;  // sets volumeFraction field, does every iteration of time step (euler=1, rk=4)
 //PetscReal x[3];
 //DMPlexComputeCellGeometryFVM(dm, cell, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
 //fprintf(f1, "%.16e\t%.16e\t%.16e\t%.16e\t%.16e\t%.16e\t%.16e\t%.16e\t%.16e\n", x[0], x[1], alpha, t, p, densityG, densityL, internalEnergyG, internalEnergyL);
@@ -554,11 +504,6 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Compress
     PetscReal norm[3];
     NormVector(dim, fg->normal, norm);
     const PetscReal areaMag = MagVector(dim, fg->normal);
-
-/*if( (abs(fg->normal[0])>0.00166667) or (abs(fg->normal[1])>0.00166667)){
-std::cout << "norm " << norm[0] << " "<< norm[1] << " "<<norm[2]<<"\n";
-std::cout << "fgnormal " << fg->normal[0] << " "<< fg->normal[1] << " "<<fg->normal[2]<<"\n";
-}*/
 
     // Decode left and right states
     PetscReal densityL = 0.0;
@@ -685,8 +630,6 @@ std::cout << "fgnormal " << fg->normal[0] << " "<< fg->normal[1] << " "<<fg->nor
     } */
 
  //Calculate total flux
-
-/*
 PetscReal massFluxM = 0.0, p12M = 0.0;
 fluxCalculator::Direction directionM = fluxCalculator::Direction::NA;
 PetscReal density_L = densityG_L*alphaL + densityL_L*(1-alphaL);
@@ -703,18 +646,16 @@ twoPhaseEulerAdvection->fluxCalculatorGasGas->GetFluxCalculatorContext(), normal
     PetscReal velMagL = MagVector(dim, velocityL);
     PetscReal velMagR = MagVector(dim, velocityR);
 
-//debug that is F_v/F_p small --> F_v=0
-//PetscReal epsilon = 1e-8;
-//if((massFluxM*velMagL/p12M < epsilon) and (massFluxM*velMagR/p12M < epsilon)){
-//if (( PetscAbs(alphaR + alphaL)/2 > 0.1  ) and ( PetscAbs(alphaR + alphaL)/2 < 0.9  )){std::out << "massFluxM  " << massFluxM<<"\n";}
-//massFluxM = 0;
-//}
+//debug of F_v/F_p < \epsilon --> F_v = 0
+PetscReal epsilon = 1e-8;
+if((massFluxM*velMagL/p12M < epsilon) and (massFluxM*velMagR/p12M < epsilon)){
+if (( PetscAbs(alphaR + alphaL)/2 > 0.1  ) and ( PetscAbs(alphaR + alphaL)/2 < 0.9  )){std::cout << "massFluxM  " << massFluxM<<"\n";}
+massFluxM = 0;
+}
 
-//debug that's \nabla p12/p12 small --> F_p=0
+//debug of gradp/p < \epsilon --> F_p = 0
 
-
-
-//if (alphaR < 0.5001){ std::out << "massfluxM " << massFluxM << "\n"; }
+//if (alphaR < 0.5001){ std::cout << "massfluxM " << massFluxM << "\n"; }
 
 flux[CompressibleFlowFields::RHO] = massFluxM*areaMag;
 flux[CompressibleFlowFields::RHOE] = 0.0;
@@ -764,105 +705,12 @@ PetscReal nxp = (p12M) * fg->normal[n];
 for (PetscInt n = 0; n < dim; n++) {
  PetscReal rhouun = 0.5 * (velocityL[n] + velocityR[n]) * areaMag * (massFluxM);
 PetscReal nxp = (p12M) * fg->normal[n];
-//if (rhouun/nxp < epsilon){rhouun = 0;}
+//if (rhouun/nxp < epsilon){rhouun = 0;}*/
 
      flux[CompressibleFlowFields::RHOU + n] += rhouun + nxp; // 0.5 * (velocityL[n] + velocityR[n]) * areaMag * (massFluxM) + (p12M) * fg->normal[n];
 }
 
-} */
-
-    // Blended speed of sound
-//    const PetscInt aR = 1/(alphaR/aG_R + (1-alphaR)/aL_R);
-//    const PetscInt aL = 1/(alphaL/aG_L + (1-alphaL)/aL_L);
-
-    const PetscReal aR = 1/(alphaR/aG_R + (1-alphaR)/aL_R);
-    const PetscReal aL = 1/(alphaL/aG_L + (1-alphaL)/aL_L);
-
-    PetscReal massFlux = 0.0, p12 = 0.0;
-//std::cout << "this is mixture aka CompressibleFlowComputeEulerFlux\n";
-//std::cout << "CFCEF vxL vxR vyL vyR " << velocityL[0] << " "<< velocityR[0] << " "<< velocityL[1] << " "<< velocityR[1] << "\n";
-//EULER ROUNDED AL,AR
-    fluxCalculator::Direction direction = twoPhaseEulerAdvection->fluxCalculatorGasGas->GetFluxCalculatorFunction()(
-        twoPhaseEulerAdvection->fluxCalculatorGasGas->GetFluxCalculatorContext(), normalVelocityL, aL, densityL, pL, normalVelocityR, aR, densityR, pR, &massFlux, &p12);
-
-
-/*if ((PetscAbs(massFlux-0) < 1e-1) and (PetscAbs(massFlux-0) != 0)){
-massFlux = abs(massFlux);
-massFlux=0;
-direction = fluxCalculator::NA;
-}*/ //we need this?
-
-//std::cout <<"p12 old " << p12 << " ";
-//p12 = std::round(p12 / 1000) * 1000;
-
-//p12=1e5; //we need this?
-
-//std::cout <<"p12 new " << p12 << "\n";
-
-//    if (PetscAbs(p12-100000) > 1e-1) {
-//      throw std::runtime_error("TEMP RUNTIME ERROR: At this exact line in CompressibleFlowComputeEulerFlux p12 is wrong.\n");
-//    }
-
-//std::cout << "massflux " << massFlux<<"\n";
-//    if ((PetscAbs(massFlux-0) < 1e-1) and (PetscAbs(massFlux-0) != 0)) {
-//      throw std::runtime_error("TEMP RUNTIME ERROR: At this exact line in CompressibleFlowComputeEulerFlux massFlux is wrong.\n");
-//    }
-
-
-
-//debug that's just rounding stuff
-//PetscReal p12old = p12; PetscReal p12new = std::round(p12 / 1000) * 1000; p12 = p12new; std::out << "p12old  p12new" << p12old << "  " << p12new << "\n";
-
-//PetscReal massFluxold = massFlux;
-
-// -->
-// PetscReal massFluxnew = std::round(massFlux * 1e6) / 1e6; massFlux = massFluxnew; //std::out << "massFluxold  massFluxnew   " << massFluxold << "  " << massFluxnew << "\n";
-
-//strict fixing
-//p12=1e5;
-//massFlux=0;
-
-//debug that's F_v/F_p small --> F_v=0
-//PetscReal epsilon = 1e-8;
-//if((massFluxM*velMagL/p12M < epsilon) and (massFluxM*velMagR/p12M < epsilon)){
-//if (( PetscAbs(alphaR + alphaL)/2 > 0.1  ) and ( PetscAbs(alphaR + alphaL)/2 < 0.9  )){std::out << "massFluxM  " << massFluxM<<"\n";}
-//massFluxM = 0;
-//}
-
-//debug that's \nabla p12/p12 small --> F_p=0
-
-
-    // Calculate total flux
-    PetscReal vel[3] = {0.0, 0.0, 0.0};
-    PetscReal internalEnergy = 0.0, density = 0.0;
-
-    if (direction == fluxCalculator::LEFT) {
-        internalEnergy = internalEnergyL;
-        density = densityL;
-        PetscArraycpy(vel, velocityL, dim);
-    } else if (direction == fluxCalculator::RIGHT) {
-        internalEnergy = internalEnergyR;
-        density = densityR;
-        PetscArraycpy(vel, velocityR, dim);
-    } else {
-        internalEnergy = 0.5*(internalEnergyL + internalEnergyR);
-        density = 0.5*(densityL + densityR);
-        for (PetscInt d = 0; d < dim; d++) vel[d] = 0.5*(velocityL[d] + velocityR[d]);
-    }
-
-//    if (PetscAbs(vel[0]-10) > 1) {
-//std::cout << "rogue velocity " << vel[0] << "\n";
-//      throw std::runtime_error("TEMP RUNTIME ERROR: At this exact line in CompressibleFlowComputeEulerFlux velocity is wrong.\n");
-//    }
-
-    PetscReal velMag = MagVector(dim, vel);
-    PetscReal H = internalEnergy + 0.5 * velMag * velMag + p12 / density;
-
-    flux[CompressibleFlowFields::RHO] = massFlux * areaMag;
-    flux[CompressibleFlowFields::RHOE] = H * massFlux * areaMag;
-    for (PetscInt n = 0; n < dim; n++) {
-        flux[CompressibleFlowFields::RHOU + n] = vel[n] * areaMag * massFlux + p12 * fg->normal[n];
-    }
+}
 
     // gas interface
 //    if (alphaGG > PETSC_SMALL) {
@@ -1079,22 +927,15 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Compress
     PetscReal massFlux;
     PetscReal p12;
 
-//std::cout << "this is VOF aka CompressibleFlowComputeVFFlux\n";
     // calculate gas sub-area of face (stratified flow model)
-
-//VFFLUX NOT ROUNDED AL,AR
     fluxCalculator::Direction directionG = twoPhaseEulerAdvection->fluxCalculatorGasGas->GetFluxCalculatorFunction()(
         twoPhaseEulerAdvection->fluxCalculatorGasGas->GetFluxCalculatorContext(), normalVelocityL, aG_L, densityG_L, pL, normalVelocityR, aG_R, densityG_R, pR, &massFlux, &p12);
 
 
-//    PetscReal velMagL = MagVector(dim, velocityL);
-//    PetscReal velMagR = MagVector(dim, velocityR);
-//PetscReal epsilon = 1e-5;
-//if((massFlux*velMagL/p12 < epsilon) and (massFlux*velMagR/p12 < epsilon)){ massFlux = 0;}
-//PetscReal massFluxnew = std::round(massFlux * 1e6) / 1e6; massFlux = massFluxnew;
-//p12=1e5;
-//massFlux=0;
-
+    PetscReal velMagL = MagVector(dim, velocityL);
+    PetscReal velMagR = MagVector(dim, velocityR);
+PetscReal epsilon = 1e-5;
+if((massFlux*velMagL/p12 < epsilon) and (massFlux*velMagR/p12 < epsilon)){ massFlux = 0;}
 
     if (directionG == fluxCalculator::LEFT) {
         flux[0] = massFlux * areaMag * alphaL;
@@ -1786,7 +1627,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffene
     *aG = (PetscReal)sqrtq((gammaG - 1.0q)*gammaG*cvG*TG);
 
 if (alphaG < 0.5001){
-//std::out << "alpha rho rhoL rhoG Yl Yg pL pG  " << alphaG << " " << density << " " << rhoL << " " << rhoG << " " << Yl << " " << Yg << " " << pL << " " << pG << "\n";
+//std::cout << "alpha rho rhoL rhoG Yl Yg pL pG  " << alphaG << " " << density << " " << rhoL << " " << rhoG << " " << Yl << " " << Yg << " " << pL << " " << pG << "\n";
 //printf("alpha rho rhoL rhoG Yl Yg pL pG  %Qf %Qf %Qf %Qf %Qf %Qf %Qf %Qf\n", 
  //      alphaG, density, rhoL, rhoG, Yl, Yg, pL, pG);
 printf("alpha rho rhoL rhoG Yl Yg pL pG  %f %f %f %f %f %f %f %f\n", 
@@ -1858,37 +1699,16 @@ printf("alpha rho rhoL rhoG Yl Yg pL pG  %f %f %f %f %f %f %f %f\n",
     *aG = *aL = NAN;
     *MG = *ML = NAN;
 
-
-#include <chrono>
-
     // Get the velocity in this direction, and kinetic energy
     (*normalVelocity) = 0.0;
     PetscReal ke = 0.0;
     for (PetscInt d = 0; d < dim; d++) {
         velocity[d] = conservedValues[CompressibleFlowFields::RHOU + d + uOff[EULER_FIELD]] / (*density);
         (*normalVelocity) += velocity[d] * normal[d];
-
-//velocity[0]=10; velocity[1]=0;
-
-//    if (abs(abs(velocity[0])-10) > 1) {
-//     printf("%e\t%e\n", velocity[0], velocity[1]); std::cout<<"";
-//auto start_time = std::chrono::high_resolution_clock::now();    while (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::high_resolution_clock::now() - start_time).count() < 3) {}
-
-//      throw std::runtime_error("TEMP RUNTIME ERROR: At this exact line in DecodeTwoPhaseEulerState velocity is wrong.\n");
-//    }
-    if (*normalVelocity < 0) {
-//std::cout << "negative normalVelocity vx nx vy ny " << velocity[0] << " " << normal[0] << " " << velocity[1] << " " << normal[1] << "\n";
-    }
         ke += PetscSqr(velocity[d]);
     }
     ke *= 0.5;
     (*internalEnergy) = (totalEnergy)-ke;
-
-//   if (PetscAbs(ke-50.0) > 1e-4){ std::cout << ke << "\n"; }
- //   if (PetscAbs(ke-50.0) > 1e-1) {
- //     printf("%e\t%e\n", ke, ke); std::cout<<"";
- //     throw std::runtime_error("TEMP RUNTIME ERROR: At this exact line kinetic energy is wrong.\n");
- //   }
 
     if (*density < PETSC_SMALL) { // This occurs when a cell hasn't been initialized yet. Usually FVM boundary cells
         *densityG = 0.0;
@@ -1939,7 +1759,7 @@ printf("alpha rho rhoL rhoG Yl Yg pL pG  %f %f %f %f %f %f %f %f\n",
 // *density = 1/(Yg/densG + Yl/densL);
 
     if (Yg < 1e-8) { // All liquid
-/*       rhoL = *density;
+      rhoL = *density;
       TL = (*internalEnergy - p0L/rhoL)/cvL;
 
       liquidEulerFieldScratch[CompressibleFlowFields::RHO] = rhoL;
@@ -1951,43 +1771,8 @@ printf("alpha rho rhoL rhoG Yl Yg pL pG  %f %f %f %f %f %f %f %f\n",
       rhoG = pG / (RG*TG);
       gasEulerFieldScratch[CompressibleFlowFields::RHO] = rhoG;
 
-      alphaG = 0.0; */
-
-      rhoL = *density;
-      eL = *internalEnergy;
-//eL = *internalEnergyL; //no, internalEnergyL hasn't yet been defined 
-      TL = (eL*rhoL - p0L)/(cvL*rhoL);
-
-      __float128 rho0 = 998.23q;
-std::cout << "";
-      if (rhoL < rho0) {
-        // If the density is less than the base density approximate the pressure
-        __float128 p0  = (gammaL - 1.0q)*rho0*eL - gammaL*p0L; // What the pressure would be if the density was higher
-        __float128 dp0 = (gammaL - 1.0q)*eL;  // The slope of the pressure
-
-        // Using  p(rho) = a/(b-rho)+c. This matches p(0) = 0, p(rho0) = p0, and p'(rho0) = dp0;
-        __float128 fac = p0 - dp0*rho0;
-        __float128 a = dp0*p0*p0*rho0*rho0/(fac*fac);
-        __float128 b = -dp0*rho0*rho0/fac;
-        __float128 c = p0*p0/fac;
-        pL = a / (b - rhoL) + c;
-if (pL < 0){std::cout << "pneg\n";}//std::cout << eL <<" " << pL <<" "<< rhoL  << " eLpLrhoL\n";}
-      }
-      else {
-        pL = (gammaL - 1.0q)*rhoL*eL - gammaL*p0L;
-      }
-
-      TG = TL;
-      pG = pL;
-      rhoG = pG / (RG*TG);
-      eG = cvG*TG;
-
-      alphaG = 0.0q;
-
+      alphaG = 0.0;
     }
-
-//if (pL < PETSC_SMALL || pG < PETSC_SMALL) { std::cout << pL << " " << alphaG << " " << (Yg < 1e-8)  << " \n\nPNEG\n\n"; }
-
     else if (Yl < 1e-8) { //All gas
       rhoG = *density;
       TG = *internalEnergy/cvG;
@@ -2013,8 +1798,6 @@ if (pL < 0){std::cout << "pneg\n";}//std::cout << eL <<" " << pL <<" "<< rhoL  <
       PetscReal x1, x2;
       SolveQuadratic(A, B, C, &x1, &x2);
       TG = TL = PetscMax(x1, x2);
-
-
       rhoL = gammaL*p0L*Yl/(e*gammaL - cvG*gammaL*TG*Yg - cpL*TL*Yl);
       rhoG = rho*rhoL*Yg/(rhoL - rho*Yl);
 
@@ -2027,7 +1810,7 @@ if (pL < 0){std::cout << "pneg\n";}//std::cout << eL <<" " << pL <<" "<< rhoL  <
       alphaG = densityVF / rhoG;
     }
 
-if (pL < PETSC_SMALL || pG < PETSC_SMALL) { std::cout << "";}// pL << " " << alphaG << " " << (Yg < 1e-8) << " PNEG\n"; }
+
 
     liquidComputeInternalEnergy.function(liquidEulerFieldScratch.data(), TL, &eL, liquidComputeInternalEnergy.context.get()) >> utilities::PetscUtilities::checkError;
     gasComputeInternalEnergy.function(gasEulerFieldScratch.data(), TG, &eG, gasComputeInternalEnergy.context.get()) >> utilities::PetscUtilities::checkError;
@@ -2040,22 +1823,12 @@ if (pL < PETSC_SMALL || pG < PETSC_SMALL) { std::cout << "";}// pL << " " << alp
 //printf("%f\t%+e\n", TG, TG-300);
 //NOTE0EXIT("%e\t%e\t%e\t%e\t%e\t%e\t%e\t%e\n", Yg, Yl, TG, TL, pG, pL, rhoG, rhoL);
 
-if ((alphaG < 0.75) and (alphaG > 0.25)){
-std::cout << "";// "alpha rho rhoL rhoG Yl Yg pL pG TL TG eL eG" << alphaG << " " << *density << " " << rhoL << " " << rhoG << " " << Yl << " " << Yg << " " << pL << " " << pG << " " << TL << " " << TG << " " << eL << " " << eG << "\n";
-}
+if (alphaG < 0.5001){std::cout << "alpha rho rhoL rhoG Yl Yg pL pG  " << alphaG << " " << *density << " " << rhoL << " " << rhoG << " " << Yl << " " << Yg << " " << pL << " " << pG << "\n";}
 
-//rhoG=1.16144; rhoL=998.23; // don't need this
-//eG = 300*717.5; eL = 300*8095.08/1.932 + 1169350402.52/ *densityL;  //
-
-//TG=300;TL=300; //don't need this
-//PetscReal pGold = pG; std::cout << "pressure old " << pGold << "\n"; //up to 1e7 and above
-
-// pG=1e5; pL=1e5; //we do need this
-
-/*    if (TL < PETSC_SMALL || TG < PETSC_SMALL) {
+    if (TL < PETSC_SMALL || TG < PETSC_SMALL) {
       printf("%e\t%e\n", Yg, Yl);
       printf("%e\t%e\n", TG, TL);
-      throw std::runtime_error("At this exact line decode is returning a negative temperature.\n");
+      throw std::runtime_error("Decode is returning negative temperature.\n");
     }
 
     if (pL < PETSC_SMALL || pG < PETSC_SMALL) {
@@ -2064,7 +1837,7 @@ std::cout << "";// "alpha rho rhoL rhoG Yl Yg pL pG TL TG eL eG" << alphaG << " 
       printf("  p: %e\t%e\n", pG, pL);
       printf("rho: %e\t%e\n", rhoG, rhoL);
       printf("alpha: %e\n", alphaG);
-      throw std::runtime_error("At this exact line decode is returning negative pressure.\n");
+      throw std::runtime_error("Decode is returning negative pressure.\n");
     }
 
     if (eL < PETSC_SMALL || eG < PETSC_SMALL) {
@@ -2081,10 +1854,10 @@ std::cout << "";// "alpha rho rhoL rhoG Yl Yg pL pG TL TG eL eG" << alphaG << " 
       printf("%e\t%e\n", Yg, Yl);
       printf("%e\t%e\n", pG, pL);
 
-//std::out << "pg pL Yg Yl " << pG << " " << pL << " " << Yg << " " << Yl << "\n";
+//std::cout << "pg pL Yg Yl " << pG << " " << pL << " " << Yg << " " << Yl << "\n";
 
       throw std::runtime_error("Decode is not returning pressure equilibrium.\n");
-    } */
+    }
 
     // once state defined
     *alpha = PetscMin(1.0, PetscMax(0.0, alphaG));

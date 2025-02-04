@@ -9,7 +9,9 @@
 
 #include <fstream>
 
-ablate::finiteVolume::processes::SurfaceForce::SurfaceForce(PetscReal sigma) : sigma(sigma) {}
+//ablate::finiteVolume::processes::IntSharp::IntSharp(PetscReal Gamma, PetscReal epsilon) : Gamma(Gamma), epsilon(epsilon) {}
+
+ablate::finiteVolume::processes::SurfaceForce::SurfaceForce(PetscReal sigma, PetscReal C, PetscReal N) : sigma(sigma), C(C), N(N) {}
 ablate::finiteVolume::processes::SurfaceForce::~SurfaceForce() { DMDestroy(&vertexDM) >> utilities::PetscUtilities::checkError; }
 
 PetscReal GaussianDerivativeFactor(const PetscReal *x, const PetscReal s,  const PetscInt dx, const PetscInt dy, const PetscInt dz) {
@@ -349,7 +351,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 //PetscReal zmin=xymin[2];
 //PetscReal zmax=xymax[2];
 
-PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.2; PetscReal zmin = 0; PetscReal zmax = 0.2;
+PetscReal xmin = -0.05; PetscReal xmax = 0.05; PetscReal ymin = -0.05; PetscReal ymax = 0.05; PetscReal zmin = 0; PetscReal zmax = 0.2;
 
     const auto &ofield3 = subDomain->GetField("debug3");
     const auto &ofield4 = subDomain->GetField("debug4");
@@ -601,7 +603,8 @@ PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0
 
     PetscReal rmin; DMPlexGetMinRadius(dm, &rmin); PetscReal h=2*rmin;
 //    PetscScalar C=2; PetscScalar N=2.6; PetscScalar layers = ceil(C*N);
-    PetscScalar C=1; PetscScalar N=2.6; PetscScalar layers = ceil(C*N);
+//    PetscScalar C=1; PetscScalar N=2.6; 
+PetscScalar layers = ceil(process->C*process->N);
 //    layers = 2; //temporary; current limit for parallel
 //    layers = 4; //temporary
 
@@ -666,7 +669,7 @@ bool periodicfix = true;
 if (periodicfix){
 
 //temporary fix addressing how multiple layers of neighbors for a periodic domain return coordinates on the opposite side
-PetscReal maxMask = 0.75*(xmax-xmin);
+PetscReal maxMask = 0.75*(ymax-ymin);
 if (( PetscAbs(xn-xc) > maxMask) and (xn > xc)){  xn -= (xmax-xmin);  }
 if (( PetscAbs(xn-xc) > maxMask) and (xn < xc)){  xn += (xmax-xmin);  }
 if (dim>=2){
@@ -680,7 +683,7 @@ if (( PetscAbs(zn-zc) > maxMask) and (zn < zc)){  zn += (zmax-zmin);  } }
 
 
                 PetscReal d = PetscSqrtReal(PetscSqr(xn - xc) + PetscSqr(yn - yc) + PetscSqr(zn - zc));  // distance
-                PetscReal s = C * h; //6*h
+                PetscReal s = process->C * h; //6*h
                 PetscReal wn; PhiNeighborGaussWeight(d, s, &wn);
                 Tw += wn;
                 weightedphi += (*phin * wn);
@@ -1012,6 +1015,8 @@ if ((cell==0) and (*rankptr == 5)){  std::cout << " surfaceforce phitilde " << *
 PetscScalar *optr5; xDMPlexPointLocalRef(auxDM, cell, ofield5.id, auxArray, &optr5);
 PetscScalar *optr6; xDMPlexPointLocalRef(auxDM, cell, ofield6.id, auxArray, &optr6);
 
+//        PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(phitildemaskDM, cell, -1, phitildemaskLocalArray, &phitildemaskptr);
+
         PetscScalar *phitildeptr; xDMPlexPointLocalRef(phitildeDM, cell, -1, phitildeLocalArray, &phitildeptr);
         *optr3 = *phitildeptr;
         if (dim==3){*optr4 = PetscSqrtReal(PetscSqr(*sfxptr) + PetscSqr(*sfyptr) + PetscSqr(*sfzptr));}
@@ -1023,7 +1028,7 @@ PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &ra
 PetscScalar *kappaptr; xDMPlexPointLocalRef(kappaDM, cell, -1, kappaLocalArray, &kappaptr);
 
 *optr5 = *rankptr;
-*optr6 = *kappaptr;
+*optr6 = *phitildemaskptr;
 
 
     }
@@ -1353,4 +1358,13 @@ PetscScalar *kappaptr; xDMPlexPointLocalRef(kappaDM, cell, -1, kappaLocalArray, 
 }
 
 REGISTER(ablate::finiteVolume::processes::Process, ablate::finiteVolume::processes::SurfaceForce, "calculates surface tension force and adds source terms",
-         ARG(PetscReal, "sigma", "sigma, surface tension coefficient"));
+         ARG(PetscReal, "sigma", "sigma, surface tension coefficient"),
+         ARG(PetscReal, "C", "stdev length with respect to grid spacing magnitude (default 1)"),
+         ARG(PetscReal, "N", "number of stdevs that the convolution integral captures (default 2.6 for 99 pct accuracy if C=1)")
+);
+
+
+//REGISTER(ablate::finiteVolume::processes::Process, ablate::finiteVolume::processes::IntSharp, "calculates interface regularization term",
+//         ARG(PetscReal, "Gamma", "Gamma, velocity scale parameter (approx. umax)"),
+//         ARG(PetscReal, "epsilon", "epsilon, interface thickness scale parameter (approx. h)")
+//);

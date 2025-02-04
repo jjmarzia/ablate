@@ -1,7 +1,7 @@
 #include "petscSupport.hpp"
 #include <petsc/private/vecimpl.h>
 #include <petscdm.h>  // For DMPolytopeTypeGetNumVertices
-#include "registrar.hpp"
+//#include "registrar.hpp"
 
 /**
  * Return the cell containing the location xyz
@@ -1049,8 +1049,8 @@ PetscErrorCode DMPlexVertexGradFromCell(DM dm, const PetscInt v, Vec data, Petsc
 bool periodicfix = true;
 
 if (periodicfix){
-PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.2; PetscReal zmin = 0; PetscReal zmax = 0.2;
-PetscReal maxNorm = 10*(xmax-xmin)/200; // [10(xmax-xmin)/ Nx] <--> corresponds to 10 cells.
+PetscReal xmin = -0.05; PetscReal xmax = 0.05; PetscReal ymin = -0.05; PetscReal ymax = 0.05; PetscReal zmin = 0; PetscReal zmax = 0.2;
+PetscReal maxNorm = 10*(xmax-xmin)/101; // [10(xmax-xmin)/ Nx] <--> corresponds to 10 cells.
 PetscReal vertexvol; PetscReal vcentroid[3]; DMPlexComputeCellGeometryFVM(dm, v, &vertexvol, vcentroid, nullptr);
 PetscReal cellvol; PetscReal ccentroid[3]; DMPlexComputeCellGeometryFVM(dm, star[st], &cellvol, ccentroid, nullptr);
 N[0] = ccentroid[0] - vcentroid[0];
@@ -1127,9 +1127,9 @@ PetscErrorCode DMPlexCellGradFromVertex(DM dm, const PetscInt c, Vec data, Petsc
 bool periodicfix = true;
 
 if (periodicfix){
-
-PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.2; PetscReal zmin = 0; PetscReal zmax = 0.2;
-PetscReal maxNorm = 10*(xmax-xmin)/200; // [10(xmax-xmin)/ Nx] <--> corresponds to 10 cells.
+PetscReal xmin = -0.05; 
+PetscReal xmax = 0.05; PetscReal ymin = -0.05; PetscReal ymax = 0.05; PetscReal zmin = 0; PetscReal zmax = 0.2;
+PetscReal maxNorm = 10*(xmax-xmin)/101; // [10(xmax-xmin)/ Nx] <--> corresponds to 10 cells.
 PetscReal centroid[3]; DMPlexComputeCellGeometryFVM(dm, faces[f], nullptr, centroid, nullptr);
 PetscReal ccentroid[3]; DMPlexComputeCellGeometryFVM(dm, c, nullptr, ccentroid, nullptr);
 
@@ -1231,8 +1231,8 @@ PetscErrorCode DMPlexCellGradFromCell(DM dm, const PetscInt c, Vec data, PetscIn
 bool periodicfix = true;
 
 PetscReal cellvol; PetscReal ccentroid[3]; DMPlexComputeCellGeometryFVM(dm, c, &cellvol, ccentroid, nullptr);
-PetscReal xmin = 0; PetscReal xmax = 0.2; PetscReal ymin = 0; PetscReal ymax = 0.2; PetscReal zmin = 0; PetscReal zmax = 0.2;
-PetscReal maxNorm = 10*(xmax-xmin)/200; // [10(xmax-xmin)/ Nx] <--> corresponds to 10 cells.
+PetscReal xmin = -0.05; PetscReal xmax = 0.05; PetscReal ymin = -0.05; PetscReal ymax = 0.05; PetscReal zmin = 0; PetscReal zmax = 0.2;
+PetscReal maxNorm = 10*(xmax-xmin)/101; // [10(xmax-xmin)/ Nx] <--> corresponds to 10 cells.
 
 if (periodicfix){
 

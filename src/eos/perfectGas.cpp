@@ -69,7 +69,14 @@ PetscErrorCode ablate::eos::PerfectGas::PressureTemperatureFunction(const PetscR
     auto functionContext = (FunctionContext *)ctx;
 
     PetscReal density = conserved[functionContext->eulerOffset + ablate::finiteVolume::CompressibleFlowFields::RHO];
+
+//density = 1.16144;
+
     *pressure = functionContext->parameters.rGas * density * T;
+//    *pressure = functionContext->parameters.rGas * density * 300;
+//if ((abs(T-300) > 1e-4) or (abs(density-1.16144) > 1e-4)){std::cout << "eos perfect T density " << T << " " << density << "\n";}
+
+// *pressure = 1e5 + 0*density;
     PetscFunctionReturn(0);
 }
 
@@ -169,7 +176,7 @@ PetscErrorCode ablate::eos::PerfectGas::SpeedOfSoundTemperatureFunction(const Pe
     PetscReal p;
     PetscCall(PressureTemperatureFunction(conserved, T, &p, ctx));
 
-    *speedOfSound = PetscSqrtReal(functionContext->parameters.gamma * (p) / density);
+    *speedOfSound = PetscSqrtReal(functionContext->parameters.gamma * p / density);
     PetscFunctionReturn(0);
 }
 PetscErrorCode ablate::eos::PerfectGas::SpeciesSensibleEnthalpyFunction(const PetscReal *conserved, PetscReal *hi, void *ctx) {

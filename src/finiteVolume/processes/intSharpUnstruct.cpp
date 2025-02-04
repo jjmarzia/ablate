@@ -34,14 +34,13 @@ static void IS_CopyDM(DM oldDM, const PetscInt pStart, const PetscInt pEnd, cons
     // This builds the global section information based on the local section. It's necessary if we don't create a global vector
     //    right away.
     DMGetGlobalSection(*newDM, &section) >> ablate::utilities::PetscUtilities::checkError;
-    /* Calling DMPlexComputeGeometryFVM() generates the value returned by DMPlexGetMinRadius() */
     Vec cellgeom = NULL;
     Vec facegeom = NULL;
     DMPlexComputeGeometryFVM(*newDM, &cellgeom, &facegeom);
     VecDestroy(&cellgeom);
     VecDestroy(&facegeom);
 }
-
+/*
 void GetCoordinate3D(DM dm, PetscInt dim, PetscInt p, PetscReal *xp, PetscReal *yp, PetscReal *zp){
     //get the coordinates of the point
     PetscReal vol; PetscReal centroid[3];
@@ -61,7 +60,7 @@ void PhiNeighborGauss(PetscReal d, PetscReal s, PetscReal *weight){
 }
 
 PetscInt phitildepenalty[999999] = { 0 };
-
+*/
 void PushGhost(DM dm, Vec LocalVec, Vec GlobalVec, InsertMode ADD_OR_INSERT_VALUES, bool zerovec, bool isphitilde) {
 //    DMLocalToGlobal(dm, LocalVec, INSERT_VALUES, GlobalVec);
 
@@ -82,8 +81,6 @@ void PushGhost(DM dm, Vec LocalVec, Vec GlobalVec, InsertMode ADD_OR_INSERT_VALU
         }
     }
 
-
-
 //    if (phitildemaskDM != PETSC_NULLPTR){
 //        for (PetscInt cell = cStart; cell < cEnd; ++cell){
 //
@@ -94,7 +91,7 @@ void PushGhost(DM dm, Vec LocalVec, Vec GlobalVec, InsertMode ADD_OR_INSERT_VALU
 //    }
 
 }
-
+/*
 PetscInt counter=0;
 void SaveData(PetscInt rangeStart, PetscInt rangeEnd, DM dm, PetscScalar *array, std::string filename, bool iterateAcrossTime){
         int rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
@@ -114,7 +111,7 @@ void SaveData(PetscInt rangeStart, PetscInt rangeEnd, DM dm, PetscScalar *array,
             }
         }
         thefile.close();
-}
+} */
 
 void ablate::finiteVolume::processes::IntSharp::Initialize(ablate::finiteVolume::FiniteVolumeSolver &solver) {
     IntSharp::subDomain = solver.GetSubDomainPtr();
@@ -140,6 +137,8 @@ void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::Fini
 }
 
 PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx) {
+
+
     PetscFunctionBegin;
     auto *process = (ablate::finiteVolume::processes::IntSharp *)ctx;
     std::shared_ptr<ablate::domain::SubDomain> subDomain = process->subDomain;
@@ -154,14 +153,14 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     //get fields
     auto dim = solver.GetSubDomain().GetDimensions();
 
-
+/*
 PetscReal xymin[dim], xymax[dim]; DMGetBoundingBox(dm, xymin, xymax);
 PetscReal xmin=xymin[0];
 PetscReal xmax=xymax[0];
 PetscReal ymin=xymin[1];
 PetscReal ymax=xymax[1];
 PetscReal zmin=xymin[2];
-PetscReal zmax=xymax[2];
+PetscReal zmax=xymax[2]; */
 
 // std::cout << "computesource boxmeshcreate xymin0 xymin1 xymax0 xymax1: " << xymin[0] << " " << xymin[1] << " " << xymax[0] << " " << xymax[1] << "\n";
 
@@ -169,8 +168,9 @@ PetscReal zmax=xymax[2];
     const auto &phiField = subDomain->GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
     const auto &eulerField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
     const auto &densityVFField = subDomain->GetField("densityvolumeFraction");
-    const auto &ofield = subDomain->GetField("debug");
-    const auto &ofield2 = subDomain->GetField("debug2");
+
+/*    const auto &ofield = subDomain->GetField("debug");
+    const auto &ofield2 = subDomain->GetField("debug2"); */
 
 //    auto phifID = phiField.id;
     auto eulerfID = eulerField.id;
@@ -188,7 +188,7 @@ PetscReal zmax=xymax[2];
     // get ranges
     ablate::domain::Range cellRange; solver.GetCellRangeWithoutGhost(cellRange); //
     PetscInt vStart, vEnd; DMPlexGetDepthStratum(process->vertexDM, 0, &vStart, &vEnd); //
-
+/*
     DM vxDM;
     IS_CopyDM(process->vertexDM, vStart, vEnd, 1, &vxDM);
     DM vyDM;
@@ -915,7 +915,6 @@ if (( PetscAbs(nz-vz) > maxMask) and (nz < vz)){  nz += (zmax-zmin);  } }
 
 
         *rhophiSource += rhog* *diva;
-//        *rhophiSource += 1.16* *diva + rhog*0;
 
         PetscScalar *optr; xDMPlexPointLocalRef(auxDM, cell, ofield.id, auxArray, &optr);
         *optr = *diva;
@@ -1168,6 +1167,8 @@ if (( PetscAbs(nz-vz) > maxMask) and (nz < vz)){  nz += (zmax-zmin);  } }
     DMRestoreLocalVector(aDM, &aLocalVec);
     DMRestoreGlobalVector(aDM, &aGlobalVec);
     DMDestroy(&aDM);
+
+*/
 
     //clean up. necessary?
 //    for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
