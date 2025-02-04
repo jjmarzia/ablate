@@ -13,7 +13,7 @@ class EssentialBoundary : public BoundaryCell {
     const std::shared_ptr<ablate::mathFunctions::FieldFunction> boundaryFunction;
 
    public:
-    EssentialBoundary(std::string boundaryName, std::vector<std::string> labelIds, std::shared_ptr<ablate::mathFunctions::FieldFunction> boundaryFunction, bool constant);
+    EssentialBoundary(std::string boundaryName, std::vector<std::string> labelIds, std::shared_ptr<ablate::mathFunctions::FieldFunction> boundaryFunction);
 };
 }  // namespace ablate::finiteVolume::boundaryConditions
 #endif  // ABLATELIBRARY_ESSENTIALBOUNDARY_HPP
