@@ -4,8 +4,10 @@
 ablate::particles::initializers::CellInitializer::CellInitializer(int particlesPerCellPerDim) : particlesPerCell(particlesPerCellPerDim) {}
 
 void ablate::particles::initializers::CellInitializer::Initialize(ablate::domain::SubDomain &flow, DM particleDm) {
-    auto particlesPerCellLocal = (PetscInt)this->particlesPerCell;
 
+    // throw std::runtime_error("DMSwarmPICField_cellid is no longer available in PETSc and ablate::particles::initializers::CellInitializer::Initialize must be fixed.\n");
+
+    auto particlesPerCellLocal = (PetscInt)this->particlesPerCell;
     PetscInt cStart, cEnd;
     DMPlexGetHeightStratum(flow.GetDM(), 0, &cStart, &cEnd) >> utilities::PetscUtilities::checkError;
     DMSwarmSetLocalSizes(particleDm, (cEnd - cStart) * particlesPerCellLocal, 0) >> utilities::PetscUtilities::checkError;
