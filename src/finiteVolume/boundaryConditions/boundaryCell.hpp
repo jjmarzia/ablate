@@ -16,9 +16,6 @@ class BoundaryCell : public BoundaryCondition {
     std::shared_ptr<ablate::domain::SubDomain> subDomain = nullptr;
     std::vector<std::string> labelIds = {};
     IS pointsIS = nullptr;
-    bool constant = false;
-    bool calculated = false;
-
 
    protected:
 
@@ -32,7 +29,7 @@ class BoundaryCell : public BoundaryCondition {
 
     BoundaryCondition::Type type() const override { return BoundaryCondition::Type::BOUNDARYCELL; }
 
-    BoundaryCell(std::string fieldName, std::string boundaryName, std::vector<std::string> labelIds, bool constant = false);
+    BoundaryCell(std::string fieldName, std::string boundaryName, std::vector<std::string> labelIds);
 
     virtual ~BoundaryCell() override;
 

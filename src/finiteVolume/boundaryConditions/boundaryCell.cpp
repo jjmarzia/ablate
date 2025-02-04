@@ -4,10 +4,9 @@
 #include "utilities/petscUtilities.hpp"
 #include "utilities/petscSupport.hpp"
 
-ablate::finiteVolume::boundaryConditions::BoundaryCell::BoundaryCell(std::string fieldName, std::string boundaryName, std::vector<std::string> labelIds,
-                                                       bool constant)
+ablate::finiteVolume::boundaryConditions::BoundaryCell::BoundaryCell(std::string fieldName, std::string boundaryName, std::vector<std::string> labelIds)
     : BoundaryCondition(boundaryName, fieldName),
-      labelIds(labelIds),constant(constant) {}
+      labelIds(labelIds) {}
 
 ablate::finiteVolume::boundaryConditions::BoundaryCell::~BoundaryCell() {
   if (pointsIS) ISDestroy(&pointsIS);
@@ -86,8 +85,6 @@ void ablate::finiteVolume::boundaryConditions::BoundaryCell::ComputeBoundary(Pet
     // locX - boundary condition
     // locX_t -Time derivative of boundary condition
 
-    if (calculated) return;
-
     PetscScalar *array;
     PetscInt nPoints = 0;
     const PetscInt *points;
@@ -111,7 +108,6 @@ void ablate::finiteVolume::boundaryConditions::BoundaryCell::ComputeBoundary(Pet
 
       PetscScalar *vals;
       xDMPlexPointLocalRef(dmData, points[p], field.id, array, &vals) >> utilities::PetscUtilities::checkError;
-
       updateFunction(time, cg->centroid, vals);
 
     }
@@ -119,7 +115,5 @@ void ablate::finiteVolume::boundaryConditions::BoundaryCell::ComputeBoundary(Pet
     VecRestoreArrayRead(cellGeomVec, &cellGeomArray) >> utilities::PetscUtilities::checkError;
 
     ISRestoreIndices(pointsIS, &points);
-
-    calculated = constant; // If the values do not change over time mark this BC as calculated so it's not done again
 
 }
