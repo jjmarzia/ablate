@@ -1,3 +1,6 @@
+//have not tested this yet
+
+
 #include "zeroGradientBoundary.hpp"
 ablate::finiteVolume::boundaryConditions::zeroGradientBoundary::zeroGradientBoundary(std::string boundaryName, std::vector<std::string> labelIds, std::shared_ptr<ablate::mathFunctions::FieldFunction> boundaryFunction, bool constant, bool zeroMomentum)
     : BoundaryCell(boundaryFunction->GetName(), boundaryName, labelIds, constant, zeroMomentum), boundaryFunction(boundaryFunction) {}

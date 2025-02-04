@@ -1,3 +1,5 @@
+//have not tested this yet
+
 #ifndef ABLATELIBRARY_ZEROGRADIENTBOUNDARY_HPP
 #define ABLATELIBRARY_ZEROGRADIENTBOUNDARY_HPP
 
@@ -17,3 +19,4 @@ class ZeroGradientBoundary : public BoundaryCell {
 };
 }  // namespace ablate::finiteVolume::boundaryConditions
 #endif  // ABLATELIBRARY_ZEROGRADIENTBOUNDARY_HPP
+
