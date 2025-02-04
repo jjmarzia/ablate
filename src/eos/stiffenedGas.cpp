@@ -5,7 +5,7 @@ ablate::eos::StiffenedGas::StiffenedGas(std::shared_ptr<ablate::parameters::Para
     // set default values for options
     parameters.gamma = parametersIn->Get<PetscReal>("gamma", 1.932);
     parameters.Cp = parametersIn->Get<PetscReal>("Cp", 8095.08);
-    parameters.p0 = parametersIn->Get<PetscReal>("p0", 1.1645e9);
+    parameters.p0 = parametersIn->Get<PetscReal>("p0", 1169350402.52);
     parameters.numberSpecies = species.size();
 }
 
