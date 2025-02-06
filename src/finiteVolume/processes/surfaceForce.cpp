@@ -11,7 +11,7 @@
 
 //ablate::finiteVolume::processes::IntSharp::IntSharp(PetscReal Gamma, PetscReal epsilon) : Gamma(Gamma), epsilon(epsilon) {}
 
-ablate::finiteVolume::processes::SurfaceForce::SurfaceForce(PetscReal sigma, PetscReal C, PetscReal N) : sigma(sigma), C(C), N(N) {}
+ablate::finiteVolume::processes::SurfaceForce::SurfaceForce(PetscReal sigma, PetscReal C, PetscReal N, bool flipPhiTilde) : sigma(sigma), C(C), N(N), flipPhiTilde(flipPhiTilde) {}
 ablate::finiteVolume::processes::SurfaceForce::~SurfaceForce() { DMDestroy(&vertexDM) >> utilities::PetscUtilities::checkError; }
 
 PetscReal GaussianDerivativeFactor(const PetscReal *x, const PetscReal s,  const PetscInt dx, const PetscInt dy, const PetscInt dz) {
@@ -654,7 +654,8 @@ PetscScalar layers = ceil(process->C*process->N);
         PetscReal xc, yc, zc; Get3DCoordinate(dm, cell, &xc, &yc, &zc);
         PetscScalar *phitilde; xDMPlexPointLocalRef(phitildeDM, cell, -1, phitildeLocalArray, &phitilde);
         PetscScalar *phitildemask; xDMPlexPointLocalRef(phitildemaskDM, cell, -1, phitildemaskLocalArray, &phitildemask);
-        if (*phitildemask < 1e-10){ *phitilde = *phic; }
+        if (*phitildemask < 1e-10){ *phitilde = *phic;
+if (process->flipPhiTilde){*phitilde = 1.00- *phitilde;} }
         else{
             PetscInt nNeighbors, *neighbors; DMPlexGetNeighbors(auxDM, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
             PetscReal weightedphi = 0; PetscReal Tw = 0;
@@ -695,6 +696,8 @@ if ((cell!=-1) and (*rankptr != -1)){ std::cout << ""; }//std::cout << ""; }//  
 
             }
             weightedphi /= Tw;
+
+if (process->flipPhiTilde){weightedphi = 1.000-weightedphi;}
             *phitilde = weightedphi;
 
 
@@ -1028,7 +1031,7 @@ PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &ra
 PetscScalar *kappaptr; xDMPlexPointLocalRef(kappaDM, cell, -1, kappaLocalArray, &kappaptr);
 
 *optr5 = *rankptr;
-*optr6 = *phitildemaskptr;
+*optr6 = *kappaptr; // *phitildemaskptr;
 
 
     }
@@ -1360,7 +1363,8 @@ PetscScalar *kappaptr; xDMPlexPointLocalRef(kappaDM, cell, -1, kappaLocalArray, 
 REGISTER(ablate::finiteVolume::processes::Process, ablate::finiteVolume::processes::SurfaceForce, "calculates surface tension force and adds source terms",
          ARG(PetscReal, "sigma", "sigma, surface tension coefficient"),
          ARG(PetscReal, "C", "stdev length with respect to grid spacing magnitude (default 1)"),
-         ARG(PetscReal, "N", "number of stdevs that the convolution integral captures (default 2.6 for 99 pct accuracy if C=1)")
+         ARG(PetscReal, "N", "number of stdevs that the convolution integral captures (default 2.6 for 99 pct accuracy if C=1)"),
+         ARG(bool, "flipPhiTilde", "if true: phiTilde-->1-phiTilde (set it to true if primary phase is phi=0 or false if phi=1)")
 );
 
 

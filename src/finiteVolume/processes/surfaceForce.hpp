@@ -23,6 +23,7 @@ class SurfaceForce : public Process {
     PetscReal sigma;
     PetscReal C;
     PetscReal N;
+    bool flipPhiTilde;
     //mesh for vertex information
     DM vertexDM{};
     std::shared_ptr<ablate::domain::SubDomain> subDomain;
@@ -33,7 +34,7 @@ class SurfaceForce : public Process {
      *
      * @param sigma
      */
-    explicit SurfaceForce(PetscReal sigma, PetscReal C, PetscReal N);
+    explicit SurfaceForce(PetscReal sigma, PetscReal C, PetscReal N, bool flipPhiTilde);
 
     /**
      * Clean up the dm created

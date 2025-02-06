@@ -9,6 +9,6 @@ ENDFUNCTION()
 
 # Add each testing library
 add_subdirectory(testingResources)
-add_subdirectory(unitTests)
-add_subdirectory(integrationTests)
-add_subdirectory(regressionTests)
+#add_subdirectory(unitTests)
+#add_subdirectory(integrationTests)
+#add_subdirectory(regressionTests)

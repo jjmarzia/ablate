@@ -19,6 +19,7 @@ class IntSharp : public Process {
     //coeffs
     PetscReal Gamma;
     PetscReal epsilon;
+    bool flipPhiTilde;
     //mesh for vertex information
     DM vertexDM{};
     std::shared_ptr<ablate::domain::SubDomain> subDomain;
@@ -29,7 +30,7 @@ class IntSharp : public Process {
      * @param Gamma
      * @param epsilon
      */
-    explicit IntSharp(PetscReal Gamma, PetscReal epsilon);
+    explicit IntSharp(PetscReal Gamma, PetscReal epsilon, bool flipPhiTilde);
 
     /**
      * Clean up the dm created
