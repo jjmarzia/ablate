@@ -2,6 +2,127 @@
 #include <petsc/private/vecimpl.h>
 #include <petscdm.h>  // For DMPolytopeTypeGetNumVertices
 
+
+
+/**
+ * Determines if a point is inside a cell
+ * Inputs:
+ *  dm - The mesh
+ *  cell - The cell to check
+ *  x - The point to check
+  *
+ * Outputs:
+ *  inCell - PETSC_TRUE if the point is inside the cell, PETSC_FALSE if it is not.
+ *
+ * Note: This is done by checking the inner produce of the outward facing normal of a face and the vector from the point to the
+ *        the face centroid. For a point to be inside the cell each of these inner-products must be non-negative.
+ *        An inner product of zero indicates that it lies in the plance of a face, but all of the other faces still need to be checked.
+ *        This will ONLY work for convex shapes.
+ *      This needs to be compared to DMPlexLocatePoint_Internal.
+ */
+ PetscErrorCode DMPlexInCell(DM dm, const PetscInt cell, const PetscReal x[], PetscBool *inCell) {
+
+    PetscInt nFaces;
+    const PetscInt *faces;
+    PetscReal N[3], fCenter[3];
+    PetscInt dim;
+
+    PetscFunctionBegin;
+
+    PetscCall(DMGetDimension(dm, &dim));
+
+    PetscCall(DMPlexGetConeSize(dm, cell, &nFaces));
+    PetscCall(DMPlexGetCone(dm, cell, &faces));
+    *inCell = PETSC_TRUE;
+    for (PetscInt f = 0; f < nFaces; ++f) {
+      // Compute the face normal and centroid
+      PetscCall(DMPlexFaceCentroidOutwardAreaNormal(dm, cell, faces[f], fCenter, N));
+
+      PetscReal dot = 0.0;
+      for (PetscInt d = 0; d < dim; ++d) dot += N[d]*(fCenter[d] - x[d]);
+
+      if (dot < 0.0) {
+        *inCell = PETSC_FALSE;
+        break;
+      }
+
+    }
+
+    PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+/**
+ * Calculate the neighboring cell which a given vector points into.
+ * Inputs:
+ *  dm - The mesh
+ *  cell - The cell where the vector originates from. It's assumed that the vector is from the cell-center.
+ *  v - Vector centered at the cell-center
+ *  direction - +1 to find the cell in the direction of v, -1 to find the cell in the opposite direction of v
+ *
+ * Outputs:
+ *  nCell - The neighbor cell which the vector points into. Returns -1 if the neighboring cell doesn't exist
+ *
+ * Note: In almost all cases this will be via a shared face. Try that first and then only check vertices
+ */
+ PetscErrorCode DMPlexGetForwardCell(DM dm, const PetscInt cell, const PetscReal v[], const PetscScalar direction, PetscInt *nCellID) {
+
+    PetscInt nPoints;
+    const PetscInt *points;
+    PetscInt sharedFace = -1;
+    PetscReal maxDotProduct = -PETSC_MAX_REAL;
+    PetscReal V[3], N[3], nrm;
+    PetscInt dim;
+
+
+    PetscFunctionBegin;
+
+    PetscCall(DMGetDimension(dm, &dim));
+
+    nrm = 0.0;
+    for (PetscInt d = 0; d < dim; ++d) nrm += v[d]*v[d];
+    nrm = PetscSqrtReal(nrm);
+    for (PetscInt d = 0; d < dim; ++d) V[d] = direction*v[d]/nrm;
+
+    PetscCall(DMPlexGetConeSize(dm, cell, &nPoints));
+    PetscCall(DMPlexGetCone(dm, cell, &points));
+    for (PetscInt c = 0; c < nPoints; ++c) {
+      // Compute the face normal
+      PetscCall(DMPlexFaceCentroidOutwardAreaNormal(dm, cell, points[c], NULL, N));
+
+      PetscReal dot = 0.0;
+      for (PetscInt d = 0; d < dim; ++d) dot += V[d]*N[d];
+
+      if (dot > maxDotProduct) {
+        sharedFace = points[c];
+        maxDotProduct = dot;
+      }
+    }
+
+    PetscCall(DMPlexGetSupportSize(dm, sharedFace, &nPoints));
+    PetscCall(DMPlexGetSupport(dm, sharedFace, &points));
+
+
+    if (nPoints==1) { // The cell is on the edge of a domain(?)
+      *nCellID = -1;
+    }
+    else if(nPoints>2) {
+      PetscReal x[dim];
+      PetscCall(DMPlexComputeCellGeometryFVM(dm, cell, NULL, x, NULL));
+      printf("plot(%f,%f,'r*'); %% Cell\n", x[0], x[1]);
+printf("%ld\n", sharedFace);
+//      PetscCall(DMPlexComputeCellGeometryFVM(dm, sharedFace, NULL, x, NULL));
+//      printf("plot(%f,%f,'r*'); %% Shared Face\n", x[0], x[1]);
+      SETERRQ(PetscObjectComm((PetscObject)dm), PETSC_ERR_PLIB, "DMPlexGetForwardCell detected that a face is shared between %" PetscInt_FMT" cells.", nPoints);
+    }
+    else {
+      *nCellID = (points[0]==cell) ? points[1] : points[0];
+    }
+
+
+    PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+
 /**
  * Return the cell containing the location xyz
  * Inputs:
@@ -106,6 +227,7 @@ PetscErrorCode DMPlexFindCell(DM dm, const PetscScalar *xyz, PetscReal eps, Pets
     PetscFunctionReturn(PETSC_SUCCESS);
 }
 
+#include <iostream>
 /**
  * Return all cells which share an vertex or edge/face with a center cell
  * Inputs:
@@ -119,13 +241,11 @@ PetscErrorCode DMPlexFindCell(DM dm, const PetscScalar *xyz, PetscReal eps, Pets
  *    nCells - Number of cells found
  *    cells - The IDs of the cells found.
  */
-static PetscErrorCode DMPlexGetNeighborCells_Internal(DM dm, PetscReal x0[3], PetscInt p, PetscReal maxDist, PetscBool useFace, PetscInt *nCells, PetscInt *cells[]) {
+static PetscErrorCode DMPlexGetNeighborCells_Internal(DM dm, PetscReal x0[3], PetscInt p, PetscReal maxDist, PetscBool useFace, PetscInt *nCells, PetscInt list[]) {
     PetscInt cStart, cEnd, vStart, vEnd;
-    PetscInt cl, nClosure, *closure = NULL;
-    PetscInt st, nStar, *star = NULL;
-    PetscInt n, list[10000];  // To avoid memory reallocation just make the list bigger than it would ever need to be. Will look at doing something else in the future.
-    PetscInt i, dim;
-    PetscReal x[3], dist;
+    PetscInt nClosure, *closure = NULL;
+    PetscInt n = 0;
+    PetscInt dim;
 
     PetscFunctionBegin;
 
@@ -139,20 +259,22 @@ static PetscErrorCode DMPlexGetNeighborCells_Internal(DM dm, PetscReal x0[3], Pe
         PetscCall(DMPlexGetDepthStratum(dm, 0, &vStart, &vEnd));  // Range of vertices
     }
 
-    n = 0;
     PetscCall(DMPlexGetTransitiveClosure(dm, p, PETSC_TRUE, &nClosure, &closure));  // All points associated with the cell
 
     maxDist = PetscSqr(maxDist) + PETSC_MACHINE_EPSILON;  // So we don't need PetscSqrtReal in the check
 
-    for (cl = 0; cl < nClosure * 2; cl += 2) {
+    for (PetscInt cl = 0; cl < nClosure * 2; cl += 2) {
         if (closure[cl] >= vStart && closure[cl] < vEnd) {                                       // Only use the points corresponding to either a vertex or edge/face.
-            PetscCall(DMPlexGetTransitiveClosure(dm, closure[cl], PETSC_FALSE, &nStar, &star));  // Get all points using this vertex or edge/face.
 
-            for (st = 0; st < nStar * 2; st += 2) {
+              PetscInt nStar, *star = NULL;
+              PetscCall(DMPlexGetTransitiveClosure(dm, closure[cl], PETSC_FALSE, &nStar, &star));  // Get all points using this vertex or edge/face.
+
+            for (PetscInt st = 0; st < nStar * 2; st += 2) {
                 if (star[st] >= cStart && star[st] < cEnd) {                               // If the point is a cell add it.
+                    PetscReal x[3], dist;
                     PetscCall(DMPlexComputeCellGeometryFVM(dm, star[st], NULL, x, NULL));  // Center of the candidate cell.
                     dist = 0.0;
-                    for (i = 0; i < dim; ++i) {  // Compute the distance so that we can check if it's within the required distance.
+                    for (PetscInt i = 0; i < dim; ++i) {  // Compute the distance so that we can check if it's within the required distance.
                         dist += PetscSqr(x0[i] - x[i]);
                     }
 
@@ -163,13 +285,12 @@ static PetscErrorCode DMPlexGetNeighborCells_Internal(DM dm, PetscReal x0[3], Pe
             }
 
             PetscCall(DMPlexRestoreTransitiveClosure(dm, closure[cl], PETSC_FALSE, &nStar, &star));  // Restore the points
+
         }
     }
 
     PetscCall(DMPlexRestoreTransitiveClosure(dm, p, PETSC_TRUE, &nClosure, &closure));  // Restore the points
     PetscCall(PetscSortRemoveDupsInt(&n, list));                                        // Cleanup the list
-    if (!(*cells)) PetscCall(PetscMalloc1(n, cells));                                   // Allocate the output
-    PetscCall(PetscArraycpy(*cells, list, n));                                          // Copy the cell list
     *nCells = n;                                                                        // Set the number of cells for output
 
     PetscFunctionReturn(PETSC_SUCCESS);
@@ -188,11 +309,11 @@ static PetscErrorCode DMPlexGetNeighborCells_Internal(DM dm, PetscReal x0[3], Pe
  *    nVertices - Number of vertices found
  *    vertices- The IDs of the vertices found.
  */
-static PetscErrorCode DMPlexGetNeighborVertices_Internal(DM dm, PetscReal x0[3], PetscInt p, PetscReal maxDist, PetscBool useCells, PetscInt *nVertices, PetscInt *vertices[]) {
+static PetscErrorCode DMPlexGetNeighborVertices_Internal(DM dm, PetscReal x0[3], PetscInt p, PetscReal maxDist, PetscBool useCells, PetscInt *nVertices, PetscInt list[]) {
     PetscInt cStart, cEnd, vStart, vEnd;
     PetscInt cl, nClosure, *closure = NULL;
     PetscInt st, nStar, *star = NULL;
-    PetscInt n, list[10000];  // To avoid memory reallocation just make the list bigger than it would ever need to be. Will look at doing something else in the future.
+    PetscInt n;  // To avoid memory reallocation just make the list bigger than it would ever need to be. Will look at doing something else in the future.
     PetscInt i, dim, i_x;
     PetscReal dist;
     Vec coords;
@@ -242,8 +363,6 @@ static PetscErrorCode DMPlexGetNeighborVertices_Internal(DM dm, PetscReal x0[3],
     PetscCall(VecRestoreArray(coords, &coordsArray));                             // Restore the coordsArray
     PetscCall(DMPlexRestoreTransitiveClosure(dm, p, PETSC_TRUE, &nStar, &star));  // Restore the points
     PetscCall(PetscSortRemoveDupsInt(&n, list));                                  // Cleanup the list
-    if (!(*vertices)) PetscCall(PetscMalloc1(n, vertices));                       // Allocate the output
-    PetscCall(PetscArraycpy(*vertices, list, n));                                 // Copy the vertex list
     *nVertices = n;                                                               // Set the number of vertices for output
 
     PetscFunctionReturn(PETSC_SUCCESS);
@@ -259,10 +378,10 @@ PetscErrorCode DMPlexRestoreNeighbors(DM dm, PetscInt p, PetscInt maxLevels, Pet
 
 PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscReal maxDist, PetscInt numberCells, PetscBool useCells, PetscBool returnNeighborVertices, PetscInt *nCells,
                                   PetscInt **cells) {
-    const PetscInt maxLevelListSize = 100000;
-    const PetscInt maxListSize = 100000;
-    PetscInt numNew, nLevelList[2];
-    PetscInt *addList = NULL, levelList[2][maxLevelListSize], currentLevelLoc, prevLevelLoc;
+    const PetscInt maxLevelListSize = 1000;
+    const PetscInt maxListSize = 10000;
+    PetscInt nLevelList[2];
+    PetscInt addList[maxLevelListSize], levelList[2][maxLevelListSize], currentLevelLoc, prevLevelLoc;
     PetscInt n = 0, list[maxListSize];
     PetscInt l, i, cte;
     PetscScalar x0[3];
@@ -291,7 +410,7 @@ PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscRe
     PetscCall(DMPlexComputeCellGeometryFVM(dm, p, NULL, x0, NULL));  // Center of the cell-of-interest
 
     // Declare the internal function pointer
-    PetscErrorCode (*neighborFunc)(DM, PetscReal[3], PetscInt, PetscReal, PetscBool, PetscInt *, PetscInt **);
+    PetscErrorCode (*neighborFunc)(DM, PetscReal[3], PetscInt, PetscReal, PetscBool, PetscInt *, PetscInt *);
 
     // Determine which internal function to call in while loop; if retutnNeighborVertices is false, the function returns the neighboring cells, and for true value, it returns vertices.
     l = 0;  // Current level
@@ -330,7 +449,6 @@ PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscRe
 
     // When the number of cells added at a particular level is zero then terminate the loop. This is for the case where
     // maxLevels is set very large but all cells within the maximum distance have already been found.
-    PetscCall(PetscMalloc1(maxLevelListSize, &addList));
     while (l < maxLevels && n < numberCells && nLevelList[currentLevelLoc] > 0) {
         ++l;
 
@@ -338,9 +456,10 @@ PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscRe
         currentLevelLoc = l % 2;
         prevLevelLoc = (l + 1) % 2;
 
+        PetscInt numNew;
         nLevelList[currentLevelLoc] = 0;
         for (i = 0; i < nLevelList[prevLevelLoc]; ++i) {  // Iterate over each of the locations on the prior level
-            PetscCall((*neighborFunc)(dm, x0, levelList[prevLevelLoc][i], maxDist, useCells, &numNew, &addList));
+            PetscCall((*neighborFunc)(dm, x0, levelList[prevLevelLoc][i], maxDist, useCells, &numNew, addList));
 
             PetscCheck((nLevelList[currentLevelLoc] + numNew) < maxLevelListSize,
                        PETSC_COMM_SELF,
@@ -352,7 +471,7 @@ PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscRe
         }
         PetscCall(PetscSortRemoveDupsInt(&nLevelList[currentLevelLoc], levelList[currentLevelLoc]));
 
-        // This removes any cells which are already in the list. Not point in re-doing the search for those.
+        // This removes any cells which are already in the list. No point in re-doing the search for those.
         PetscCall(PetscSortedArrayComplement(n, list, &nLevelList[currentLevelLoc], levelList[currentLevelLoc]));
 
         PetscCheck((n + nLevelList[currentLevelLoc]) < maxListSize, PETSC_COMM_SELF, PETSC_ERR_ARG_INCOMP, "Requested list size has exceeded the maximum possible in DMPlexGetNeighborCells.");
@@ -362,8 +481,6 @@ PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscRe
 
         PetscCall(PetscIntSortSemiOrdered(n, list));
     }
-
-    PetscCall(PetscFree(addList));
 
     if (type == 0 && cte == 0) {
         // Now only include the the numberCells closest cells
