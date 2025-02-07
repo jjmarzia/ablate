@@ -2,9 +2,11 @@ target_sources(ablateLibrary
         PRIVATE
         leastSquares.cpp
         leastSquaresAverage.cpp
+        gaussianConvolution.cpp
         PUBLIC
         stencil.hpp
         faceStencilGenerator.hpp
         leastSquares.hpp
         leastSquaresAverage.hpp
+        gaussianConvolution.hpp
         )
