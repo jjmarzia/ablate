@@ -42,23 +42,23 @@ PetscErrorCode ablate::finiteVolume::processes::locations::ComputeSource(const F
 
 
 
-    DM dmCell;
-    const PetscScalar* cellGeomArray;
-    Vec cellGeomVec = solver.cellGeomVec;
-    VecGetDM(cellGeomVec, &dmCell) >> utilities::PetscUtilities::checkError;
-    VecGetArrayRead(cellGeomVec, &cellGeomArray) >> utilities::PetscUtilities::checkError;
-    PetscInt dim;
-    DMGetDimension(dmCell, &dim);
+//    DM dmCell;
+//    const PetscScalar* cellGeomArray;
+//    Vec cellGeomVec = solver.cellGeomVec;
+//    VecGetDM(cellGeomVec, &dmCell) >> utilities::PetscUtilities::checkError;
+//    VecGetArrayRead(cellGeomVec, &cellGeomArray) >> utilities::PetscUtilities::checkError;
+//    PetscInt dim;
+//    DMGetDimension(dmCell, &dim);
 
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c){
       const PetscInt cell = cellRange.GetPoint(c);
 
       PetscScalar *x;
       xDMPlexPointLocalRef(auxDM, cell, cellLocs->id, auxArray, &x) >> ablate::utilities::PetscUtilities::checkError;
-//      DMPlexComputeCellGeometryFVM(dm, cell, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-      PetscFVCellGeom* cg;
-      DMPlexPointLocalRead(dmCell, cell, cellGeomArray, &cg) >> utilities::PetscUtilities::checkError;
-      for (PetscInt d = 0; d < dim; ++d) x[d] = cg->centroid[d];
+      DMPlexComputeCellGeometryFVM(dm, cell, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
+//      PetscFVCellGeom* cg;
+//      DMPlexPointLocalRead(dmCell, cell, cellGeomArray, &cg) >> utilities::PetscUtilities::checkError;
+//      for (PetscInt d = 0; d < dim; ++d) x[d] = cg->centroid[d];
 
 
 
@@ -67,7 +67,7 @@ PetscErrorCode ablate::finiteVolume::processes::locations::ComputeSource(const F
 
     }
 
-    VecRestoreArrayRead(cellGeomVec, &cellGeomArray) >> utilities::PetscUtilities::checkError;
+//    VecRestoreArrayRead(cellGeomVec, &cellGeomArray) >> utilities::PetscUtilities::checkError;
 
 
     for (PetscInt v = vertRange.start; v < vertRange.end; ++v){
