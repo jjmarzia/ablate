@@ -1,23 +1,10 @@
 #ifndef ABLATELIBRARY_GAUSSIANCONVOLUTION_HPP
 #define ABLATELIBRARY_GAUSSIANCONVOLUTION_HPP
 
-#include "domain/RBF/ga.hpp"
-#include "domain/RBF/hybrid.hpp"
-#include "domain/RBF/imq.hpp"
-#include "domain/RBF/mq.hpp"
-#include "domain/RBF/intMQ.hpp"
-#include "domain/RBF/phs.hpp"
-#include "domain/RBF/rbf.hpp"
-#include "domain/subDomain.hpp"
+#include "utilities/petscSupport.hpp"
 #include "utilities/petscUtilities.hpp"
 
-
-
-#include "domain/range.hpp"
-#include "domain/reverseRange.hpp"
-
 // Cell-based gaussian convolution
-
 namespace ablate::finiteVolume::stencil {
 
   class GaussianConvolution {
