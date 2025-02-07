@@ -43,17 +43,29 @@ class CellSolver : public solver::Solver {
     //! list of auxField update functions
     std::vector<SolutionFieldUpdateFunctionDescription> solutionFieldUpdateFunctionDescriptions;
 
-    public:
-//   protected:
+   protected:
     //! Vector used to describe the entire cell geom of the dm.  This is constant and does not depend upon region.
     Vec cellGeomVec = nullptr;
 
     //! Vector used to describe the entire face geom of the dm.  This is constant and does not depend upon region.
     Vec faceGeomVec = nullptr;
 
-//   public:
+   public:
 
-//    void GetGeomVecs(Vec *cellGeomVecOut, Vec *faceGeomVecOut) { *cellGeomVecOut = cellGeomVec; *faceGeomVecOut = faceGeomVec; };
+    void GetGeomVecs(Vec *cellGeomVecOut, Vec *faceGeomVecOut) const {
+      if(cellGeomVecOut) *cellGeomVecOut = cellGeomVec;
+      if(faceGeomVecOut) *faceGeomVecOut = faceGeomVec;
+    };
+
+
+    /**
+     * Return the geometric data of a given point. Defaults to DMPlexComputeCellGeometryFVM if not a face/cell.
+     * @param p
+     * @param vol
+     * @param centroid
+     * @param normal
+    */
+    void GetPointGeometricData(const PetscInt p, PetscReal *vol, PetscReal centroid[], PetscReal normal[]) const;
 
     /**
      * Create a base solver used for cell based solvers
