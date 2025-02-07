@@ -83,6 +83,18 @@ class PetscUtilities {
      */
     static void PetscOptionsDestroyAndCheck(const std::string& name, PetscOptions* options);
 
+    /**
+     * Copy a DM, setting a fixed number of DOFs for a given range.
+     *  This is useful to create DMs with a single data type for internal calculations. Ghost updates
+     *  can then be done on these smaller vectors rather than the SOL/AUX vectors.
+     * @param dm
+     * @param pStart
+     * @param pEnd
+     * @param newDM
+     */
+    static void CopyDM(DM dm, const PetscInt pStart, const PetscInt pEnd, const PetscInt nDOF, DM *newDM);
+
+
     // keep this class static
     PetscUtilities() = delete;
 };

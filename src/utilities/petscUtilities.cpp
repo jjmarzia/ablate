@@ -66,6 +66,40 @@ void ablate::utilities::PetscUtilities::Set(PetscOptions petscOptions, const cha
     PetscOptionsSetValue(petscOptions, name, value) >> utilities::PetscUtilities::checkError;
 }
 
+// Given a base DM create a new one with a given DOF for a point range. This is useful when you want to create a new DM
+//  to use single vectors containing a specific data type. This should reduce the communication overhead
+void ablate::utilities::PetscUtilities::CopyDM(DM dm, const PetscInt pStart, const PetscInt pEnd, const PetscInt nDOF, DM *newDM) {
+
+  PetscSection section;
+
+  DM coordDM;
+  DMGetCoordinateDM(dm, &coordDM) >> ablate::utilities::PetscUtilities::checkError;
+
+  DMClone(dm, newDM) >> ablate::utilities::PetscUtilities::checkError;
+
+  DMSetCoordinateDM(*newDM, coordDM) >> ablate::utilities::PetscUtilities::checkError;
+
+  PetscSectionCreate(PetscObjectComm((PetscObject)(*newDM)), &section) >> ablate::utilities::PetscUtilities::checkError;
+  PetscSectionSetChart(section, pStart, pEnd) >> ablate::utilities::PetscUtilities::checkError;
+  for (PetscInt p = pStart; p < pEnd; ++p) PetscSectionSetDof(section, p, nDOF) >> ablate::utilities::PetscUtilities::checkError;
+  PetscSectionSetUp(section) >> ablate::utilities::PetscUtilities::checkError;
+  DMSetLocalSection(*newDM, section) >> ablate::utilities::PetscUtilities::checkError;
+  PetscSectionDestroy(&section) >> ablate::utilities::PetscUtilities::checkError;
+  DMSetUp(*newDM) >> ablate::utilities::PetscUtilities::checkError;
+
+  // This builds the global section information based on the local section. It's necessary if we don't create a global vector
+  //    right away.
+  DMGetGlobalSection(*newDM, &section) >> ablate::utilities::PetscUtilities::checkError;
+
+  /* Calling DMPlexComputeGeometryFVM() generates the value returned by DMPlexGetMinRadius() */
+  Vec cellgeom = NULL;
+  Vec facegeom = NULL;
+  DMPlexComputeGeometryFVM(*newDM, &cellgeom, &facegeom);
+  VecDestroy(&cellgeom);
+  VecDestroy(&facegeom);
+
+}
+
 namespace ablate::utilities {
 
 std::istream& operator>>(std::istream& is, PetscDataType& v) {

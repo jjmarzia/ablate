@@ -7,6 +7,39 @@
 #include <vector>
 
 /**
+ * Determines if a point is inside a cell
+ * Inputs:
+ *  dm - The mesh
+ *  cell - The cell to check
+ *  x - The point to check
+  *
+ * Outputs:
+ *  inCell - PETSC_TRUE if the point is inside the cell, PETSC_FALSE if it is not.
+ *
+ * Note: This is done by checking the inner produce of the outward facing normal of a face and the vector from the point to the
+ *        the face centroid. For a point to be inside the cell each of these inner-products must be non-negative.
+ *        An inner product of zero indicates that it lies in the plance of a face, but all of the other faces still need to be checked.
+ *        This will ONLY work for convex shapes.
+ */
+ PetscErrorCode DMPlexInCell(DM dm, const PetscInt cell, const PetscReal x[], PetscBool *inCell);
+
+
+/**
+ * Calculate the neighboring cell which a given vector points into.
+ * Inputs:
+ *  dm - The mesh
+ *  cell - The cell where the vector originates from. It's assumed that the vector is from the cell-center.
+ *  v - Vector centered at the cell-center
+ *  direction - +1 to find the cell in the direction of v, -1 to find the cell in the opposite direction of v
+ *
+ * Outputs:
+ *  nCell - The neighbor cell which the vector points into. Returns -1 if the neighboring cell doesn't exist
+ *
+ * Note: In almost all cases this will be via a shared face. Try that first and then only check vertices
+ */
+ PetscErrorCode DMPlexGetForwardCell(DM dm, const PetscInt cell, const PetscReal v[], const PetscScalar direction, PetscInt *nCellID);
+
+/**
  * Return the list of neighboring cells/vertices to cell p using a combination of number of levels and maximum distance
  * dm - The mesh
  * maxLevels - Number of neighboring cells/vertices to check
