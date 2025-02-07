@@ -57,11 +57,11 @@ DM ablate::domain::BoxMeshBoundaryCells::CreateBoxDM(const std::string& name, st
     if (boundary.size() > 0) {
       for (std::size_t d = 0; d < PetscMin(dimensions, boundary.size()); d++) {
           PetscBool found;
-          PetscEnum index;
-          PetscEnumFind(DMBoundaryTypes, boundary[d].c_str(), &index, &found) >> utilities::PetscUtilities::checkError;
+          DMBoundaryType index;
+          PetscEnumFind(DMBoundaryTypes, boundary[d].c_str(), (PetscEnum *)&index, &found) >> utilities::PetscUtilities::checkError;
 
           if (found) {
-              boundaryTypes[d] = (DMBoundaryType)index;
+              boundaryTypes[d] = index;
 
               if (boundaryTypes[d] == DM_BOUNDARY_NONE) {
                 faces[d] += 2;
@@ -133,10 +133,10 @@ std::vector<std::shared_ptr<ablate::domain::modifiers::Modifier>> ablate::domain
 
     for (std::size_t d = 0; d < boundary.size(); d++) {
         PetscBool found;
-        PetscEnum index;
-        PetscEnumFind(DMBoundaryTypes, boundary[d].c_str(), &index, &found) >> utilities::PetscUtilities::checkError;
+        DMBoundaryType index;
+        PetscEnumFind(DMBoundaryTypes, boundary[d].c_str(), (PetscEnum *)&index, &found) >> utilities::PetscUtilities::checkError;
 
-        if (found && (DMBoundaryType)index != DM_BOUNDARY_NONE) {
+        if (found && index != DM_BOUNDARY_NONE) {
             boundaryNone[d] = PETSC_FALSE;
         }
     }
