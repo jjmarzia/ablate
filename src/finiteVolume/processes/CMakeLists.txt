@@ -16,6 +16,7 @@ target_sources(ablateLibrary
         thermophoreticDiffusion.cpp
         surfaceForce.cpp
         soot.cpp
+        intSharp.cpp
         locations.cpp
 
         PUBLIC
@@ -36,5 +37,6 @@ target_sources(ablateLibrary
         thermophoreticDiffusion.hpp
         surfaceForce.hpp
         soot.hpp
+        intSharp.hpp
         locations.hpp
         )
