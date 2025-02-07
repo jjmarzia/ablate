@@ -9,7 +9,6 @@
 #include <fstream>
 
 static void IS_CopyDM(DM oldDM, const PetscInt pStart, const PetscInt pEnd, const PetscInt nDOF, DM *newDM) {
-
     PetscSection section;
     // Create a sub auxDM
     DM coordDM;
@@ -56,42 +55,18 @@ void PhiNeighborGauss(PetscReal d, PetscReal s, PetscReal *weight){
 PetscInt phitildepenalty[999999] = { 0 };
 
 void PushGhost(DM dm, Vec LocalVec, Vec GlobalVec, InsertMode ADD_OR_INSERT_VALUES, bool zerovec, bool isphitilde) {
-
     if ((ADD_OR_INSERT_VALUES == ADD_VALUES) and (zerovec == true)){
         VecZeroEntries(GlobalVec);
     }
     DMLocalToGlobal(dm, LocalVec, ADD_OR_INSERT_VALUES, GlobalVec); //p0 to p1
     DMGlobalToLocal(dm, GlobalVec, INSERT_VALUES, LocalVec); //p1 to p1
-
     PetscScalar *LocalArray; VecGetArray(LocalVec, &LocalArray);
     PetscInt cStart, cEnd; DMPlexGetHeightStratum(dm, 0, &cStart, &cEnd);
-
     if ((ADD_OR_INSERT_VALUES == ADD_VALUES) and (isphitilde)){
         for (PetscInt cell = cStart; cell < cEnd; ++cell){
             phitildepenalty[cell]+=1;
         }
     }
-
-}
-
-PetscInt counter=0;
-void SaveData(PetscInt rangeStart, PetscInt rangeEnd, DM dm, PetscScalar *array, std::string filename, bool iterateAcrossTime){
-        int rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-        std::string counterstring;
-        if (iterateAcrossTime){
-            counter+=1;
-            counterstring = std::to_string(counter);
-        }
-        if (not (iterateAcrossTime)){ counterstring = ""; }
-        std::ofstream thefile("/Users/jjmarzia/Desktop/ablate/inputs/parallel/sidi_n2_2ts/"+filename+counterstring+"_rank"+std::to_string(rank)+".txt");
-        for (PetscInt cell = rangeStart; cell < rangeEnd; ++cell) {
-            PetscScalar *ptr; xDMPlexPointLocalRef(dm, cell, -1, array, &ptr);
-            auto s = std::to_string(*ptr);
-            if (thefile.is_open()){
-                thefile << s; thefile << "\n";
-            }
-        }
-        thefile.close();
 }
 
 void ablate::finiteVolume::processes::IntSharp::Initialize(ablate::finiteVolume::FiniteVolumeSolver &solver) {
@@ -104,8 +79,6 @@ ablate::finiteVolume::processes::IntSharp::~IntSharp() { DMDestroy(&vertexDM) >>
 void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) {
     auto dim = flow.GetSubDomain().GetDimensions();
     auto dm = flow.GetSubDomain().GetDM();
-
-
     // create a domain, vertexDM, to use it in source function for storing any calculated vertex normal. Here the vertex normals will be stored on vertices, therefore k = 1
     PetscFE fe_coords;
     PetscInt k = 1;
@@ -131,7 +104,6 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     //process->vertexDM = aux DM
     //get fields
     auto dim = solver.GetSubDomain().GetDimensions();
-
 
 PetscReal xymin[dim], xymax[dim]; DMGetBoundingBox(dm, xymin, xymax);
 PetscReal xmin=xymin[0];
@@ -195,7 +167,31 @@ PetscReal zmax=xymax[2];
 
     PetscInt cStart, cEnd; DMPlexGetHeightStratum(auxDM, 0, &cStart, &cEnd);
 
-    DM divaDM;
+DM sharedDM;
+IS_CopyDM(auxDM, cStart, cEnd, 1, &sharedDM);
+
+Vec divaLocalVec, divaGlobalVec, ismaskLocalVec, ismaskGlobalVec, phitildemaskLocalVec, phitildemaskGlobalVec;
+Vec rankLocalVec, rankGlobalVec, phiLocalVec, phiGlobalVec, phitildeLocalVec, phitildeGlobalVec, cellidLocalVec, cellidGlobalVec;
+
+PetscScalar *divaLocalArray, *ismaskLocalArray, *phitildemaskLocalArray;
+PetscScalar *rankLocalArray, *phiLocalArray, *phitildeLocalArray, *cellidLocalArray;
+
+#define CREATE_VEC_AND_ARRAY(vecLocal, vecGlobal, array) \
+    DMCreateLocalVector(sharedDM, &vecLocal); \
+    DMCreateGlobalVector(sharedDM, &vecGlobal); \
+    VecZeroEntries(vecLocal); \
+    VecZeroEntries(vecGlobal); \
+    VecGetArray(vecLocal, &array);
+
+CREATE_VEC_AND_ARRAY(divaLocalVec, divaGlobalVec, divaLocalArray);
+CREATE_VEC_AND_ARRAY(ismaskLocalVec, ismaskGlobalVec, ismaskLocalArray);
+CREATE_VEC_AND_ARRAY(phitildemaskLocalVec, phitildemaskGlobalVec, phitildemaskLocalArray);
+CREATE_VEC_AND_ARRAY(rankLocalVec, rankGlobalVec, rankLocalArray);
+CREATE_VEC_AND_ARRAY(phiLocalVec, phiGlobalVec, phiLocalArray);
+CREATE_VEC_AND_ARRAY(phitildeLocalVec, phitildeGlobalVec, phitildeLocalArray);
+CREATE_VEC_AND_ARRAY(cellidLocalVec, cellidGlobalVec, cellidLocalArray);
+
+/*    DM divaDM;
     IS_CopyDM(auxDM, cStart, cEnd, 1, &divaDM);
     Vec divaLocalVec; DMCreateLocalVector(divaDM, &divaLocalVec);
     Vec divaGlobalVec; DMCreateGlobalVector(divaDM, &divaGlobalVec);
@@ -249,14 +245,22 @@ PetscReal zmax=xymax[2];
     Vec cellidGlobalVec; DMCreateGlobalVector(cellidDM, &cellidGlobalVec);
     VecZeroEntries(cellidLocalVec);
     VecZeroEntries(cellidGlobalVec);
-    PetscScalar *cellidLocalArray; VecGetArray(cellidLocalVec, &cellidLocalArray);
+    PetscScalar *cellidLocalArray; VecGetArray(cellidLocalVec, &cellidLocalArray); */
 
-    DM xDM;
+Vec xLocalVec, xGlobalVec, yLocalVec, yGlobalVec, zLocalVec, zGlobalVec;
+PetscScalar *xLocalArray, *yLocalArray, *zLocalArray;
+
+CREATE_VEC_AND_ARRAY(xLocalVec, xGlobalVec, xLocalArray);
+CREATE_VEC_AND_ARRAY(yLocalVec, yGlobalVec, yLocalArray);
+CREATE_VEC_AND_ARRAY(zLocalVec, zGlobalVec, zLocalArray);
+
+/*     DM xDM;
     IS_CopyDM(auxDM, cStart, cEnd, 1, &xDM);
     DM yDM;
     IS_CopyDM(auxDM, cStart, cEnd, 1, &yDM);
     DM zDM;
     IS_CopyDM(auxDM, cStart, cEnd, 1, &zDM);
+
     Vec xLocalVec; DMCreateLocalVector(xDM, &xLocalVec);
     Vec xGlobalVec; DMCreateGlobalVector(xDM, &xGlobalVec);
     Vec yLocalVec; DMCreateLocalVector(yDM, &yLocalVec);
@@ -271,64 +275,56 @@ PetscReal zmax=xymax[2];
     VecZeroEntries(zGlobalVec);
     PetscScalar *xLocalArray; VecGetArray(xLocalVec, &xLocalArray);
     PetscScalar *yLocalArray; VecGetArray(yLocalVec, &yLocalArray);
-    PetscScalar *zLocalArray; VecGetArray(zLocalVec, &zLocalArray);
+    PetscScalar *zLocalArray; VecGetArray(zLocalVec, &zLocalArray); */
 
     //field ID for non field calls is -1.
-
     int rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank); rank+=1;
-
-    //print? (if long )
-    bool verbose=false;
-
     //clean up fields
-
     for (PetscInt cell = cStart; cell < cEnd; ++cell){
-
             PetscSection globalSection; DMGetGlobalSection(dm, &globalSection);
             PetscInt owned = 1; PetscSectionGetOffset(globalSection, cell, &owned);
-
-            PetscScalar *divaptr; xDMPlexPointLocalRef(divaDM, cell, -1, divaLocalArray, &divaptr);
+//            PetscScalar *divaptr; xDMPlexPointLocalRef(divaDM, cell, -1, divaLocalArray, &divaptr);
+            PetscScalar *divaptr; xDMPlexPointLocalRef(sharedDM, cell, -1, divaLocalArray, &divaptr);
             *divaptr = 0;
-            PetscScalar *ismaskptr; xDMPlexPointLocalRef(ismaskDM, cell, -1, ismaskLocalArray, &ismaskptr);
+//            PetscScalar *ismaskptr; xDMPlexPointLocalRef(ismaskDM, cell, -1, ismaskLocalArray, &ismaskptr);
+            PetscScalar *ismaskptr; xDMPlexPointLocalRef(sharedDM, cell, -1, ismaskLocalArray, &ismaskptr);
             *ismaskptr = 0;
-            PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
+//            PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
+            PetscScalar *rankptr; xDMPlexPointLocalRef(sharedDM, cell, -1, rankLocalArray, &rankptr);
             *rankptr = 0;
-            PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(phitildemaskDM, cell, -1, phitildemaskLocalArray, &phitildemaskptr);
+//            PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(phitildemaskDM, cell, -1, phitildemaskLocalArray, &phitildemaskptr);
+            PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(sharedDM, cell, -1, phitildemaskLocalArray, &phitildemaskptr);
             *phitildemaskptr = 0;
-            PetscScalar *phitildeptr; xDMPlexPointLocalRef(phitildeDM, cell, -1, phitildeLocalArray, &phitildeptr);
+//            PetscScalar *phitildeptr; xDMPlexPointLocalRef(phitildeDM, cell, -1, phitildeLocalArray, &phitildeptr);
+            PetscScalar *phitildeptr; xDMPlexPointLocalRef(sharedDM, cell, -1, phitildeLocalArray, &phitildeptr);
             *phitildeptr = 0;
-            PetscScalar *cellidptr; xDMPlexPointLocalRef(cellidDM, cell, -1, cellidLocalArray, &cellidptr);
+//            PetscScalar *cellidptr; xDMPlexPointLocalRef(cellidDM, cell, -1, cellidLocalArray, &cellidptr);
+            PetscScalar *cellidptr; xDMPlexPointLocalRef(sharedDM, cell, -1, cellidLocalArray, &cellidptr);
             *cellidptr = cell;
-
             const PetscScalar *phic; xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic);
-            PetscScalar *phiptr; xDMPlexPointLocalRef(phiDM, cell, -1, phiLocalArray, &phiptr);
+//            PetscScalar *phiptr; xDMPlexPointLocalRef(phiDM, cell, -1, phiLocalArray, &phiptr);
+            PetscScalar *phiptr; xDMPlexPointLocalRef(sharedDM, cell, -1, phiLocalArray, &phiptr);
             if (owned>=0){ *phiptr = *phic; }
-
             PetscReal xp, yp, zp; GetCoordinate3D(dm, dim, cell, &xp, &yp, &zp);
-            PetscScalar *xptr; xDMPlexPointLocalRef(xDM, cell, -1, xLocalArray, &xptr);
+/*            PetscScalar *xptr; xDMPlexPointLocalRef(xDM, cell, -1, xLocalArray, &xptr);
             PetscScalar *yptr; xDMPlexPointLocalRef(yDM, cell, -1, yLocalArray, &yptr);
-            PetscScalar *zptr; xDMPlexPointLocalRef(zDM, cell, -1, zLocalArray, &zptr);
+            PetscScalar *zptr; xDMPlexPointLocalRef(zDM, cell, -1, zLocalArray, &zptr);*/
+            PetscScalar *xptr; xDMPlexPointLocalRef(sharedDM, cell, -1, xLocalArray, &xptr);
+            PetscScalar *yptr; xDMPlexPointLocalRef(sharedDM, cell, -1, yLocalArray, &yptr);
+            PetscScalar *zptr; xDMPlexPointLocalRef(sharedDM, cell, -1, zLocalArray, &zptr);
             *xptr = xp; *yptr = yp; *zptr = zp;
     }
-
-    if (verbose){SaveData(cellRange.start, cellRange.end, xDM, xLocalArray, "x", false);}
-    if (verbose){SaveData(cellRange.start, cellRange.end, yDM, yLocalArray, "y", false);}
-    if (verbose){SaveData(cellRange.start, cellRange.end, zDM, zLocalArray, "z", false);}
-    if (verbose){SaveData(cellRange.start, cellRange.end, cellidDM, cellidLocalArray, "xcellid", false);}
-    if (verbose){SaveData(cellRange.start, cellRange.end, phiDM, phiLocalArray, "phi", true);}
-
     for (PetscInt cell = cStart; cell < cEnd; ++cell){
         PetscSection globalSection; DMGetGlobalSection(dm, &globalSection);
         PetscInt owned = 1; PetscSectionGetOffset(globalSection, cell, &owned);
         if (owned>=0){
                 PetscScalar *rankcptr;
-                xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankcptr);
+//                xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankcptr);
+                xDMPlexPointLocalRef(sharedDM, cell, -1, rankLocalArray, &rankcptr);
                 *rankcptr = rank;
         }
     }
-
     //init mask field
-
     for (PetscInt cell = cStart; cell < cEnd; ++cell){
         const PetscScalar *phic; xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic);
         if (*phic > 1e-4 and *phic < 1-1e-4) {
@@ -336,32 +332,33 @@ PetscReal zmax=xymax[2];
                 DMPlexGetNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
                 for (PetscInt j = 0; j < nNeighbors; ++j) {
                     PetscInt neighbor = neighbors[j];
-                    PetscScalar *ranknptr; xDMPlexPointLocalRef(rankDM, neighbor, -1, rankLocalArray, &ranknptr);
-                    PetscScalar *ismaskptr; xDMPlexPointLocalRef(ismaskDM, neighbor, -1, ismaskLocalArray, &ismaskptr);
+//                    PetscScalar *ranknptr; xDMPlexPointLocalRef(rankDM, neighbor, -1, rankLocalArray, &ranknptr);
+//                    PetscScalar *ismaskptr; xDMPlexPointLocalRef(ismaskDM, neighbor, -1, ismaskLocalArray, &ismaskptr);
+                    PetscScalar *ranknptr; xDMPlexPointLocalRef(sharedDM, neighbor, -1, rankLocalArray, &ranknptr);
+                    PetscScalar *ismaskptr; xDMPlexPointLocalRef(sharedDM, neighbor, -1, ismaskLocalArray, &ismaskptr);
                     *ismaskptr = *ranknptr;
                 }
                 DMPlexRestoreNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         }
     }
-    PushGhost(ismaskDM, ismaskLocalVec, ismaskGlobalVec, ADD_VALUES, false, false);
-    if (verbose){SaveData(cellRange.start, cellRange.end, rankDM, rankLocalArray, "rank", false);}
+//    PushGhost(ismaskDM, ismaskLocalVec, ismaskGlobalVec, ADD_VALUES, false, false);
+    PushGhost(sharedDM, ismaskLocalVec, ismaskGlobalVec, ADD_VALUES, false, false);
+
 
     for (PetscInt cell = cStart; cell < cEnd; ++cell){
         const PetscScalar *phic; xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic);
         if (*phic > 1e-4 and *phic < 1-1e-4) {
-                PetscScalar *ismaskptr; xDMPlexPointLocalRef(ismaskDM, cell, -1, ismaskLocalArray, &ismaskptr);
+//                PetscScalar *ismaskptr; xDMPlexPointLocalRef(ismaskDM, cell, -1, ismaskLocalArray, &ismaskptr);
+                PetscScalar *ismaskptr; xDMPlexPointLocalRef(sharedDM, cell, -1, ismaskLocalArray, &ismaskptr);
                 *ismaskptr = 5;
         }
     }
-    if (verbose){SaveData(cellRange.start, cellRange.end, ismaskDM, ismaskLocalArray, "ismask", true);}
-
     PetscReal rmin; DMPlexGetMinRadius(dm, &rmin); PetscReal h=2*rmin;
     PetscScalar C=1; PetscScalar N=2.6; PetscScalar layers = ceil(C*N);
-
     // phitilde mask
-
     for (PetscInt cell = cStart; cell < cEnd; ++cell) {
-        PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(phitildemaskDM, cell, -1, phitildemaskLocalArray, &phitildemaskptr);
+//        PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(phitildemaskDM, cell, -1, phitildemaskLocalArray, &phitildemaskptr);
+        PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(sharedDM, cell, -1, phitildemaskLocalArray, &phitildemaskptr);
         *phitildemaskptr = 0;
     }
     for (PetscInt cell = cStart; cell < cEnd; ++cell) {
@@ -370,29 +367,27 @@ PetscReal zmax=xymax[2];
                 PetscInt nNeighbors, *neighbors; DMPlexGetNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors); //
                 for (PetscInt j = 0; j < nNeighbors; ++j) {
                     PetscInt neighbor = neighbors[j];
-                    PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(phitildemaskDM, neighbor, -1, phitildemaskLocalArray, &phitildemaskptr);
+//                    PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(phitildemaskDM, neighbor, -1, phitildemaskLocalArray, &phitildemaskptr);
+                    PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(sharedDM, neighbor, -1, phitildemaskLocalArray, &phitildemaskptr);
                     *phitildemaskptr = 1;
-
 PetscReal xc, yc, zc; GetCoordinate3D(dm, dim, cell, &xc, &yc, &zc);
 PetscReal xn, yn, zn; GetCoordinate3D(dm, dim, neighbor, &xn, &yn, &zn);
-
                 }
                 DMPlexRestoreNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         }
     }
+//    PushGhost(phitildemaskDM, phitildemaskLocalVec, phitildemaskGlobalVec, ADD_VALUES, false, false);
+    PushGhost(sharedDM, phitildemaskLocalVec, phitildemaskGlobalVec, ADD_VALUES, false, false);
 
-
-
-    PushGhost(phitildemaskDM, phitildemaskLocalVec, phitildemaskGlobalVec, ADD_VALUES, false, false);
-    if (verbose){SaveData(cellRange.start, cellRange.end, phitildemaskDM, phitildemaskLocalArray, "phitildemask", true);}
 
     //phitilde, auxDM COPY
-
     for (PetscInt cell = cStart; cell < cEnd; ++cell) {
         const PetscScalar *phic; xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic);
         PetscReal xc, yc, zc; GetCoordinate3D(dm, dim, cell, &xc, &yc, &zc);
-        PetscScalar *phitilde; xDMPlexPointLocalRef(phitildeDM, cell, -1, phitildeLocalArray, &phitilde);
-        PetscScalar *phitildemask; xDMPlexPointLocalRef(phitildemaskDM, cell, -1, phitildemaskLocalArray, &phitildemask);
+//        PetscScalar *phitilde; xDMPlexPointLocalRef(phitildeDM, cell, -1, phitildeLocalArray, &phitilde);
+//        PetscScalar *phitildemask; xDMPlexPointLocalRef(phitildemaskDM, cell, -1, phitildemaskLocalArray, &phitildemask);
+        PetscScalar *phitilde; xDMPlexPointLocalRef(sharedDM, cell, -1, phitildeLocalArray, &phitilde);
+        PetscScalar *phitildemask; xDMPlexPointLocalRef(sharedDM, cell, -1, phitildemaskLocalArray, &phitildemask);
         if (*phitildemask < 1e-10){ *phitilde = *phic;
 if (process->flipPhiTilde){*phitilde = 1.00- *phitilde;} }
         else{
@@ -402,15 +397,10 @@ if (process->flipPhiTilde){*phitilde = 1.00- *phitilde;} }
                 PetscInt neighbor = neighbors[j];
                 PetscReal *phin; xDMPlexPointLocalRead(dm, neighbor, phiField.id, solArray, &phin);
                 PetscReal xn, yn, zn; GetCoordinate3D(dm, dim, neighbor, &xn, &yn, &zn);
-
 bool periodicfix = true;
-
 if (periodicfix){
-
 //temporary fix addressing how multiple layers of neighbors for a periodic domain return coordinates on the opposite side
-
 PetscReal maxMask = 10*process->epsilon;
-
 if (( PetscAbs(xn-xc) > maxMask) and (xn > xc)){  xn -= (xmax-xmin);  }
 if (( PetscAbs(xn-xc) > maxMask) and (xn < xc)){  xn += (xmax-xmin);  }
 if (dim>=2){
@@ -419,38 +409,33 @@ if (( PetscAbs(yn-yc) > maxMask) and (yn < yc)){  yn += (ymax-ymin);  } }
 if (dim==3){
 if (( PetscAbs(zn-zc) > maxMask) and (zn > zc)){  zn -= (zmax-zmin);  }
 if (( PetscAbs(zn-zc) > maxMask) and (zn < zc)){  zn += (zmax-zmin);  } }
-
 }
                 PetscReal d = PetscSqrtReal(PetscSqr(xn - xc) + PetscSqr(yn - yc) + PetscSqr(zn - zc));  // distance
                 PetscReal s = C * h;
                 PetscReal wn; PhiNeighborGauss(d, s, &wn);
                 Tw += wn;
                 weightedphi += (*phin * wn);
-
-PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
+//PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
+PetscScalar *rankptr; xDMPlexPointLocalRef(sharedDM, cell, -1, rankLocalArray, &rankptr);
 if ((cell==0) and (*rankptr == 5)){ std::cout << "";}
-
             }
             weightedphi /= Tw;
 if (process->flipPhiTilde){weightedphi = 1.000-weightedphi;}
-
             *phitilde = weightedphi;
-
-
             DMPlexRestoreNeighbors(auxDM, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         }
     }
-    PushGhost(phitildeDM, phitildeLocalVec, phitildeGlobalVec, INSERT_VALUES, true, true);
-    if (verbose){SaveData(cellRange.start, cellRange.end, phitildeDM, phitildeLocalArray, "phitilde", true);}
-
+//    PushGhost(phitildeDM, phitildeLocalVec, phitildeGlobalVec, INSERT_VALUES, true, true);
+    PushGhost(sharedDM, phitildeLocalVec, phitildeGlobalVec, INSERT_VALUES, true, true);
 
 for (PetscInt cell = cStart; cell < cEnd; ++cell) {
-PetscScalar *optr2; PetscScalar *phitildeptr; 
-xDMPlexPointLocalRef(phitildeDM, cell, -1, phitildeLocalArray, &phitildeptr); 
+PetscScalar *optr2; PetscScalar *phitildeptr;
+//xDMPlexPointLocalRef(phitildeDM, cell, -1, phitildeLocalArray, &phitildeptr);
+xDMPlexPointLocalRef(sharedDM, cell, -1, phitildeLocalArray, &phitildeptr);
 xDMPlexPointLocalRef(auxDM, cell, ofield2.id, auxArray, &optr2);
 *optr2 = *phitildeptr;
-PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
-
+//PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
+PetscScalar *rankptr; xDMPlexPointLocalRef(sharedDM, cell, -1, rankLocalArray, &rankptr);
 if ((cell==0) and (*rankptr == 5)){  std::cout << "";   }
 
 }
@@ -465,9 +450,6 @@ if ((cell==0) and (*rankptr == 5)){  std::cout << "";   }
         PetscScalar *aptr; xDMPlexPointLocalRef(aDM, vertex, -1, aLocalArray, &aptr);
         *aptr = 0;
     }
-    if (verbose){SaveData(vStart, vEnd, vxDM, vxLocalArray, "vx", false);}
-    if (verbose){SaveData(vStart, vEnd, vyDM, vyLocalArray, "vy", false);}
-    if (verbose){SaveData(vStart, vEnd, vzDM, vzLocalArray, "vz", false);}
 
     //calculate phiv, gradphiv, av (auxDM COPY)
     for (PetscInt vertex = vStart; vertex < vEnd; vertex++) {
@@ -475,7 +457,8 @@ if ((cell==0) and (*rankptr == 5)){  std::cout << "";   }
         PetscInt nvn, *vertexneighbors; DMPlexVertexGetCells(dm, vertex, &nvn, &vertexneighbors);
         PetscBool isAdjToMask = PETSC_FALSE;
         for (PetscInt k = 0; k < nvn; k++){
-            PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(phitildemaskDM, vertexneighbors[k], -1, phitildemaskLocalArray, &phitildemaskptr);
+//            PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(phitildemaskDM, vertexneighbors[k], -1, phitildemaskLocalArray, &phitildemaskptr);
+            PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(sharedDM, vertexneighbors[k], -1, phitildemaskLocalArray, &phitildemaskptr);
             if (*phitildemaskptr > 0.5){
                 isAdjToMask = PETSC_TRUE;
             }
@@ -485,15 +468,17 @@ if ((cell==0) and (*rankptr == 5)){  std::cout << "";   }
         if (isAdjToMask == PETSC_TRUE){
             if (dim==1){
                 //changed to phitilde
-                PetscScalar *phitildekm1; xDMPlexPointLocalRef(phitildeDM, vertexneighbors[0], -1, phitildeLocalArray, &phitildekm1);
-                PetscScalar *phitildekp1; xDMPlexPointLocalRef(phitildeDM, vertexneighbors[1], -1, phitildeLocalArray, &phitildekp1);
+//                PetscScalar *phitildekm1; xDMPlexPointLocalRef(phitildeDM, vertexneighbors[0], -1, phitildeLocalArray, &phitildekm1);
+//                PetscScalar *phitildekp1; xDMPlexPointLocalRef(phitildeDM, vertexneighbors[1], -1, phitildeLocalArray, &phitildekp1);
+                PetscScalar *phitildekm1; xDMPlexPointLocalRef(sharedDM, vertexneighbors[0], -1, phitildeLocalArray, &phitildekm1);
+                PetscScalar *phitildekp1; xDMPlexPointLocalRef(sharedDM, vertexneighbors[1], -1, phitildeLocalArray, &phitildekp1);
                 PetscReal xm1; GetCoordinate1D(dm, dim, vertexneighbors[0], &xm1);
                 PetscReal xp1; GetCoordinate1D(dm, dim, vertexneighbors[1], &xp1);
                 gradphiv[0]=(*phitildekp1 - *phitildekm1)/(xp1 - xm1);
             }
-            else{ 
-DMPlexVertexGradFromCell(phitildeDM, vertex, phitildeLocalVec, -1, 0, gradphiv); 
-
+            else{
+//DMPlexVertexGradFromCell(phitildeDM, vertex, phitildeLocalVec, -1, 0, gradphiv);
+DMPlexVertexGradFromCell(sharedDM, vertex, phitildeLocalVec, -1, 0, gradphiv);
 }
             for (int k=0; k<dim; ++k){ normgradphi += PetscSqr(gradphiv[k]); }
             normgradphi = PetscSqrtReal(normgradphi);
@@ -507,7 +492,6 @@ DMPlexVertexGradFromCell(phitildeDM, vertex, phitildeLocalVec, -1, 0, gradphiv);
             for (PetscInt k = 0; k < nvn; ++k) {
                 PetscInt neighbor = vertexneighbors[k];
                 PetscReal nx, ny, nz; GetCoordinate3D(dm, dim, neighbor, &nx, &ny, &nz);
-
 
 //temporary fix addressing how multiple layers of neighbors for a periodic domain return coordinates on the opposite side
 
@@ -542,7 +526,8 @@ if (( PetscAbs(nz-vz) > maxMask) and (nz < vz)){  nz += (zmax-zmin);  } }
             for (PetscInt k = 0; k < nvn; ++k) { weights[k] = weights_wrt_short[k] / totalweight_wrt_short; }
             for (PetscInt k = 0; k < nvn; ++k) {
                 PetscInt neighbor = vertexneighbors[k];
-                PetscReal *phineighbor; xDMPlexPointLocalRef(phitildeDM, neighbor, -1, phitildeLocalArray, &phineighbor);
+//                PetscReal *phineighbor; xDMPlexPointLocalRef(phitildeDM, neighbor, -1, phitildeLocalArray, &phineighbor);
+                PetscReal *phineighbor; xDMPlexPointLocalRef(sharedDM, neighbor, -1, phitildeLocalArray, &phineighbor);
                 phiv += (*phineighbor) * (weights[k]);  // unstructured case
             }
         }
@@ -562,12 +547,13 @@ if (( PetscAbs(nz-vz) > maxMask) and (nz < vz)){  nz += (zmax-zmin);  } }
         DMPlexVertexRestoreCells(dm, vertex, &nvn, &vertexneighbors);
     }
     PushGhost(aDM, aLocalVec, aGlobalVec, INSERT_VALUES, true, false);
-    if (verbose){SaveData(vStart, vEnd, aDM, aLocalArray, "a", true);}
 
     //diva (auxDM COPY)
     for (PetscInt cell = cStart; cell < cEnd; ++cell) {
-        PetscScalar *diva; xDMPlexPointLocalRef(divaDM, cell, -1, divaLocalArray, &diva); *diva=0.0;
-        PetscScalar *ismask; xDMPlexPointLocalRef(ismaskDM, cell, -1, ismaskLocalArray, &ismask);
+//        PetscScalar *diva; xDMPlexPointLocalRef(divaDM, cell, -1, divaLocalArray, &diva); *diva=0.0;
+//        PetscScalar *ismask; xDMPlexPointLocalRef(ismaskDM, cell, -1, ismaskLocalArray, &ismask);
+        PetscScalar *diva; xDMPlexPointLocalRef(sharedDM, cell, -1, divaLocalArray, &diva); *diva=0.0;
+        PetscScalar *ismask; xDMPlexPointLocalRef(sharedDM, cell, -1, ismaskLocalArray, &ismask);
         if (*ismask > 0.5){
             if (dim==1){
                 PetscInt nVerts, *verts; DMPlexCellGetVertices(dm, cell, &nVerts, &verts);
@@ -589,24 +575,25 @@ if (( PetscAbs(nz-vz) > maxMask) and (nz < vz)){  nz += (zmax-zmin);  } }
         else{ *diva = 0.0; }
     }
 
-    PushGhost(divaDM, divaLocalVec, divaGlobalVec, INSERT_VALUES, true, false);
-    if (verbose){SaveData(cellRange.start, cellRange.end, divaDM, divaLocalArray, "diva", true);}
+//    PushGhost(divaDM, divaLocalVec, divaGlobalVec, INSERT_VALUES, true, false);
+    PushGhost(sharedDM, divaLocalVec, divaGlobalVec, INSERT_VALUES, true, false);
 
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
         PetscInt cell = cellRange.GetPoint(c);
         const PetscScalar *euler = nullptr; xDMPlexPointLocalRead(dm, cell, eulerfID, solArray, &euler);
-        const PetscReal *phik; xDMPlexPointLocalRead(phitildeDM, cell, -1, phitildeLocalArray, &phik);
+//        const PetscReal *phik; xDMPlexPointLocalRead(phitildeDM, cell, -1, phitildeLocalArray, &phik);
+        const PetscReal *phik; xDMPlexPointLocalRead(sharedDM, cell, -1, phitildeLocalArray, &phik);
         PetscScalar *eulerSource; xDMPlexPointLocalRef(dm, cell, eulerfID, fArray, &eulerSource);
         PetscScalar *rhophiSource; xDMPlexPointLocalRef(dm, cell, densityVFField.id, fArray, &rhophiSource);
         PetscScalar rhog; const PetscScalar *rhogphig; xDMPlexPointLocalRead(dm, cell, densityVFField.id, solArray, &rhogphig);
         if(*rhogphig > 1e-10){rhog = *rhogphig / *phik;}else{rhog = 0;}
-        PetscScalar *diva; xDMPlexPointLocalRef(divaDM, cell, -1, divaLocalArray, &diva);
+//        PetscScalar *diva; xDMPlexPointLocalRef(divaDM, cell, -1, divaLocalArray, &diva);
+        PetscScalar *diva; xDMPlexPointLocalRef(sharedDM, cell, -1, divaLocalArray, &diva);
 
-
+//first term
         *rhophiSource += rhog* *diva;
-//        *rhophiSource += 1.16* *diva + rhog*0;
 
-//add compressible part
+//second term
         auto density = euler[ablate::finiteVolume::CompressibleFlowFields::RHO];
         PetscReal ux = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 0] / density;
         PetscReal uy = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 1] / density;
@@ -615,24 +602,38 @@ if (( PetscAbs(nz-vz) > maxMask) and (nz < vz)){  nz += (zmax-zmin);  } }
         PetscScalar gradrhogphi[dim];
         PetscScalar gradphi[dim];
         DMPlexCellGradFromCell(dm, cell, locX, densityVFField.id, 0, gradrhogphi);
-        DMPlexCellGradFromCell(phitildeDM, cell, phitildeLocalVec, -1, 0, gradphi);
-
+//        DMPlexCellGradFromCell(phitildeDM, cell, phitildeLocalVec, -1, 0, gradphi);
+        DMPlexCellGradFromCell(sharedDM, cell, phitildeLocalVec, -1, 0, gradphi);
            Drhogx = gradrhogphi[0] - rhog * gradphi[0]; if(*phik > 1e-10){Drhogx = Drhogx / *phik;}else{Drhogx = 0;}
 if(dim>1){ Drhogy = gradrhogphi[1] - rhog * gradphi[1]; if(*phik > 1e-10){Drhogy = Drhogy / *phik;}else{Drhogy = 0;} }
 if(dim>2){ Drhogz = gradrhogphi[2] - rhog * gradphi[2]; if(*phik > 1e-10){Drhogz = Drhogz / *phik;}else{Drhogz = 0;} }
-
         *rhophiSource += *phik * (ux * Drhogx + uy * Drhogy + uz * Drhogz)*0;
 
         PetscScalar *optr; xDMPlexPointLocalRef(auxDM, cell, ofield.id, auxArray, &optr);
         *optr = *diva;
 
     }
-
     subDomain->UpdateAuxLocalVector();
 
     //destroy vecs
 
-    VecRestoreArray(divaLocalVec, &divaLocalArray);
+#define RESTORE_VEC_AND_ARRAY(vecLocal, vecGlobal, array) \
+    VecRestoreArray(vecLocal, &array); \
+    VecDestroy(&vecLocal); \
+    VecDestroy(&vecGlobal);
+RESTORE_VEC_AND_ARRAY(divaLocalVec, divaGlobalVec, divaLocalArray);
+RESTORE_VEC_AND_ARRAY(ismaskLocalVec, ismaskGlobalVec, ismaskLocalArray);
+RESTORE_VEC_AND_ARRAY(phitildeLocalVec, phitildeGlobalVec, phitildeLocalArray);
+RESTORE_VEC_AND_ARRAY(phitildemaskLocalVec, phitildemaskGlobalVec, phitildemaskLocalArray);
+RESTORE_VEC_AND_ARRAY(rankLocalVec, rankGlobalVec, rankLocalArray);
+RESTORE_VEC_AND_ARRAY(phiLocalVec, phiGlobalVec, phiLocalArray);
+RESTORE_VEC_AND_ARRAY(cellidLocalVec, cellidGlobalVec, cellidLocalArray);
+RESTORE_VEC_AND_ARRAY(xLocalVec, xGlobalVec, xLocalArray);
+RESTORE_VEC_AND_ARRAY(yLocalVec, yGlobalVec, yLocalArray);
+RESTORE_VEC_AND_ARRAY(zLocalVec, zGlobalVec, zLocalArray);
+DMDestroy(&sharedDM);
+
+/*    VecRestoreArray(divaLocalVec, &divaLocalArray);
     DMRestoreLocalVector(divaDM, &divaLocalVec);
     DMRestoreGlobalVector(divaDM, &divaGlobalVec);
     DMDestroy(&divaDM);
@@ -680,7 +681,7 @@ if(dim>2){ Drhogz = gradrhogphi[2] - rhog * gradphi[2]; if(*phik > 1e-10){Drhogz
     VecRestoreArray(zLocalVec, &zLocalArray);
     DMRestoreLocalVector(zDM, &zLocalVec);
     DMRestoreGlobalVector(zDM, &zGlobalVec);
-    DMDestroy(&zDM);
+    DMDestroy(&zDM); */
 
     VecRestoreArray(vxLocalVec, &vxLocalArray);
     DMRestoreLocalVector(vxDM, &vxLocalVec);
@@ -702,7 +703,6 @@ if(dim>2){ Drhogz = gradrhogphi[2] - rhog * gradphi[2]; if(*phik > 1e-10){Drhogz
     DMRestoreGlobalVector(aDM, &aGlobalVec);
     DMDestroy(&aDM);
 
-
     // cleanup
     VecRestoreArrayRead(locX, &solArray);
     VecRestoreArray(auxVec, &auxArray);
@@ -711,13 +711,9 @@ if(dim>2){ Drhogz = gradrhogphi[2] - rhog * gradphi[2]; if(*phik > 1e-10){Drhogz
     solver.RestoreRange(cellRange);
 
     DMRestoreLocalVector(process->vertexDM, &vertexVec);
-
     VecDestroy(&vertexVec); //<--- this is fine
 //    VecDestroy(&locFVec); //<--- SEGV 11
-
-
     PetscFunctionReturn(0);
-
 }
 
 REGISTER(ablate::finiteVolume::processes::Process, ablate::finiteVolume::processes::IntSharp, "calculates interface regularization term",
