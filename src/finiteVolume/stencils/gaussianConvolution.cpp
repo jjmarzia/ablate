@@ -92,8 +92,6 @@ void GaussianConvolution::BuildList(const PetscInt p) {
   PetscInt nCells, *localCellList;
   DMPlexGetNeighbors(geomDM, p, nLayers, -1.0, -1, PETSC_FALSE, PETSC_FALSE, &nCells, &localCellList) >> ablate::utilities::PetscUtilities::checkError;
 
-//  cellList[p] = (PetscInt*)malloc(nCells*sizeof(PetscInt));
-//  cellWeights[p] = (PetscReal*)malloc(nCells*sizeof(PetscReal));
   PetscMalloc2(nCells, &cellList[p], nCells, &cellWeights[p]);
 
   if (!cellList[p] || !cellWeights[p]) {
@@ -125,7 +123,6 @@ void GaussianConvolution::BuildList(const PetscInt p) {
 
   DMPlexRestoreNeighbors(geomDM, p, nLayers, -1.0, -1, PETSC_FALSE, PETSC_FALSE, &nCells, &localCellList) >> ablate::utilities::PetscUtilities::checkError;
   VecRestoreArrayRead(cellGeomVec, &cellGeomArray) >> utilities::PetscUtilities::checkError;
-
 
 }
 
