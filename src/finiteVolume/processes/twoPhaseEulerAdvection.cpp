@@ -270,6 +270,10 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Setup(ablate::fini
       auxUpdateFields.push_back(CompressibleFlowFields::PRESSURE_FIELD);
     }
 
+    if (subDomain.ContainsField(CompressibleFlowFields::GASDENSITY_FIELD) && (subDomain.GetField(CompressibleFlowFields::GASDENSITY_FIELD).location == ablate::domain::FieldLocation::AUX)) {
+      auxUpdateFields.push_back(CompressibleFlowFields::GASDENSITY_FIELD);
+    }
+
     // There's more work that needs to be done before VOLUME_FRACTION_FIELD can be in the AUX field.
     if (subDomain.ContainsField(VOLUME_FRACTION_FIELD) && (subDomain.GetField(VOLUME_FRACTION_FIELD).location == ablate::domain::FieldLocation::AUX)) {
       auxUpdateFields.push_back(VOLUME_FRACTION_FIELD);
@@ -283,7 +287,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Setup(ablate::fini
 }
 
 #include <signal.h>
-// Update the volume fraction, velocity, temperature, and pressure fields (if they exist).
+// Update the volume fraction, velocity, temperature, pressure fields, and gas density fields (if they exist).
 PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::UpdateAuxFieldsTwoPhase(PetscReal time, PetscInt dim, const PetscFVCellGeom *cellGeom, const PetscInt uOff[],
                                                                                                    const PetscScalar *conservedValues, const PetscInt aOff[], PetscScalar *auxField, void *ctx) {
     PetscFunctionBeginUser;
@@ -336,6 +340,9 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::UpdateAu
       }
       else if (fields[f] == CompressibleFlowFields::PRESSURE_FIELD) {
         auxField[aOff[f]] = p;
+      }
+      else if (fields[f] == CompressibleFlowFields::GASDENSITY_FIELD) {
+        auxField[aOff[f]] = densityG;
       }
       else if (fields[f] == VOLUME_FRACTION_FIELD) { // In case it's ever moved to the AUX vector
         auxField[aOff[f]] = alpha;
@@ -404,19 +411,9 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Multipha
             dim, uOff, allFields, norm, &density, &densityG, &densityL, &normalVelocity, velocity, &internalEnergy, &internalEnergyG, &internalEnergyL, &aG, &aL, &MG, &ML, &p, &t, &alpha);
         // maybe save other values for use later, would interpolation to the face be the same as calculating at face?
         allFields[uOff[0]] = alpha;  // sets volumeFraction field, does every iteration of time step (euler=1, rk=4)
-//PetscReal x[3];
-//DMPlexComputeCellGeometryFVM(dm, cell, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-//fprintf(f1, "%.16e\t%.16e\t%.16e\t%.16e\t%.16e\t%.16e\t%.16e\t%.16e\t%.16e\n", x[0], x[1], alpha, t, p, densityG, densityL, internalEnergyG, internalEnergyL);
-//if (cell==3104) printf("%+f\t%+f\n", x[0], x[1]);
 
-//        if (alpha < 0.0 || alpha > 1.0) {
-//          if (alpha<0.0) printf("%.16e\n", alpha);
-//          else printf("%.16e\n", alpha-1.0);
-//          throw std::runtime_error("Volume fraction of " + std::to_string(alpha) + " is out-of-bounds.");
-//        }
     }
-//fclose(f1);
-//NOTE0EXIT("");
+
     // clean up
     fvSolver.RestoreRange(cellRange);
     PetscFunctionReturn(0);

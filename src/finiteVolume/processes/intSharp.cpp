@@ -8,22 +8,20 @@
 
 #define UNUSED(X) {(void)X;}
 
-void ablate::finiteVolume::processes::IntSharp::Initialize(ablate::finiteVolume::FiniteVolumeSolver &solver) { }
-
-ablate::finiteVolume::processes::IntSharp::IntSharp(PetscReal Gamma, PetscReal epsilon) : Gamma(Gamma), epsilon(epsilon) {}
 
 void ablate::finiteVolume::processes::IntSharp::ClearData() {
   if (cellDM) DMDestroy(&cellDM);
   if (fluxDM) DMDestroy(&fluxDM);
   if (vertDM) DMDestroy(&vertDM);
-  if (gaussianConv) gaussianConv->~GaussianConvolution();
+  if (cellGaussianConv) cellGaussianConv->~GaussianConvolution();
+  if (vertexGaussianConv) vertexGaussianConv->~GaussianConvolution();
 }
 
 ablate::finiteVolume::processes::IntSharp::~IntSharp() {
   ablate::finiteVolume::processes::IntSharp::ClearData();
 }
 
-void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) {
+void ablate::finiteVolume::processes::IntSharp::Initialize(ablate::finiteVolume::FiniteVolumeSolver &flow) {
 
   DM dm = flow.GetSubDomain().GetDM();
   PetscInt vStart, vEnd, cStart, cEnd;
@@ -36,13 +34,33 @@ void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::Fini
   DMPlexGetDepthStratum(dm, 0, &vStart, &vEnd) >> utilities::PetscUtilities::checkError;
   DMPlexGetHeightStratum(dm, 0, &cStart, &cEnd) >> utilities::PetscUtilities::checkError;
 
-  ablate::utilities::PetscUtilities::CopyDM(dm, cStart, cEnd, 1, &cellDM);        // Cell-based smoothed VOF field
-  ablate::utilities::PetscUtilities::CopyDM(dm, vStart, vEnd, 1, &vertDM);  // Vertex-based scalars
+  ablate::utilities::PetscUtilities::CopyDM(dm, cStart, cEnd, 1, &cellDM);    // Cell-based smoothed VOF field
+  ablate::utilities::PetscUtilities::CopyDM(dm, vStart, vEnd, 1, &vertDM);    // Vertex-based scalars
   ablate::utilities::PetscUtilities::CopyDM(dm, vStart, vEnd, dim, &fluxDM);  // Vertex-based gradients
 
-  gaussianConv = std::make_shared<ablate::finiteVolume::stencil::GaussianConvolution>(dm, 4, 2.0);
+  cellGaussianConv = std::make_shared<ablate::finiteVolume::stencil::GaussianConvolution>(dm, 1.0, 0, ablate::finiteVolume::stencil::GaussianConvolution::DepthOrHeight::HEIGHT);
+  vertexGaussianConv = std::make_shared<ablate::finiteVolume::stencil::GaussianConvolution>(dm, 1.0, 0, ablate::finiteVolume::stencil::GaussianConvolution::DepthOrHeight::DEPTH);
 
-  // If Setup is called twice would this be added twice?
+
+}
+
+ablate::finiteVolume::processes::IntSharp::IntSharp(PetscReal Gamma, PetscReal epsilon) : Gamma(Gamma), epsilon(epsilon) {}
+
+
+void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) {
+
+  // List of required fields
+  std::string fieldList[] = { ablate::finiteVolume::CompressibleFlowFields::GASDENSITY_FIELD,
+                              TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD,
+                              ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD,
+                              "densityvolumeFraction"};
+
+  for (auto field : fieldList) {
+    if (!(flow.GetSubDomain().ContainsField(field))) {
+      throw std::runtime_error("ablate::finiteVolume::processes::IntSharp expects a "+ field +" field to be defined.");
+    }
+  }
+
   flow.RegisterRHSFunction(ComputeTerm, this);
 }
 
@@ -73,7 +91,7 @@ void SaveCellData(DM dm, const Vec vec, const char fname[255], const PetscInt id
       FILE *f1;
       if ( rank==0 ) f1 = fopen(fname, "w");
       else f1 = fopen(fname, "a");
-      if (f1==NULL) throw std::runtime_error("Vertex is marked as next to a cut cell but is not!");
+      if (f1==nullptr) throw std::runtime_error("Vertex is marked as next to a cut cell but is not!");
 
       for (PetscInt c = range.start; c < range.end; ++c) {
         PetscInt cell = range.points ? range.points[c] : c;
@@ -84,7 +102,7 @@ void SaveCellData(DM dm, const Vec vec, const char fname[255], const PetscInt id
         if (ct < 12) {
 
           PetscReal x0[3];
-          DMPlexComputeCellGeometryFVM(dm, cell, NULL, x0, NULL) >> ablate::utilities::PetscUtilities::checkError;
+          DMPlexComputeCellGeometryFVM(dm, cell, nullptr, x0, nullptr) >> ablate::utilities::PetscUtilities::checkError;
           for (PetscInt d = 0; d < dim; ++d) {
             fprintf(f1, "%+e\t", x0[d]);
           }
@@ -108,167 +126,54 @@ void SaveCellData(DM dm, const Vec vec, const char fname[255], const PetscInt id
   VecRestoreArrayRead(vec, &array) >> ablate::utilities::PetscUtilities::checkError;
 }
 
-// Calculate the value of phi at a vertex as an inverse-distance weighted sum of all cells using this vertex
-PetscReal VertexPhi(const PetscInt vert, Vec cellGeomVec, DM phiDM, Vec phiVec) {
 
-  PetscReal vertPhi = 0.0, totalWt = 0.0;
-  PetscInt nCells, *cellList;
-  DM dmCell;
-  const PetscScalar* cellGeomArray;
-  PetscScalar *x0;
-  PetscInt dim;
-  const PetscScalar *phiArray;
+void ablate::finiteVolume::processes::IntSharp::MemoryHelper(DM dm, VecLoc loc, Vec *vec, PetscScalar **array) {
 
-  DMGetDimension(phiDM, &dim) >> ablate::utilities::PetscUtilities::checkError;
-
-  VecGetDM(cellGeomVec, &dmCell) >> ablate::utilities::PetscUtilities::checkError;
-
-  DMPlexVertexGetCoordinates(phiDM, 1, &vert, &x0) >> ablate::utilities::PetscUtilities::checkError;
-  VecGetArrayRead(cellGeomVec, &cellGeomArray) >> ablate::utilities::PetscUtilities::checkError;
-  VecGetArrayRead(phiVec, &phiArray) >> ablate::utilities::PetscUtilities::checkError;
-  DMPlexVertexGetCells(phiDM, vert, &nCells, &cellList) >> ablate::utilities::PetscUtilities::checkError;
-
-  for (PetscInt c = 0; c < nCells; ++c) {
-    const PetscInt cell = cellList[c];
-
-    PetscFVCellGeom* cg;
-    DMPlexPointLocalRead(dmCell, cell, cellGeomArray, &cg) >> ablate::utilities::PetscUtilities::checkError;
-    PetscReal *x = cg->centroid;
-    PetscReal r = 0.0;
-
-    for (PetscInt d = 0; d < dim; ++d) r += PetscSqr(x[d] - x0[d]);
-    r = PetscSqrtReal(r);
-
-    const PetscScalar *phi;
-    DMPlexPointLocalRead(phiDM, cell, phiArray, &phi) >> ablate::utilities::PetscUtilities::checkError;
-
-    vertPhi += (*phi)/r;
-    totalWt += 1/r;
-
+  if (loc==LOCAL) {
+    DMGetLocalVector(dm, vec) >> ablate::utilities::PetscUtilities::checkError;
+    VecZeroEntries(*vec) >> ablate::utilities::PetscUtilities::checkError;
+    VecGetArray(*vec, array) >> ablate::utilities::PetscUtilities::checkError;
+    localVecList.push_back({dm, *vec, *array});
+  }
+  else {
+    DMGetGlobalVector(dm, vec) >> ablate::utilities::PetscUtilities::checkError;
+    VecZeroEntries(*vec) >> ablate::utilities::PetscUtilities::checkError;
+    VecGetArray(*vec, array) >> ablate::utilities::PetscUtilities::checkError;
+    globalVecList.push_back({dm, *vec, *array});
   }
 
-  DMPlexVertexRestoreCells(phiDM, vert, &nCells, &cellList) >> ablate::utilities::PetscUtilities::checkError;
-  VecRestoreArrayRead(phiVec, &phiArray) >> ablate::utilities::PetscUtilities::checkError;
-  VecRestoreArrayRead(cellGeomVec, &cellGeomArray) >> ablate::utilities::PetscUtilities::checkError;
-  DMPlexVertexRestoreCoordinates(phiDM, 1, &vert, &x0) >> ablate::utilities::PetscUtilities::checkError;
+}
 
-  return (vertPhi/totalWt);
+void ablate::finiteVolume::processes::IntSharp::MemoryHelper() {
+  for (struct vecData data : localVecList) {
+    VecRestoreArray(data.vec, &data.array) >> ablate::utilities::PetscUtilities::checkError;
+    DMRestoreLocalVector(data.dm, &data.vec) >> ablate::utilities::PetscUtilities::checkError;
+  }
+  localVecList.clear();
+
+  for (struct vecData data : globalVecList) {
+    VecRestoreArray(data.vec, &data.array) >> ablate::utilities::PetscUtilities::checkError;
+    DMRestoreGlobalVector(data.dm, &data.vec) >> ablate::utilities::PetscUtilities::checkError;
+  }
+  globalVecList.clear();
 
 
 }
 
-// Calculate epsilon*grad(phi) - phi*(1-phi)*grad(phi)/||grad(phi)||
-void VertexFlux(const PetscReal gamma, const PetscReal epsilon, Vec cellGeomVec, DM phiDM, Vec phiVec, DM maskDM, Vec vertMask, DM fluxDM, Vec fluxVec) {
-  PetscInt vStart, vEnd;
-  PetscScalar *fluxArray;
-  const PetscScalar *maskArray;
-  PetscInt dim;
-
-  DMGetDimension(fluxDM, &dim) >> ablate::utilities::PetscUtilities::checkError;
-  VecZeroEntries(fluxVec) >> ablate::utilities::PetscUtilities::checkError;
-  VecGetArray(fluxVec, &fluxArray) >> ablate::utilities::PetscUtilities::checkError;
-  VecGetArrayRead(vertMask, &maskArray) >> ablate::utilities::PetscUtilities::checkError;
-
-  DMPlexGetDepthStratum(fluxDM, 0, &vStart, &vEnd) >> ablate::utilities::PetscUtilities::checkError;
-
-  for (PetscInt v = vStart; v < vEnd; ++v) {
-    const PetscScalar *maskVal;
-    DMPlexPointLocalRead(maskDM, v, maskArray, &maskVal) >> ablate::utilities::PetscUtilities::checkError;
-
-    if (*maskVal > 0.5) {
-
-      PetscScalar grad[dim];
-      DMPlexVertexGradFromCell(phiDM, v, phiVec, -1, 0, grad) >> ablate::utilities::PetscUtilities::checkError;
-
-      const PetscScalar mag = ablate::utilities::MathUtilities::MagVector(dim, grad);
-      const PetscReal phi = VertexPhi(v, cellGeomVec, phiDM, phiVec);
-
-      PetscScalar *flux;
-      DMPlexPointLocalRef(fluxDM, v, fluxArray, &flux) >> ablate::utilities::PetscUtilities::checkError;
-
-      const PetscReal fac = gamma*(epsilon - phi*(1 - phi)/mag);
-
-      ablate::utilities::MathUtilities::ScaleVector(dim, flux, fac);
-    }
-
-  }
-
-  VecRestoreArray(fluxVec, &fluxArray) >> ablate::utilities::PetscUtilities::checkError;
-
-}
-
-PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx) {
-
-
-    PetscFunctionBegin;
-int rank;
-MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-
-//PetscSynchronizedPrintf(PETSC_COMM_WORLD, "%s::%s::%d\t%d\n", __FILE__, __FUNCTION__, __LINE__, rank);PetscSynchronizedFlush(PETSC_COMM_WORLD, PETSC_STDOUT);
-//exit(0);
-
-    auto *process = (ablate::finiteVolume::processes::IntSharp *)ctx;
-
-    // Everything in the IntSharp process must be declared, otherwise you get an "invalid use of member ... in static member function error
-    DM cellDM = process->cellDM;
-    DM vertDM = process->vertDM;          UNUSED(vertDM);
-    DM fluxDM = process->fluxDM;  UNUSED(fluxDM);
-    const PetscScalar *phiRange = process->phiRange; UNUSED(phiRange);
-    PetscInt dim = solver.GetSubDomain().GetDimensions(); UNUSED(dim);
-
-    const ablate::domain::Field &phiField = solver.GetSubDomain().GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
-
-//    PetscReal val;
-  std::shared_ptr<ablate::finiteVolume::stencil::GaussianConvolution> gaussianConv = process->gaussianConv;
-
-  ablate::domain::Range cellRange;
-  solver.GetCellRangeWithoutGhost(cellRange);
-
-  DM phiDM = dm;
-  Vec phiVec = locX;
-  if (phiField.location != ablate::domain::FieldLocation::SOL) {
-    throw std::runtime_error("The vector containing the VOF field is not SOL");
-  }
-//  // Get the DM and Vec of the volume-fraction, in case it's not in the SOL vec.
-//  DM phiDM = solver.GetSubDomain().GetFieldDM(phiField);
-//  Vec phiVec = solver.GetSubDomain().GetVec(phiField);
-
-
-  // Local and global smooth phi field
-  Vec smoothPhiVec[2] = {NULL, NULL};
-  DMGetLocalVector(cellDM, &smoothPhiVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-  DMGetGlobalVector(cellDM, &smoothPhiVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-
-  // Mask indicating the cells of interest
-  Vec cellMaskVec[2] = {NULL, NULL};
-  DMGetLocalVector(cellDM, &cellMaskVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-  DMGetGlobalVector(cellDM, &cellMaskVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-  VecZeroEntries(cellMaskVec[GLOBAL]);
-  VecZeroEntries(cellMaskVec[LOCAL]);
+void ablate::finiteVolume::processes::IntSharp::SetMasks(ablate::domain::Range &cellRange, DM phiDM, Vec phiVec, PetscInt phiID, Vec cellMaskVec[2], PetscScalar *cellMaskArray[2], PetscScalar *vertMaskArray) {
 
   const PetscScalar *phiArray;
-  PetscScalar *smoothPhiArray[2] = {NULL, NULL};
-  PetscScalar *cellMaskArray[2] = {NULL, NULL};
-
   VecGetArrayRead(phiVec, &phiArray) >> ablate::utilities::PetscUtilities::checkError;
-  VecGetArray(smoothPhiVec[GLOBAL], &smoothPhiArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-  VecGetArray(cellMaskVec[LOCAL], &cellMaskArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-
 
   for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
     PetscInt cell = cellRange.GetPoint(c);
 
     const PetscScalar *phiVal;
-    PetscScalar *smoothPhiVal;
-
-    xDMPlexPointLocalRead(phiDM, cell, phiField.id, phiArray, &phiVal) >> ablate::utilities::PetscUtilities::checkError;
-    DMPlexPointLocalRef(cellDM, cell, smoothPhiArray[GLOBAL], &smoothPhiVal) >> ablate::utilities::PetscUtilities::checkError;
-    *smoothPhiVal = *phiVal;
+    xDMPlexPointLocalRead(phiDM, cell, phiID, phiArray, &phiVal) >> ablate::utilities::PetscUtilities::checkError;
 
     if (*phiVal > phiRange[0] && *phiVal < phiRange[1]) {
-        const PetscInt *cellList;
-        PetscInt nCells = gaussianConv->GetCellList(cell, &cellList);
-        (void)nCells;
+      const PetscInt *cellList;
+      PetscInt nCells = cellGaussianConv->GetCellList(cell, &cellList);
 
       for (PetscInt i = 0; i < nCells; ++i) {
         PetscScalar *maskVal;
@@ -278,33 +183,13 @@ MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
     }
   }
 
-  for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-    PetscInt cell = cellRange.GetPoint(c);
-
-    const PetscScalar *phiVal;
-
-    xDMPlexPointLocalRead(phiDM, cell, phiField.id, phiArray, &phiVal) >> ablate::utilities::PetscUtilities::checkError;
-
-    if (*phiVal > phiRange[0] && *phiVal < phiRange[1]) {
-      PetscScalar *maskVal;
-      DMPlexPointLocalRef(cellDM, cell, cellMaskArray[LOCAL], &maskVal) >> ablate::utilities::PetscUtilities::checkError;
-      *maskVal = 2;
-
-    }
-  }
-
   VecRestoreArrayRead(phiVec, &phiArray) >> ablate::utilities::PetscUtilities::checkError;
-  VecRestoreArray(smoothPhiVec[GLOBAL], &smoothPhiArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-  VecRestoreArray(cellMaskVec[LOCAL], &cellMaskArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
 
-  // Populate the local vector so that overlap cells have values
-  DMGlobalToLocal(cellDM, smoothPhiVec[GLOBAL], INSERT_ALL_VALUES, smoothPhiVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
   DMLocalToGlobal(cellDM, cellMaskVec[LOCAL], ADD_ALL_VALUES, cellMaskVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
   DMGlobalToLocal(cellDM, cellMaskVec[GLOBAL], ADD_ALL_VALUES, cellMaskVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
 
+
   // Do one more pass over the cells. Mark any cells which might have a non-zero smoothed phi field.
-  VecGetArray(cellMaskVec[GLOBAL], &cellMaskArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-  VecGetArray(cellMaskVec[LOCAL], &cellMaskArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
   for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
     const PetscInt cell = cellRange.GetPoint(c);
 
@@ -313,7 +198,7 @@ MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
 
     if (*globalMaskVal > 0.5) {
       const PetscInt *cellList;
-      PetscInt nCells = gaussianConv->GetCellList(cell, &cellList);
+      PetscInt nCells = cellGaussianConv->GetCellList(cell, &cellList);
 
       for (PetscInt i = 0; i < nCells; ++i) {
         PetscScalar *localMaskVal;
@@ -322,29 +207,13 @@ MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
       }
     }
   }
-  VecRestoreArray(cellMaskVec[GLOBAL], &cellMaskArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-  VecRestoreArray(cellMaskVec[LOCAL], &cellMaskArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+
 
   DMLocalToGlobal(cellDM, cellMaskVec[LOCAL], ADD_ALL_VALUES, cellMaskVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
   DMGlobalToLocal(cellDM, cellMaskVec[GLOBAL], ADD_ALL_VALUES, cellMaskVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
 
-  SaveCellData(cellDM, cellMaskVec[LOCAL], "maskLocal.txt", -1, 1, cellRange);
-  SaveCellData(cellDM, cellMaskVec[GLOBAL], "maskGlobal.txt", -1, 1, cellRange);
-  SaveCellData(cellDM, smoothPhiVec[GLOBAL], "phi0.txt", -1, 1, cellRange);
 
-
-  Vec vertMaskVec[2] = {nullptr, nullptr};
-  PetscScalar *vertMaskArray[2] = {nullptr, nullptr};
-  DMGetLocalVector(vertDM, &vertMaskVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-//  DMGetGlobalVector(vertDM, &vertMaskVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-  VecZeroEntries(vertMaskVec[LOCAL]);
-//  VecZeroEntries(vertMaskVec[GLOBAL]);
-
-  VecGetArray(vertMaskVec[LOCAL], &vertMaskArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-
-  VecGetArray(cellMaskVec[GLOBAL], &cellMaskArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-  VecGetArray(smoothPhiVec[GLOBAL], &smoothPhiArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-  VecGetArray(smoothPhiVec[LOCAL], &smoothPhiArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+  // Now mark all of the vertices
   for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
     const PetscInt cell = cellRange.GetPoint(c);
 
@@ -359,101 +228,179 @@ MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
       for (PetscInt v = 0; v < nVert; ++v) {
         const PetscInt vert = vertList[v];
         PetscScalar *vertMaskVal;
-        DMPlexPointLocalRef(vertDM, vert, vertMaskArray[LOCAL], &vertMaskVal) >> ablate::utilities::PetscUtilities::checkError;
+        DMPlexPointLocalRef(vertDM, vert, vertMaskArray, &vertMaskVal) >> ablate::utilities::PetscUtilities::checkError;
         *vertMaskVal = 1;
       }
       DMPlexCellRestoreVertices(cellDM, cell, &nVert, &vertList) >> ablate::utilities::PetscUtilities::checkError;
-
-      // Calculate the smoothed VOF field
-      PetscScalar *phiVal;
-      DMPlexPointLocalRef(cellDM, cell, smoothPhiArray[GLOBAL], &phiVal) >> ablate::utilities::PetscUtilities::checkError;
-
-      gaussianConv->Evaluate(cellDM, cell, -1, smoothPhiArray[LOCAL], 0, 1, phiVal);
     }
   }
 
-  VecRestoreArray(vertMaskVec[LOCAL], &vertMaskArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-  VecRestoreArray(cellMaskVec[GLOBAL], &cellMaskArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-  VecRestoreArray(smoothPhiVec[GLOBAL], &smoothPhiArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-  VecRestoreArray(smoothPhiVec[LOCAL], &smoothPhiArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+
+}
+
+// Note: locX is a local vector, which means it contains all overlap cells
+PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx) {
 
 
-  DMGlobalToLocal(cellDM, smoothPhiVec[GLOBAL], INSERT_ALL_VALUES, smoothPhiVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+    PetscFunctionBegin;
+int rank;
+MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
 
-  SaveCellData(cellDM, smoothPhiVec[LOCAL], "phi1.txt", -1, 1, cellRange);
+  ablate::finiteVolume::processes::IntSharp *process = (ablate::finiteVolume::processes::IntSharp *)ctx;
 
+  // Everything in the IntSharp process must be declared, otherwise you get an "invalid use of member ... in static member function error
+  DM cellDM = process->cellDM;
+  DM vertDM = process->vertDM;          UNUSED(vertDM);
+  DM fluxDM = process->fluxDM;  UNUSED(fluxDM);
+  const PetscScalar *phiRange = process->phiRange; UNUSED(phiRange);
+  PetscInt dim = solver.GetSubDomain().GetDimensions(); UNUSED(dim);
 
-  // Flux (interior portion of the divergence term
-  Vec fluxVec[2] = {nullptr, nullptr};
-  DMGetLocalVector(fluxDM, &fluxVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-  Vec cellGeomVec;
-  solver.GetGeomVecs(&cellGeomVec, NULL);
-  VertexFlux(process->Gamma, process->epsilon, cellGeomVec, cellDM, smoothPhiVec[LOCAL], vertDM, vertMaskVec[LOCAL], fluxDM, fluxVec[LOCAL]);
-
-
-
-  // Finally compute the net force at cell centers
+  const ablate::domain::Field &phiField = solver.GetSubDomain().GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
   const ablate::domain::Field &eulerField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
+  const ablate::domain::Field &gasDensityField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::GASDENSITY_FIELD);
   const ablate::domain::Field &densityVFField = solver.GetSubDomain().GetField("densityvolumeFraction");
 
-  const PetscScalar *xArray;
-  PetscScalar *fArray;
 
-  VecGetArray(smoothPhiVec[GLOBAL], &smoothPhiArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+
+
+  std::shared_ptr<ablate::finiteVolume::stencil::GaussianConvolution> cellGaussianConv = process->cellGaussianConv;
+  std::shared_ptr<ablate::finiteVolume::stencil::GaussianConvolution> vertexGaussianConv = process->vertexGaussianConv;
+
+  ablate::domain::Range cellRange;
+  solver.GetCellRangeWithoutGhost(cellRange);
+
+//  SaveCellData(dm, locX, "phiField.txt", phiField.id, phiField.numberComponents, cellRange);
+//  SaveCellData(dm, locX, "eulerField.txt", eulerField.id, eulerField.numberComponents, cellRange);
+//  {
+//     DM gasDensityDM = solver.GetSubDomain().GetFieldDM(gasDensityField);
+//    Vec gasDensityVec = solver.GetSubDomain().GetVec(gasDensityField);
+//    SaveCellData(gasDensityDM, gasDensityVec, "gasDensityField.txt", gasDensityField.id, gasDensityField.numberComponents, cellRange);
+//  }
+//  SaveCellData(dm, locX, "densityVFField.txt", densityVFField.id, densityVFField.numberComponents, cellRange);
+
+
+  if (phiField.location != ablate::domain::FieldLocation::SOL) {
+    throw std::runtime_error("The vector containing the VOF field is not SOL");
+  }
+
+  // Mask indicating the cells of interest
+  Vec cellMaskVec[2] = {nullptr, nullptr};
+  PetscScalar *cellMaskArray[2] = {nullptr, nullptr};
+  process->MemoryHelper(cellDM, LOCAL, &cellMaskVec[LOCAL], &cellMaskArray[LOCAL]);
+  process->MemoryHelper(cellDM, GLOBAL, &cellMaskVec[GLOBAL], &cellMaskArray[GLOBAL]);
+
+  Vec vertMaskVec = nullptr;
+  PetscScalar *vertMaskArray = nullptr;
+  process->MemoryHelper(vertDM, LOCAL, &vertMaskVec, &vertMaskArray);
+
+  process->SetMasks(cellRange, dm, locX, phiField.id, cellMaskVec, cellMaskArray, vertMaskArray);
+
+
+  // Flux (interior portion of the divergence term)
+  Vec sharpeningVec[2] = {nullptr, nullptr};
+  PetscScalar *sharpeningArray[2] = {nullptr, nullptr};
+  process->MemoryHelper(fluxDM, LOCAL, &sharpeningVec[LOCAL], &sharpeningArray[LOCAL]);
+
+  const PetscScalar *xArray;
   VecGetArrayRead(locX, &xArray) >> ablate::utilities::PetscUtilities::checkError;
+
+  PetscInt vStart, vEnd;
+  DMPlexGetDepthStratum(vertDM, 0, &vStart, &vEnd) >> ablate::utilities::PetscUtilities::checkError;
+
+  for (PetscInt v = vStart; v < vEnd; ++v) {
+
+    const PetscScalar *maskVal;
+    DMPlexPointLocalRead(vertDM, v, vertMaskArray, &maskVal) >> ablate::utilities::PetscUtilities::checkError;
+
+    if (*maskVal > 0.5) {
+      PetscReal smoothPhi;
+      vertexGaussianConv->Evaluate(v, nullptr, dm, phiField.id, xArray, 0, 1, &smoothPhi);
+
+      PetscReal phiGrad[dim], norm = 0.0;
+      for (PetscInt d = 0; d < dim; ++d) {
+        PetscInt dx[3] = {0, 0, 0};
+        dx[d] = 1;
+        vertexGaussianConv->Evaluate(v, dx, dm, phiField.id, xArray, 0, 1, &phiGrad[d]);
+        norm += PetscSqr(phiGrad[d]);
+      }
+      norm = PetscSqrtReal(norm);
+
+      PetscScalar *sharpeningFlux;
+      DMPlexPointLocalRead(fluxDM, v, sharpeningArray[LOCAL], &sharpeningFlux);
+
+      if (norm > PETSC_MACHINE_EPSILON) {
+        smoothPhi = process->epsilon - smoothPhi*(1-smoothPhi)/norm;
+        for (PetscInt d = 0; d < dim; ++d) {
+          sharpeningFlux[d] = phiGrad[d]*smoothPhi;
+        }
+      }
+      else {
+        for (PetscInt d = 0; d < dim; ++d) sharpeningFlux[d] = 0.0;
+      }
+    }
+  }
+
+  //  Net force at cell centers
+  PetscScalar *fArray;
   VecGetArray(locFVec, &fArray) >> ablate::utilities::PetscUtilities::checkError;
-FILE *f1 = fopen("force.txt", "w");
+
+  DM gasDensityDM = solver.GetSubDomain().GetFieldDM(gasDensityField);
+  Vec gasDensityVec = solver.GetSubDomain().GetVec(gasDensityField);
+  const PetscScalar *gasDensityArray;
+  VecGetArrayRead(gasDensityVec, &gasDensityArray);
+
   // Net force on the cell-center
   for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
     PetscInt cell = cellRange.GetPoint(c);
 
     const PetscScalar *phiVal;
-PetscReal x[3];
-DMPlexComputeCellGeometryFVM(dm, cell, NULL, x, NULL);
-
-    xDMPlexPointLocalRead(phiDM, cell, phiField.id, xArray, &phiVal) >> ablate::utilities::PetscUtilities::checkError;
+    xDMPlexPointLocalRead(dm, cell, phiField.id, xArray, &phiVal) >> ablate::utilities::PetscUtilities::checkError;
 
     if (*phiVal > phiRange[0] && *phiVal < phiRange[1]) {
-      const PetscScalar *smoothPhiVal, *euler;
-      DMPlexPointLocalRead(cellDM, cell, smoothPhiArray[GLOBAL], &smoothPhiVal) >> ablate::utilities::PetscUtilities::checkError;
+      const PetscScalar *euler;
       xDMPlexPointLocalRead(dm, cell, eulerField.id, xArray, &euler) >> ablate::utilities::PetscUtilities::checkError;
-//This is wrong. This is the mixed density, not the density of the gas
-      PetscScalar rhoGrad[dim];
-      DMPlexCellGradFromCell(dm, cell, locX, eulerField.id, CompressibleFlowFields::RHO, rhoGrad);
 
-      PetscScalar *rhoPhiForce;
-      xDMPlexPointLocalRef(dm, cell, densityVFField.id, fArray, &rhoPhiForce) >> ablate::utilities::PetscUtilities::checkError;
+      PetscReal smoothRhoG;
+      cellGaussianConv->Evaluate(cell, nullptr, gasDensityDM, gasDensityField.id, gasDensityArray, 0, 1, &smoothRhoG);
+      smoothRhoG *= process->Gamma;
+
+      PetscReal smoothPhi;
+      cellGaussianConv->Evaluate(cell, nullptr, dm, phiField.id, xArray, 0, 1, &smoothPhi);
+
+      PetscScalar *force;
+      xDMPlexPointLocalRef(dm, cell, densityVFField.id, fArray, &force) >> ablate::utilities::PetscUtilities::checkError;
 
       for (PetscInt d = 0; d < dim; ++d) {
         PetscScalar fluxGrad[dim];
-        DMPlexCellGradFromVertex(fluxDM, cell, fluxVec[LOCAL], -1, d, fluxGrad);
+        DMPlexCellGradFromVertex(fluxDM, cell, sharpeningVec[LOCAL], -1, d, fluxGrad);
 
-        *rhoPhiForce += euler[CompressibleFlowFields::RHO]*fluxGrad[d] + (*smoothPhiVal)*euler[CompressibleFlowFields::RHOU + d]*rhoGrad[d];
+        PetscReal u = euler[CompressibleFlowFields::RHOU+d]/euler[CompressibleFlowFields::RHO];
+
+        PetscReal dRhoG;
+        PetscInt dx[3] = {0, 0, 0};
+        dx[d] = 1;
+        cellGaussianConv->Evaluate(cell, dx, gasDensityDM, gasDensityField.id, gasDensityArray, 0, 1, &dRhoG);
+
+        *force -= smoothRhoG*fluxGrad[d] + 0.0*smoothPhi*u*dRhoG;
       }
-fprintf(f1, "%+e\t%+e\t%+e\n", x[0], x[1], *rhoPhiForce);
+
     }
   }
-fclose(f1);
-  VecRestoreArray(smoothPhiVec[GLOBAL], &smoothPhiArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+
+
+  VecRestoreArrayRead(gasDensityVec, &gasDensityArray);
   VecRestoreArrayRead(locX, &xArray) >> ablate::utilities::PetscUtilities::checkError;
   VecRestoreArray(locFVec, &fArray) >> ablate::utilities::PetscUtilities::checkError;
 
-
   // Clear all of the temporary vectors.
-  if (smoothPhiVec[LOCAL]) DMRestoreLocalVector(cellDM, &smoothPhiVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-  if (cellMaskVec[LOCAL]) DMRestoreLocalVector(cellDM, &cellMaskVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-  if (vertMaskVec[LOCAL]) DMRestoreLocalVector(vertDM, &vertMaskVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-  if (fluxVec[LOCAL]) DMRestoreLocalVector(fluxDM, &fluxVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-
-  if (smoothPhiVec[GLOBAL]) DMRestoreGlobalVector(cellDM, &smoothPhiVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-  if (cellMaskVec[GLOBAL]) DMRestoreGlobalVector(cellDM, &cellMaskVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-  if (vertMaskVec[GLOBAL]) DMRestoreGlobalVector(vertDM, &vertMaskVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-  if (fluxVec[GLOBAL]) DMRestoreGlobalVector(fluxDM, &fluxVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-
+  process->MemoryHelper();
+//SaveCellData(dm, locFVec, "force.txt", densityVFField.id, 1, cellRange);
   solver.RestoreRange(cellRange);
 
-printf("%s::%s::%d\n", __FILE__, __FUNCTION__, __LINE__);
-exit(0);
+
+
+//PetscPrintf(PETSC_COMM_WORLD, "%s::%s::%d\n", __FILE__, __FUNCTION__, __LINE__);
+//exit(0);
     PetscFunctionReturn(0);
 
 }
