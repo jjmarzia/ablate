@@ -41,8 +41,8 @@ namespace ablate::finiteVolume::stencil {
 
 
     public:
-      void Evaluate(DM dm, const PetscInt p, const PetscInt dx[], const PetscInt fid, const PetscScalar *array, PetscInt offset, const PetscInt nDof, PetscReal vals[]);
-      void Evaluate(DM dm, const PetscInt p, const PetscInt dx[], const PetscInt fid, Vec fVec, PetscInt offset, const PetscInt nDof, PetscReal vals[]);
+      void Evaluate(const PetscInt p, const PetscInt dx[], DM dataDM, const PetscInt fid, const PetscScalar *array, PetscInt offset, const PetscInt nDof, PetscReal *vals);
+      void Evaluate(const PetscInt p, const PetscInt dx[], DM dataDM, const PetscInt fid, Vec fVec, PetscInt offset, const PetscInt nDof, PetscReal *vals);
 
       PetscInt GetCellList(const PetscInt p, const PetscInt **cellListOut);
 
