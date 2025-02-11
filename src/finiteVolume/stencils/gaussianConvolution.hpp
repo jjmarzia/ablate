@@ -11,13 +11,10 @@ namespace ablate::finiteVolume::stencil {
 
     private:
 
-      PetscInt cStart;
-      PetscInt cEnd;
+      PetscInt rangeStart;
+      PetscInt rangeEnd;
 
       void BuildList(const PetscInt p);
-
-      // Number of points in the 1D quadrature
-      PetscInt nLayers = -1;
 
       // The weights for each point
       PetscReal *weights = nullptr;
@@ -31,6 +28,7 @@ namespace ablate::finiteVolume::stencil {
       // List of cells necessary to do the integration.
       PetscInt **cellList = nullptr;
       PetscInt *nCellList = nullptr;
+      PetscReal **cellDist = nullptr;
 
       // Weights of each cell
       PetscReal **cellWeights = nullptr;
@@ -43,13 +41,17 @@ namespace ablate::finiteVolume::stencil {
 
 
     public:
-      void Evaluate(DM dm, const PetscInt p, const PetscInt fid, const PetscScalar *array, PetscInt offset, const PetscInt nDof, PetscReal vals[]);
-      void Evaluate(DM dm, const PetscInt p, const PetscInt fid, Vec fVec, PetscInt offset, const PetscInt nDof, PetscReal vals[]);
+      void Evaluate(DM dm, const PetscInt p, const PetscInt dx[], const PetscInt fid, const PetscScalar *array, PetscInt offset, const PetscInt nDof, PetscReal vals[]);
+      void Evaluate(DM dm, const PetscInt p, const PetscInt dx[], const PetscInt fid, Vec fVec, PetscInt offset, const PetscInt nDof, PetscReal vals[]);
 
       PetscInt GetCellList(const PetscInt p, const PetscInt **cellListOut);
 
       void FormAllLists();
-      GaussianConvolution(DM geomDM, const PetscInt nLayers, const PetscInt sigmaFactor);
+
+      typedef enum { DEPTH, HEIGHT } DepthOrHeight;
+
+      GaussianConvolution(DM geomDM, const PetscInt sigmaFactor, const PetscInt loc, DepthOrHeight doh);
+
 
 
       ~GaussianConvolution();
