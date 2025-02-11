@@ -190,10 +190,10 @@ void GaussianConvolution::BuildList(const PetscInt p) {
 }
 
 
-void GaussianConvolution::Evaluate(DM dm, const PetscInt p, const PetscInt dx[], const PetscInt fid, Vec fVec, PetscInt offset, const PetscInt nDof, PetscReal vals[]) {
+void GaussianConvolution::Evaluate(const PetscInt p, const PetscInt dx[], DM dataDM, const PetscInt fid, Vec fVec, PetscInt offset, const PetscInt nDof, PetscReal *vals) {
   const PetscScalar *array;
   VecGetArrayRead(fVec, &array) >> ablate::utilities::PetscUtilities::checkError;
-  Evaluate(dm, p, dx, fid, array, offset, nDof, vals);
+  Evaluate(p, dx, dataDM, fid, array, offset, nDof, vals);
   VecRestoreArrayRead(fVec, &array) >> ablate::utilities::PetscUtilities::checkError;
 }
 
@@ -218,7 +218,7 @@ PetscInt GaussianConvolution::GetCellList(const PetscInt p, const PetscInt **cel
 // offset - Where the data of interest starts
 // nDof - Number of degrees of freedom, i.e. number of components in the vector
 // vals - Smoothed values
-void GaussianConvolution::Evaluate(DM dm, const PetscInt p, const PetscInt dx[], const PetscInt fid, const PetscScalar *array, PetscInt offset, const PetscInt nDof, PetscReal vals[]) {
+void GaussianConvolution::Evaluate(const PetscInt p, const PetscInt dx[], DM dataDM, const PetscInt fid, const PetscScalar *array, PetscInt offset, const PetscInt nDof, PetscReal *vals) {
 
   if (p < rangeStart || p >= rangeEnd) {
     throw std::runtime_error("Attempting to calculate a gaussian convolution at a point outside of the specified range.");
@@ -227,7 +227,7 @@ void GaussianConvolution::Evaluate(DM dm, const PetscInt p, const PetscInt dx[],
   if (!cellList[p]) BuildList(p);  // Build the convolution list
 
   PetscInt dim;
-  DMGetDimension(dm, &dim);
+  DMGetDimension(geomDM, &dim);
   PetscInt derHash = 0;
   if (dx) derHash = derivativeHash(dim, dx);
 
@@ -236,7 +236,7 @@ void GaussianConvolution::Evaluate(DM dm, const PetscInt p, const PetscInt dx[],
   for (PetscInt i = 0; i < nCellList[p]; ++i) {
     PetscInt cell = cellList[p][i];
     const PetscScalar *data;
-    xDMPlexPointLocalRead(dm, cell, fid, array, &data);
+    xDMPlexPointLocalRead(dataDM, cell, fid, array, &data);
 
     const PetscReal derFac = derivativeFactor(&cellDist[p][i*dim], sigma, derHash);
 
