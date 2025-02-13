@@ -286,7 +286,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Setup(ablate::fini
             UpdateAuxFieldsTwoPhase, this, auxUpdateFields, {VOLUME_FRACTION_FIELD, DENSITY_VF_FIELD, CompressibleFlowFields::EULER_FIELD});
     }
 
-    //initialize intsharp instance in setup; 
+    //initialize intsharp instance in setup;
     // we will then compute the intsharp term in the prestage and iteratively add it to the volume fraction
     // until a sufficient volume fraction gradient/sharpness is achieved
     auto intSharpProcess = std::make_shared<ablate::finiteVolume::processes::IntSharp>(1000, 0.01);
@@ -421,6 +421,23 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Multipha
         allFields[uOff[0]] = alpha;  // sets volumeFraction field, does every iteration of time step (euler=1, rk=4)
 
     }
+
+    //get the rhs vector
+    Vec locFVec;
+    DM dm = fvSolver.GetSubDomain().GetDM();
+    PetscCall(DMGetLocalVector(dm, &locFVec));
+    PetscCall(VecZeroEntries(locFVec));
+
+    //compute the term
+    intSharpProcess->ComputeTerm(fvSolver, dm, stagetime, globFlowVec, locFVec, intSharpProcess.get());
+
+    //update sol vec
+    PetscCall(DMLocalToGlobalBegin(dm, locFVec, ADD_VALUES, globFlowVec));
+    PetscCall(DMLocalToGlobalEnd(dm, locFVec, ADD_VALUES, globFlowVec));
+
+    //restore
+    PetscCall(DMRestoreLocalVector(dm, &locFVec));
+    PetscCall(VecRestoreArray(globFlowVec, &flowArray));
 
     // clean up
     fvSolver.RestoreRange(cellRange);
