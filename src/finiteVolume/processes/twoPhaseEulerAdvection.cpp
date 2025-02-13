@@ -11,6 +11,8 @@
 #include "parameters/emptyParameters.hpp"
 #include "utilities/petscSupport.hpp"
 
+#include "intSharp.hpp"
+
 #include <signal.h>
 
 #define NOTE0EXIT(S, ...) {PetscFPrintf(MPI_COMM_WORLD, stderr,                                     \
@@ -283,6 +285,12 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Setup(ablate::fini
       flow.RegisterAuxFieldUpdate(
             UpdateAuxFieldsTwoPhase, this, auxUpdateFields, {VOLUME_FRACTION_FIELD, DENSITY_VF_FIELD, CompressibleFlowFields::EULER_FIELD});
     }
+
+    //initialize intsharp instance in setup; 
+    // we will then compute the intsharp term in the prestage and iteratively add it to the volume fraction
+    // until a sufficient volume fraction gradient/sharpness is achieved
+    auto intSharpProcess = std::make_shared<ablate::finiteVolume::processes::IntSharp>(1000, 0.01);
+    intSharpProcess->Initialize(flow);
 
 }
 

@@ -8,6 +8,8 @@
 #include "finiteVolume/compressibleFlowFields.hpp"
 #include "finiteVolume/fluxCalculator/fluxCalculator.hpp"
 #include "process.hpp"
+#include "intSharp.hpp"  
+
 
 namespace ablate::finiteVolume::processes {
 
@@ -52,6 +54,10 @@ class TwoPhaseEulerAdvection : public Process {
     static PetscErrorCode FormJacobianStiff(SNES snes, Vec x, Mat J, Mat P, void *ctx);
 
     PetscErrorCode MultiphaseFlowPreStage(TS flowTs, ablate::solver::Solver &flow, PetscReal stagetime);
+
+    // Add a member variable for IntSharp
+    std::shared_ptr<ablate::finiteVolume::processes::IntSharp> intSharpProcess;
+
     /**
      * General two phase decoder interface
      */
