@@ -455,6 +455,11 @@ class SubDomain : public io::Serializable {
     PetscErrorCode GetFieldLocalVector(const Field&, PetscReal time, IS* vecIs, Vec* vec, DM* subdm);
 
     /**
+     * Update the local AUX vector via a local to global and then global to local call
+     */
+    void UpdateAuxLocalVector();
+
+    /**
      * Restore a local vector with only a single field
      * @param vecIs
      * @param vec
