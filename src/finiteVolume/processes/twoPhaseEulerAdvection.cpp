@@ -960,7 +960,7 @@ PetscReal Heaviside(const PetscReal x, const PetscReal x0, const PetscReal e) {
   }
 }
 
-static PetscInt cnt = 0;
+//static PetscInt cnt = 0;
 
 void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffenedGasDecoder::DecodeTwoPhaseEulerState(PetscInt dim, const PetscInt *uOff, const PetscReal *conservedValues,
                                                                                                                       const PetscReal *normal, PetscReal *densityOut, PetscReal *densityG,
@@ -1191,7 +1191,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffene
     }
 
     if (pL < PETSC_SMALL || pG < PETSC_SMALL) {
-      printf("%ld\n", cnt);
+//      printf("%ld\n", cnt);
       printf("   T: %+e\n", (PetscReal)TG);
       printf("  pR: %+e\n", (PetscReal)pG);
       printf("  pL: %+e\n", (PetscReal)pL);
@@ -1209,7 +1209,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffene
     }
 
     if (eL < PETSC_SMALL || eG < PETSC_SMALL) {
-      printf("%ld\n", cnt);
+//      printf("%ld\n", cnt);
       printf("   T: %+e\n", (PetscReal)TG);
       printf("  pR: %+e\n", (PetscReal)pG);
       printf("  pL: %+e\n", (PetscReal)pL);

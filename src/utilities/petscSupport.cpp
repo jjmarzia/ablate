@@ -109,7 +109,7 @@
       PetscReal x[dim];
       PetscCall(DMPlexComputeCellGeometryFVM(dm, cell, NULL, x, NULL));
       printf("plot(%f,%f,'r*'); %% Cell\n", x[0], x[1]);
-printf("%ld\n", sharedFace);
+//printf("%ld\n", sharedFace);
 //      PetscCall(DMPlexComputeCellGeometryFVM(dm, sharedFace, NULL, x, NULL));
 //      printf("plot(%f,%f,'r*'); %% Shared Face\n", x[0], x[1]);
       SETERRQ(PetscObjectComm((PetscObject)dm), PETSC_ERR_PLIB, "DMPlexGetForwardCell detected that a face is shared between %" PetscInt_FMT" cells.", nPoints);

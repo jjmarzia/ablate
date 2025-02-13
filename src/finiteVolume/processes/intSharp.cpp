@@ -261,6 +261,7 @@ MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
   const ablate::domain::Field &densityVFField = solver.GetSubDomain().GetField("densityvolumeFraction");
 
 
+  const auto &ofield = solver.GetSubDomain().GetField("debug");
 
 
   std::shared_ptr<ablate::finiteVolume::stencil::GaussianConvolution> cellGaussianConv = process->cellGaussianConv;
@@ -349,6 +350,11 @@ MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
   const PetscScalar *gasDensityArray;
   VecGetArrayRead(gasDensityVec, &gasDensityArray);
 
+    Vec auxVec = solver.GetSubDomain().GetAuxVector(); //LOCAL aux vector, not global
+    PetscScalar *auxArray; VecGetArray(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;
+
+      //  std::cout << "cell\n"; //*force;
+
   // Net force on the cell-center
   for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
     PetscInt cell = cellRange.GetPoint(c);
@@ -370,6 +376,10 @@ MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
       PetscScalar *force;
       xDMPlexPointLocalRef(dm, cell, densityVFField.id, fArray, &force) >> ablate::utilities::PetscUtilities::checkError;
 
+PetscScalar *optr;
+xDMPlexPointLocalRef(solver.GetSubDomain().GetAuxDM(), cell, ofield.id, auxArray, &optr);
+
+
       for (PetscInt d = 0; d < dim; ++d) {
         PetscScalar fluxGrad[dim];
         DMPlexCellGradFromVertex(fluxDM, cell, sharpeningVec[LOCAL], -1, d, fluxGrad);
@@ -382,11 +392,16 @@ MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
         cellGaussianConv->Evaluate(cell, dx, gasDensityDM, gasDensityField.id, gasDensityArray, 0, 1, &dRhoG);
 
         *force -= smoothRhoG*fluxGrad[d] + 0.0*smoothPhi*u*dRhoG;
+
+*optr -= smoothRhoG*fluxGrad[d];
+
       }
 
     }
+
   }
 
+  VecRestoreArray(auxVec, &auxArray);
 
   VecRestoreArrayRead(gasDensityVec, &gasDensityArray);
   VecRestoreArrayRead(locX, &xArray) >> ablate::utilities::PetscUtilities::checkError;

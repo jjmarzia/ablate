@@ -17,7 +17,7 @@ namespace ablate::finiteVolume::stencil {
       void BuildList(const PetscInt p);
 
       // The weights for each point
-      PetscReal *weights = nullptr;
+//      PetscReal *weights = nullptr;
 
       // The standard deviation distance
       PetscReal sigma = 1.0;
