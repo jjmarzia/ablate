@@ -289,8 +289,10 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Setup(ablate::fini
     //initialize intsharp instance in setup;
     // we will then compute the intsharp term in the prestage and iteratively add it to the volume fraction
     // until a sufficient volume fraction gradient/sharpness is achieved
-    auto intSharpProcess = std::make_shared<ablate::finiteVolume::processes::IntSharp>(1000, 0.01);
+    auto intSharpProcess = std::make_shared<ablate::finiteVolume::processes::IntSharp>(1000, 0.01, false);
     intSharpProcess->Initialize(flow);
+
+
 
 }
 
@@ -384,6 +386,15 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Multipha
     uOff[1] = rhoAlphaOffset;
     uOff[2] = eulerOffset;
 
+    //get the rhs vector
+    Vec locFVec;
+    DM dm = fvSolver.GetSubDomain().GetDM();
+    PetscCall(DMGetLocalVector(dm, &locFVec));
+    PetscCall(VecZeroEntries(locFVec));
+    
+    //compute the term for all cells
+    intSharpProcess->ComputeTerm(fvSolver, dm, stagetime, globFlowVec, locFVec, intSharpProcess.get());
+
     // For cell center, the norm is unity
     PetscReal norm[3];
     norm[0] = 1;
@@ -399,41 +410,49 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Multipha
         for (PetscInt d = 0; d < dim; d++) {
             velocity[d] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] / density;
         }
+
         // Decode state
-        //         PetscReal density;
-        PetscReal densityG;
-        PetscReal densityL;
-        PetscReal normalVelocity;  // uniform velocity in cell
-                                   //         PetscReal velocity[3];
-        PetscReal internalEnergy;
-        PetscReal internalEnergyG;
-        PetscReal internalEnergyL;
-        PetscReal aG;
-        PetscReal aL;
-        PetscReal MG;
-        PetscReal ML;
-        PetscReal p;  // pressure equilibrium
-        PetscReal t;
-        PetscReal alpha;
+        PetscReal densityG, densityL, normalVelocity, internalEnergy, internalEnergyG, internalEnergyL, aG, aL, MG, ML, p, t, alpha;
         decoder->DecodeTwoPhaseEulerState(
             dim, uOff, allFields, norm, &density, &densityG, &densityL, &normalVelocity, velocity, &internalEnergy, &internalEnergyG, &internalEnergyL, &aG, &aL, &MG, &ML, &p, &t, &alpha);
         // maybe save other values for use later, would interpolation to the face be the same as calculating at face?
+        
         allFields[uOff[0]] = alpha;  // sets volumeFraction field, does every iteration of time step (euler=1, rk=4)
 
+        //get the intsharp term at this cell
+        const auto &fluxGrad = intSharpProcess->fluxGradValues[i - cellRange.start]; //fluxGradValues has size (nCells x dim); we are grabbing the ith row such that fluxGrad size is dim
+
+        //get alpha out of decode
+        PetscScalar &alpha = allFields[vfOffset];
+  
+        //keep old alpha
+        PetscScalar oldAlpha = alpha;
+  
+        //update alpha according to intsharp-calculated flux grad values
+        for (PetscInt d = 0; d < dim; ++d) { 
+          if (!std::isnan(fluxGrad[d]) && fluxGrad[d] != 0.0) { //check to make sure intsharp has actually been computed here
+            alpha -= fluxGrad[d]; 
+          }       
+        }
+  
+        //recompute conserved variables:
+        //update rhogAlpha based on new alpha
+        allFields[rhoAlphaOffset] = (alpha / oldAlpha) * allFields[rhoAlphaOffset];
+
+        //update euler field based on new alpha; 
+        //here we are assuming rhoG/L old = rhoG/L new, e old = e new 
+        allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] = alpha*densityG + (1-alpha)*densityL;
+        allFields[ablate::finiteVolume::CompressibleFlowFields::RHOE] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHO]*internalEnergy;
+        for (PetscInt d = 0; d < dim; ++d) { allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU+d] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] * velocity[d]; }
+
+        //redo decode with new euler fields (density G/L and alpha will be redundant but since RHOE is updated, eG/eL -->p,T will be changed)
+        decoder->DecodeTwoPhaseEulerState(
+          dim, uOff, allFields, norm, &density, &densityG, &densityL, &normalVelocity, velocity, &internalEnergy, &internalEnergyG, &internalEnergyL, &aG, &aL, &MG, &ML, &p, &t, &alpha);
     }
 
-    //get the rhs vector
-    Vec locFVec;
-    DM dm = fvSolver.GetSubDomain().GetDM();
-    PetscCall(DMGetLocalVector(dm, &locFVec));
-    PetscCall(VecZeroEntries(locFVec));
-
-    //compute the term
-    intSharpProcess->ComputeTerm(fvSolver, dm, stagetime, globFlowVec, locFVec, intSharpProcess.get());
-
-    //update sol vec
-    PetscCall(DMLocalToGlobalBegin(dm, locFVec, ADD_VALUES, globFlowVec));
-    PetscCall(DMLocalToGlobalEnd(dm, locFVec, ADD_VALUES, globFlowVec));
+    // //update sol vec
+    // PetscCall(DMLocalToGlobalBegin(dm, locFVec, ADD_VALUES, globFlowVec));
+    // PetscCall(DMLocalToGlobalEnd(dm, locFVec, ADD_VALUES, globFlowVec));
 
     //restore
     PetscCall(DMRestoreLocalVector(dm, &locFVec));
@@ -442,6 +461,7 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Multipha
     // clean up
     fvSolver.RestoreRange(cellRange);
     PetscFunctionReturn(0);
+
 }
 
 double ablate::finiteVolume::processes::TwoPhaseEulerAdvection::ComputeCflTimeStep(TS ts, ablate::finiteVolume::FiniteVolumeSolver &flow, void *ctx) {

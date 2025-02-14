@@ -45,8 +45,7 @@ void ablate::finiteVolume::processes::IntSharp::Initialize(ablate::finiteVolume:
 
 }
 
-ablate::finiteVolume::processes::IntSharp::IntSharp(PetscReal Gamma, PetscReal epsilon) : Gamma(Gamma), epsilon(epsilon) {}
-
+ablate::finiteVolume::processes::IntSharp::IntSharp(PetscReal Gamma, PetscReal epsilon, bool addToRHS) : Gamma(Gamma), epsilon(epsilon), addToRHS(addToRHS) {}
 
 void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) {
 
@@ -239,6 +238,10 @@ void ablate::finiteVolume::processes::IntSharp::SetMasks(ablate::domain::Range &
 
 }
 
+// PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeFluxGradHelper(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx) {
+
+// }
+
 // Note: locX is a local vector, which means it contains all overlap cells
 PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx) {
 
@@ -354,7 +357,9 @@ MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
     Vec auxVec = solver.GetSubDomain().GetAuxVector(); //LOCAL aux vector, not global
     PetscScalar *auxArray; VecGetArray(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;
 
-      //  std::cout << "cell\n"; //*force;
+
+    // make fluxGradValues (to be accessible to twoPhaseEulerAdvection prestage) be a matrix M[nCells][dim]
+    process->fluxGradValues.resize(cellRange.end - cellRange.start, std::vector<PetscScalar>(dim, 0.0));
 
   // Net force on the cell-center
   for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
@@ -392,9 +397,14 @@ xDMPlexPointLocalRef(solver.GetSubDomain().GetAuxDM(), cell, ofield.id, auxArray
         dx[d] = 1;
         cellGaussianConv->Evaluate(cell, dx, gasDensityDM, gasDensityField.id, gasDensityArray, 0, 1, &dRhoG);
 
-        *force -= smoothRhoG*fluxGrad[d] + 0.0*smoothPhi*u*dRhoG;
+        if (process->addToRHS) {
+          *force -= smoothRhoG*fluxGrad[d] + 0.0*smoothPhi*u*dRhoG;
+      }
 
-*optr -= smoothRhoG*fluxGrad[d];
+        *optr -= smoothRhoG*fluxGrad[d];
+
+        // Store the fluxGrad value
+        process->fluxGradValues[c - cellRange.start][d] = fluxGrad[d];
 
       }
 
@@ -423,5 +433,6 @@ xDMPlexPointLocalRef(solver.GetSubDomain().GetAuxDM(), cell, ofield.id, auxArray
 
 REGISTER(ablate::finiteVolume::processes::Process, ablate::finiteVolume::processes::IntSharp, "calculates interface regularization term",
          ARG(PetscReal, "Gamma", "Gamma, velocity scale parameter (approx. umax)"),
-         ARG(PetscReal, "epsilon", "epsilon, interface thickness scale parameter (approx. h)")
+         ARG(PetscReal, "epsilon", "epsilon, interface thickness scale parameter (approx. h)"),
+         ARG(bool, "addtoRHS", "add to the RHS of the densityVFField equation")
 );
