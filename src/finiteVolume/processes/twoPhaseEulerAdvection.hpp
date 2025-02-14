@@ -56,7 +56,7 @@ class TwoPhaseEulerAdvection : public Process {
     PetscErrorCode MultiphaseFlowPreStage(TS flowTs, ablate::solver::Solver &flow, PetscReal stagetime);
 
     // Add a member variable for IntSharp
-    std::shared_ptr<ablate::finiteVolume::processes::IntSharp> intSharpProcess;
+    // std::shared_ptr<ablate::finiteVolume::processes::IntSharp> intSharpProcess;
 
     /**
      * General two phase decoder interface
