@@ -21,6 +21,10 @@ class IntSharp : public Process {
     //coeffs
     PetscReal Gamma;
     PetscReal epsilon;
+    //need a more permanent fix since the user wouldn't know how to use this (or we can just do default true) but
+    //optionally add the intsharp term to the RHS of the densityVFField equation 
+    bool addToRHS;
+
     DM cellDM = nullptr;
     DM fluxDM = nullptr;
     DM vertDM = nullptr;
@@ -55,7 +59,7 @@ class IntSharp : public Process {
      * @param Gamma
      * @param epsilon
      */
-    explicit IntSharp(PetscReal Gamma, PetscReal epsilon);
+    explicit IntSharp(PetscReal Gamma, PetscReal epsilon, bool addToRHS = true);
 
     /**
      * Clean up the dm created
@@ -80,6 +84,10 @@ class IntSharp : public Process {
      * @return
      */
     static PetscErrorCode ComputeTerm(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx);
+
+//public fluxgradvalues to be accessible to twoPhaseEulerAdvection prestage
+    std::vector<std::vector<PetscScalar>> fluxGradValues;
+
 };
 }  // namespace ablate::finiteVolume::processes
 #endif
