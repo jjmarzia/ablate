@@ -5,12 +5,9 @@
 #include "utilities/mathUtilities.hpp"
 #include "utilities/petscSupport.hpp"
 #include "utilities/petscUtilities.hpp"
-#include "twoPhaseEulerAdvection.hpp"
-
-
+#include "finiteVolume/processes/twoPhaseEulerAdvection.hpp"
+#include <signal.h>
 #define UNUSED(X) {(void)X;}
-
-
 
 void ablate::finiteVolume::processes::IntSharp::ClearData() {
   if (cellDM) DMDestroy(&cellDM);
@@ -49,7 +46,16 @@ void ablate::finiteVolume::processes::IntSharp::Initialize(ablate::finiteVolume:
 
 ablate::finiteVolume::processes::IntSharp::IntSharp(PetscReal Gamma, PetscReal epsilon, bool addToRHS) : Gamma(Gamma), epsilon(epsilon), addToRHS(addToRHS) {}
 
+//wrapper function to match the expected signature in intsharp::setup
+void intSharpPreStageWrapper(TS flowTs, ablate::solver::Solver &solver, PetscReal stagetime, ablate::finiteVolume::processes::IntSharp* intSharpProcess) {
+  intSharpProcess->PreStage(flowTs, solver, stagetime);
+}
+
 void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) {
+  // Before each step, sharpen the alpha and propagate changes into conserved values
+  auto intSharpPreStage = std::bind(intSharpPreStageWrapper, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, this);
+  flow.RegisterPreStage(intSharpPreStage);
+
 
   // List of required fields
   std::string fieldList[] = { ablate::finiteVolume::CompressibleFlowFields::GASDENSITY_FIELD,
@@ -65,10 +71,6 @@ void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::Fini
 
   flow.RegisterRHSFunction(ComputeTerm, this);
 }
-
-#include <signal.h>
-
-
 
 void SaveCellData(DM dm, const Vec vec, const char fname[255], const PetscInt id, PetscInt Nc, ablate::domain::Range range) {
 
@@ -127,7 +129,6 @@ void SaveCellData(DM dm, const Vec vec, const char fname[255], const PetscInt id
 
   VecRestoreArrayRead(vec, &array) >> ablate::utilities::PetscUtilities::checkError;
 }
-
 
 void ablate::finiteVolume::processes::IntSharp::MemoryHelper(DM dm, VecLoc loc, Vec *vec, PetscScalar **array) {
 
@@ -240,9 +241,63 @@ void ablate::finiteVolume::processes::IntSharp::SetMasks(ablate::domain::Range &
 
 }
 
-// PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeFluxGradHelper(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx) {
 
-// }
+PetscErrorCode ablate::finiteVolume::processes::IntSharp::PreStage(TS flowTs, ablate::solver::Solver &solver, PetscReal stagetime) {
+  PetscFunctionBegin;
+  const auto &fvSolver = dynamic_cast<ablate::finiteVolume::FiniteVolumeSolver &>(solver);
+  ablate::domain::Range cellRange; fvSolver.GetCellRangeWithoutGhost(cellRange);
+  PetscInt dim; PetscCall(DMGetDimension(fvSolver.GetSubDomain().GetDM(), &dim));
+  const auto &eulerOffset = fvSolver.GetSubDomain().GetField(CompressibleFlowFields::EULER_FIELD).offset;
+  const auto &vfOffset = fvSolver.GetSubDomain().GetField(VOLUME_FRACTION_FIELD).offset;
+  const auto &rhoAlphaOffset = fvSolver.GetSubDomain().GetField(DENSITY_VF_FIELD).offset;
+  DM dm = fvSolver.GetSubDomain().GetDM();
+  Vec globFlowVec; PetscCall(TSGetSolution(flowTs, &globFlowVec));
+  PetscScalar *flowArray; PetscCall(VecGetArray(globFlowVec, &flowArray));
+  PetscInt uOff[3]; uOff[0] = vfOffset; uOff[1] = rhoAlphaOffset; uOff[2] = eulerOffset;
+  // Get the rhs vector
+  Vec locFVec; PetscCall(DMGetLocalVector(dm, &locFVec)); PetscCall(VecZeroEntries(locFVec));
+
+
+  // compute intsharp term for all cells
+  auto intSharpProcess = std::make_shared<ablate::finiteVolume::processes::IntSharp>(0, 0.001, false);
+  std::cout << "Debug: intSharpProcess created" << std::endl;
+  intSharpProcess->ComputeTerm(fvSolver, dm, stagetime, globFlowVec, locFVec, intSharpProcess.get());
+  std::cout << "Debug: intSharpProcess->ComputeTerm called" << std::endl;
+
+  PetscReal norm[3] = {1, 1, 1};
+
+  for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
+      const PetscInt cell = cellRange.GetPoint(i);
+      PetscScalar *allFields = nullptr; DMPlexPointLocalRef(dm, cell, flowArray, &allFields) >> utilities::PetscUtilities::checkError;
+      auto density = allFields[ablate::finiteVolume::CompressibleFlowFields::RHO];
+      PetscReal velocity[3]; for (PetscInt d = 0; d < dim; d++) { velocity[d] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] / density; }
+
+      // decode state (we just need densityG and densityL to reconstruct mixture RHO out of new alpha, and internalEnergy to reconstruct RHOE )
+      // PetscReal densityG = 1.0, densityL = 1000.0, internalEnergy = 1e5; 
+      PetscReal density, densityG, densityL, internalEnergy, normalVelocity, internalEnergyG, internalEnergyL, aG, aL, MG, ML, p, t, alpha;
+      intSharpProcess->decoder->DecodeTwoPhaseEulerState(dim, uOff, allFields, norm, &density, &densityG, &densityL, &normalVelocity, velocity, &internalEnergy, &internalEnergyG, &internalEnergyL, &aG, &aL, &MG, &ML, &p, &t, &alpha);
+
+      // update alpha according to intsharp-calculated flux grad values
+      const auto &fluxGrad = intSharpProcess->fluxGradValues[i - cellRange.start];
+      const PetscScalar oldAlpha = allFields[vfOffset];
+      for (PetscInt d = 0; d < dim; ++d) { if (!std::isnan(fluxGrad[d]) && fluxGrad[d] != 0.0) { allFields[vfOffset] -= fluxGrad[d]; } } // this can be thought of as the RHS of the material derivative of alpha in pseudo time
+      allFields[vfOffset] = std::max(allFields[vfOffset], 0.0); // enforce alpha >= 0
+
+      // update euler field based on new alpha
+      allFields[rhoAlphaOffset] = (allFields[vfOffset] / oldAlpha) * allFields[rhoAlphaOffset];
+      allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] = allFields[vfOffset] * densityG + (1 - allFields[vfOffset]) * densityL;
+      allFields[ablate::finiteVolume::CompressibleFlowFields::RHOE] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] * internalEnergy;
+      for (PetscInt d = 0; d < dim; ++d) {
+          allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] * velocity[d];
+      }
+
+      //now propagate changes made to conserved vars back to the decode (is this necessary? are we storing this?)
+      intSharpProcess->decoder->DecodeTwoPhaseEulerState(dim, uOff, allFields, norm, &density, &densityG, &densityL, &normalVelocity, velocity, &internalEnergy, &internalEnergyG, &internalEnergyL, &aG, &aL, &MG, &ML, &p, &t, &alpha);
+  }
+
+  // Restore
+  PetscCall(DMRestoreLocalVector(dm, &locFVec)); PetscCall(VecRestoreArray(globFlowVec, &flowArray)); fvSolver.RestoreRange(cellRange); PetscFunctionReturn(0);
+}
 
 // Note: locX is a local vector, which means it contains all overlap cells
 PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx) {
@@ -360,7 +415,7 @@ MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
     PetscScalar *auxArray; VecGetArray(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;
 
 
-    // make fluxGradValues (to be accessible to twoPhaseEulerAdvection prestage) be a matrix M[nCells][dim]
+    // make fluxGradValues (to be accessible by prestage) be a matrix M[nCells][dim]
     process->fluxGradValues.resize(cellRange.end - cellRange.start, std::vector<PetscScalar>(dim, 0.0));
 
   // Net force on the cell-center

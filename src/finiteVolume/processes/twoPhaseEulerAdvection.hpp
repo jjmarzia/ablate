@@ -30,6 +30,20 @@ class TwoPhaseEulerAdvection : public Process {
     inline const static std::string VOLUME_FRACTION_FIELD = eos::TwoPhase::VF;
     inline const static std::string DENSITY_VF_FIELD = ablate::finiteVolume::CompressibleFlowFields::CONSERVED + VOLUME_FRACTION_FIELD;
 
+
+    /**
+     * General two phase decoder interface
+     */
+    //i moved this from the private section to the public section so that it can be used in the IntSharp process
+    class TwoPhaseDecoder {
+        public:
+         virtual void DecodeTwoPhaseEulerState(PetscInt dim, const PetscInt *uOff, const PetscReal *conservedValues, const PetscReal *normal, PetscReal *density, PetscReal *densityG,
+                                               PetscReal *densityL, PetscReal *normalVelocity, PetscReal *velocity, PetscReal *internalEnergy, PetscReal *internalEnergyG, PetscReal *internalEnergyL,
+                                               PetscReal *aG, PetscReal *aL, PetscReal *MG, PetscReal *ML, PetscReal *p, PetscReal *T, PetscReal *alpha) = 0;
+         virtual ~TwoPhaseDecoder() = default;
+     };
+     
+
     struct TimeStepData {
         PetscReal cfl;
         eos::ThermodynamicFunction computeSpeedOfSound;
@@ -70,17 +84,6 @@ class TwoPhaseEulerAdvection : public Process {
     static PetscErrorCode FormJacobianStiff(SNES snes, Vec x, Mat J, Mat P, void *ctx);
 
     PetscErrorCode MultiphaseFlowPreStage(TS flowTs, ablate::solver::Solver &flow, PetscReal stagetime);
-
-    /**
-     * General two phase decoder interface
-     */
-    class TwoPhaseDecoder {
-       public:
-        virtual void DecodeTwoPhaseEulerState(PetscInt dim, const PetscInt *uOff, const PetscReal *conservedValues, const PetscReal *normal, PetscReal *density, PetscReal *densityG,
-                                              PetscReal *densityL, PetscReal *normalVelocity, PetscReal *velocity, PetscReal *internalEnergy, PetscReal *internalEnergyG, PetscReal *internalEnergyL,
-                                              PetscReal *aG, PetscReal *aL, PetscReal *MG, PetscReal *ML, PetscReal *p, PetscReal *T, PetscReal *alpha) = 0;
-        virtual ~TwoPhaseDecoder() = default;
-    };
 
     /**
      * Implementation for two perfect gases
