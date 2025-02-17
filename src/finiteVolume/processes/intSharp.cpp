@@ -59,6 +59,8 @@ void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::Fini
 
   // List of required fields
   std::string fieldList[] = { ablate::finiteVolume::CompressibleFlowFields::GASDENSITY_FIELD,
+    ablate::finiteVolume::CompressibleFlowFields::LIQUIDDENSITY_FIELD,
+    ablate::finiteVolume::CompressibleFlowFields::MIXTUREENERGY_FIELD,
                               TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD,
                               ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD,
                               "densityvolumeFraction"};
@@ -70,6 +72,11 @@ void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::Fini
   }
 
   flow.RegisterRHSFunction(ComputeTerm, this);
+
+  // newly initialize fluxGradValues
+  ablate::domain::Range cellRange;
+  flow.GetCellRangeWithoutGhost(cellRange);
+  fluxGradValues.resize(cellRange.end - cellRange.start, std::vector<PetscScalar>(flow.GetSubDomain().GetDimensions(), 0.0));
 }
 
 void SaveCellData(DM dm, const Vec vec, const char fname[255], const PetscInt id, PetscInt Nc, ablate::domain::Range range) {
@@ -256,15 +263,22 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::PreStage(TS flowTs, ab
   PetscInt uOff[3]; uOff[0] = vfOffset; uOff[1] = rhoAlphaOffset; uOff[2] = eulerOffset;
   // Get the rhs vector
   Vec locFVec; PetscCall(DMGetLocalVector(dm, &locFVec)); PetscCall(VecZeroEntries(locFVec));
+  // PetscReal norm[3] = {1, 1, 1}; // For cell center, the norm is unity
 
-
-  // compute intsharp term for all cells
+  // compute intsharp term for all cells; grab them via intSharpProcess->fluxGradValues
+  //i think with this method, the code is doing computeterm twice which is bad.
   auto intSharpProcess = std::make_shared<ablate::finiteVolume::processes::IntSharp>(0, 0.001, false);
-  std::cout << "Debug: intSharpProcess created" << std::endl;
-  intSharpProcess->ComputeTerm(fvSolver, dm, stagetime, globFlowVec, locFVec, intSharpProcess.get());
-  std::cout << "Debug: intSharpProcess->ComputeTerm called" << std::endl;
+  std::cout << "Debug: intSharpProcess created" << std::endl; //able to get here
+  intSharpProcess->ComputeTerm(fvSolver, dm, stagetime, globFlowVec, locFVec, intSharpProcess.get()); //11 SEGV
+  std::cout << "Debug: intSharpProcess->ComputeTerm called" << std::endl; //unable to get here
 
-  PetscReal norm[3] = {1, 1, 1};
+  //required fields in the decode
+  const ablate::domain::Field &gasDensityField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::GASDENSITY_FIELD);
+  const ablate::domain::Field &liquidDensityField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::LIQUIDDENSITY_FIELD);
+  const ablate::domain::Field &mixtureEnergyField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::MIXTUREENERGY_FIELD);
+
+  DM auxDM = solver.GetSubDomain().GetAuxDM();
+  Vec auxVec = solver.GetSubDomain().GetAuxVector(); PetscScalar *auxArray = nullptr; PetscCall(VecGetArray(auxVec, &auxArray));
 
   for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
       const PetscInt cell = cellRange.GetPoint(i);
@@ -274,8 +288,14 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::PreStage(TS flowTs, ab
 
       // decode state (we just need densityG and densityL to reconstruct mixture RHO out of new alpha, and internalEnergy to reconstruct RHOE )
       // PetscReal densityG = 1.0, densityL = 1000.0, internalEnergy = 1e5; 
-      PetscReal density, densityG, densityL, internalEnergy, normalVelocity, internalEnergyG, internalEnergyL, aG, aL, MG, ML, p, t, alpha;
-      intSharpProcess->decoder->DecodeTwoPhaseEulerState(dim, uOff, allFields, norm, &density, &densityG, &densityL, &normalVelocity, velocity, &internalEnergy, &internalEnergyG, &internalEnergyL, &aG, &aL, &MG, &ML, &p, &t, &alpha);
+      // PetscReal density, densityG, densityL, internalEnergy, normalVelocity, internalEnergyG, internalEnergyL, aG, aL, MG, ML, p, t, alpha;
+      // intSharpProcess->decoder->DecodeTwoPhaseEulerState(dim, uOff, allFields, norm, &density, &densityG, &densityL, &normalVelocity, velocity, &internalEnergy, &internalEnergyG, &internalEnergyL, &aG, &aL, &MG, &ML, &p, &t, &alpha);
+
+      PetscReal densityG, densityL, internalEnergy;
+      xDMPlexPointLocalRef(auxDM, cell, gasDensityField.id, auxArray, &densityG) >> utilities::PetscUtilities::checkError;
+      xDMPlexPointLocalRef(auxDM, cell, liquidDensityField.id, auxArray, &densityL) >> utilities::PetscUtilities::checkError;
+      xDMPlexPointLocalRef(auxDM, cell, mixtureEnergyField.id, auxArray, &internalEnergy) >> utilities::PetscUtilities::checkError;
+
 
       // update alpha according to intsharp-calculated flux grad values
       const auto &fluxGrad = intSharpProcess->fluxGradValues[i - cellRange.start];
@@ -292,7 +312,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::PreStage(TS flowTs, ab
       }
 
       //now propagate changes made to conserved vars back to the decode (is this necessary? are we storing this?)
-      intSharpProcess->decoder->DecodeTwoPhaseEulerState(dim, uOff, allFields, norm, &density, &densityG, &densityL, &normalVelocity, velocity, &internalEnergy, &internalEnergyG, &internalEnergyL, &aG, &aL, &MG, &ML, &p, &t, &alpha);
+      // intSharpProcess->decoder->DecodeTwoPhaseEulerState(dim, uOff, allFields, norm, &density, &densityG, &densityL, &normalVelocity, velocity, &internalEnergy, &internalEnergyG, &internalEnergyL, &aG, &aL, &MG, &ML, &p, &t, &alpha);
   }
 
   // Restore
@@ -319,6 +339,10 @@ MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
   const ablate::domain::Field &phiField = solver.GetSubDomain().GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
   const ablate::domain::Field &eulerField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
   const ablate::domain::Field &gasDensityField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::GASDENSITY_FIELD);
+
+  // const ablate::domain::Field &liquidDensityField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::LIQUIDDENSITY_FIELD);
+  // const ablate::domain::Field &mixtureEnergyField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::MIXTUREENERGY_FIELD);
+
   const ablate::domain::Field &densityVFField = solver.GetSubDomain().GetField("densityvolumeFraction");
 
 
@@ -406,10 +430,8 @@ MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
   PetscScalar *fArray;
   VecGetArray(locFVec, &fArray) >> ablate::utilities::PetscUtilities::checkError;
 
-  DM gasDensityDM = solver.GetSubDomain().GetFieldDM(gasDensityField);
-  Vec gasDensityVec = solver.GetSubDomain().GetVec(gasDensityField);
-  const PetscScalar *gasDensityArray;
-  VecGetArrayRead(gasDensityVec, &gasDensityArray);
+  DM gasDensityDM = solver.GetSubDomain().GetFieldDM(gasDensityField); 
+  Vec gasDensityVec = solver.GetSubDomain().GetVec(gasDensityField); const PetscScalar *gasDensityArray; VecGetArrayRead(gasDensityVec, &gasDensityArray);
 
     Vec auxVec = solver.GetSubDomain().GetAuxVector(); //LOCAL aux vector, not global
     PetscScalar *auxArray; VecGetArray(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;

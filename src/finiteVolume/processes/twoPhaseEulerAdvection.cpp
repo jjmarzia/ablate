@@ -276,6 +276,14 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Setup(ablate::fini
       auxUpdateFields.push_back(CompressibleFlowFields::GASDENSITY_FIELD);
     }
 
+    //we also need liquid density and mixture energy in intsharp prestage, not sure if it needs to be here though
+    if (subDomain.ContainsField(CompressibleFlowFields::LIQUIDDENSITY_FIELD) && (subDomain.GetField(CompressibleFlowFields::LIQUIDDENSITY_FIELD).location == ablate::domain::FieldLocation::AUX)) {
+      auxUpdateFields.push_back(CompressibleFlowFields::LIQUIDDENSITY_FIELD);
+    }
+    if (subDomain.ContainsField(CompressibleFlowFields::MIXTUREENERGY_FIELD) && (subDomain.GetField(CompressibleFlowFields::MIXTUREENERGY_FIELD).location == ablate::domain::FieldLocation::AUX)) {
+      auxUpdateFields.push_back(CompressibleFlowFields::MIXTUREENERGY_FIELD);
+    }
+
     // There's more work that needs to be done before VOLUME_FRACTION_FIELD can be in the AUX field.
     if (subDomain.ContainsField(VOLUME_FRACTION_FIELD) && (subDomain.GetField(VOLUME_FRACTION_FIELD).location == ablate::domain::FieldLocation::AUX)) {
       auxUpdateFields.push_back(VOLUME_FRACTION_FIELD);
@@ -354,6 +362,12 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::UpdateAu
       }
       else if (fields[f] == CompressibleFlowFields::GASDENSITY_FIELD) {
         auxField[aOff[f]] = densityG;
+      }
+      else if (fields[f] == CompressibleFlowFields::LIQUIDDENSITY_FIELD) {
+        auxField[aOff[f]] = densityL;
+      }
+      else if (fields[f] == CompressibleFlowFields::MIXTUREENERGY_FIELD) {
+        auxField[aOff[f]] = internalEnergy;
       }
       else if (fields[f] == VOLUME_FRACTION_FIELD) { // In case it's ever moved to the AUX vector
         auxField[aOff[f]] = alpha;
