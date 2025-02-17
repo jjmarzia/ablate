@@ -9,9 +9,8 @@
 #include "flowProcess.hpp"
 #include "process.hpp"
 #include "solver/solver.hpp"
-#include "twoPhaseEulerAdvection.hpp"
+#include "finiteVolume/processes/twoPhaseEulerAdvection.hpp"
 #include "finiteVolume/stencils/gaussianConvolution.hpp"
-
 
 namespace ablate::finiteVolume::processes {
 
@@ -24,6 +23,7 @@ class IntSharp : public Process {
     //need a more permanent fix since the user wouldn't know how to use this (or we can just do default true) but
     //optionally add the intsharp term to the RHS of the densityVFField equation 
     bool addToRHS;
+
 
     DM cellDM = nullptr;
     DM fluxDM = nullptr;
@@ -85,7 +85,15 @@ class IntSharp : public Process {
      */
     static PetscErrorCode ComputeTerm(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx);
 
-//public fluxgradvalues to be accessible to twoPhaseEulerAdvection prestage
+
+    //intsharp prestage stuff
+    inline const static std::string VOLUME_FRACTION_FIELD = eos::TwoPhase::VF;
+    inline const static std::string DENSITY_VF_FIELD = ablate::finiteVolume::CompressibleFlowFields::CONSERVED + VOLUME_FRACTION_FIELD;
+    static PetscErrorCode PreStage(TS flowTs, ablate::solver::Solver &solver, PetscReal stagetime);
+
+    std::shared_ptr<ablate::finiteVolume::processes::TwoPhaseEulerAdvection::TwoPhaseDecoder> decoder; //"error: no member named 'TwoPhaseEulerAdvection'...??"
+    
+    //public fluxgradvalues to be accessible to twoPhaseEulerAdvection prestage
     std::vector<std::vector<PetscScalar>> fluxGradValues;
 
 };
