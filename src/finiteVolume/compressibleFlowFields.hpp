@@ -49,6 +49,9 @@ class CompressibleFlowFields : public domain::FieldDescriptor {
     inline const static std::string PRESSURE_FIELD = "pressure";
     inline const static std::string GASDENSITY_FIELD = "gasDensity";
 
+    inline const static std::string LIQUIDDENSITY_FIELD = "liquidDensity";
+    inline const static std::string MIXTUREENERGY_FIELD = "mixtureEnergy";
+
    protected:
     const std::shared_ptr<eos::EOS> eos;
     const std::shared_ptr<domain::Region> region;

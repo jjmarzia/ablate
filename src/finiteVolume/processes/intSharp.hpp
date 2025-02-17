@@ -91,9 +91,9 @@ class IntSharp : public Process {
     inline const static std::string DENSITY_VF_FIELD = ablate::finiteVolume::CompressibleFlowFields::CONSERVED + VOLUME_FRACTION_FIELD;
     static PetscErrorCode PreStage(TS flowTs, ablate::solver::Solver &solver, PetscReal stagetime);
 
-    std::shared_ptr<ablate::finiteVolume::processes::TwoPhaseEulerAdvection::TwoPhaseDecoder> decoder; //"error: no member named 'TwoPhaseEulerAdvection'...??"
+    // std::shared_ptr<ablate::finiteVolume::processes::TwoPhaseEulerAdvection::TwoPhaseDecoder> decoder; //"error: no member named 'TwoPhaseEulerAdvection'...??"
     
-    //public fluxgradvalues to be accessible to twoPhaseEulerAdvection prestage
+    //public fluxgradvalues to be accessible to prestage
     std::vector<std::vector<PetscScalar>> fluxGradValues;
 
 };
