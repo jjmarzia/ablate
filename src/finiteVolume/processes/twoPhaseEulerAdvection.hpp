@@ -8,8 +8,20 @@
 #include "finiteVolume/compressibleFlowFields.hpp"
 #include "finiteVolume/fluxCalculator/fluxCalculator.hpp"
 #include "process.hpp"
-#include "intSharp.hpp"  
 
+// #include "finiteVolume/process.hpp"
+#include <memory>
+#include <vector>
+#include "domain/range.hpp"
+#include "eos/eos.hpp"
+#include "parameters/parameters.hpp"
+#include "finiteVolume/finiteVolumeSolver.hpp"
+#include "domain/field.hpp"
+#include "domain/region.hpp"
+#include "domain/subDomain.hpp"
+#include "utilities/petscUtilities.hpp"
+#include "finiteVolume/processes/intSharp.hpp"
+#include "finiteVolume/stencils/gaussianConvolution.hpp"
 
 namespace ablate::finiteVolume::processes {
 
@@ -24,7 +36,11 @@ class TwoPhaseEulerAdvection : public Process {
     };
     TimeStepData timeStepData;
 
+
    private:
+    // Add a member variable for IntSharp
+    // std::shared_ptr<ablate::finiteVolume::processes::IntSharp> intSharpProcess;
+
     struct DecodeDataStructGas {
         PetscReal internalEnergy;
         PetscReal density;
@@ -54,9 +70,6 @@ class TwoPhaseEulerAdvection : public Process {
     static PetscErrorCode FormJacobianStiff(SNES snes, Vec x, Mat J, Mat P, void *ctx);
 
     PetscErrorCode MultiphaseFlowPreStage(TS flowTs, ablate::solver::Solver &flow, PetscReal stagetime);
-
-    // Add a member variable for IntSharp
-    // std::shared_ptr<ablate::finiteVolume::processes::IntSharp> intSharpProcess;
 
     /**
      * General two phase decoder interface

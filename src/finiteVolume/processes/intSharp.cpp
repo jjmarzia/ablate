@@ -5,6 +5,8 @@
 #include "utilities/mathUtilities.hpp"
 #include "utilities/petscSupport.hpp"
 #include "utilities/petscUtilities.hpp"
+#include "twoPhaseEulerAdvection.hpp"
+
 
 #define UNUSED(X) {(void)X;}
 
