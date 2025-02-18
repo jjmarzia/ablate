@@ -73,10 +73,6 @@ void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::Fini
 
   flow.RegisterRHSFunction(ComputeTerm, this);
 
-  // newly initialize fluxGradValues
-  ablate::domain::Range cellRange;
-  flow.GetCellRangeWithoutGhost(cellRange);
-  fluxGradValues.resize(cellRange.end - cellRange.start, std::vector<PetscScalar>(flow.GetSubDomain().GetDimensions(), 0.0));
 }
 
 void SaveCellData(DM dm, const Vec vec, const char fname[255], const PetscInt id, PetscInt Nc, ablate::domain::Range range) {
@@ -267,10 +263,10 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::PreStage(TS flowTs, ab
 
   // compute intsharp term for all cells; grab them via intSharpProcess->fluxGradValues
   //i think with this method, the code is doing computeterm twice which is bad.
-  auto intSharpProcess = std::make_shared<ablate::finiteVolume::processes::IntSharp>(0, 0.001, false);
-  std::cout << "Debug: intSharpProcess created" << std::endl; //able to get here
-  intSharpProcess->ComputeTerm(fvSolver, dm, stagetime, globFlowVec, locFVec, intSharpProcess.get()); //11 SEGV
-  std::cout << "Debug: intSharpProcess->ComputeTerm called" << std::endl; //unable to get here
+  // auto intSharpProcess = std::make_shared<ablate::finiteVolume::processes::IntSharp>(0, 0.001, false);
+  // std::cout << "Debug: intSharpProcess created" << std::endl; //able to get here
+  // intSharpProcess->ComputeTerm(fvSolver, dm, stagetime, globFlowVec, locFVec, intSharpProcess.get()); //11 SEGV
+  // std::cout << "Debug: intSharpProcess->ComputeTerm called" << std::endl; //unable to get here
 
   //required fields in the decode
   const ablate::domain::Field &gasDensityField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::GASDENSITY_FIELD);
@@ -279,6 +275,98 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::PreStage(TS flowTs, ab
 
   DM auxDM = solver.GetSubDomain().GetAuxDM();
   Vec auxVec = solver.GetSubDomain().GetAuxVector(); PetscScalar *auxArray = nullptr; PetscCall(VecGetArray(auxVec, &auxArray));
+
+    //bring computeterm logic into the prestage directly (Start)
+
+
+  ablate::finiteVolume::processes::IntSharp *process = this;
+  DM cellDM = process->cellDM;  UNUSED(cellDM);
+  DM vertDM = process->vertDM;          UNUSED(vertDM);
+  DM fluxDM = process->fluxDM;  UNUSED(fluxDM);
+  const PetscScalar *phiRange = process->phiRange; UNUSED(phiRange);
+  const ablate::domain::Field &phiField = solver.GetSubDomain().GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
+  const ablate::domain::Field &eulerField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
+  // const ablate::domain::Field &gasDensityField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::GASDENSITY_FIELD);
+  const ablate::domain::Field &densityVFField = solver.GetSubDomain().GetField("densityvolumeFraction");
+  const auto &ofield = solver.GetSubDomain().GetField("debug");
+  std::shared_ptr<ablate::finiteVolume::stencil::GaussianConvolution> cellGaussianConv = process->cellGaussianConv;
+  std::shared_ptr<ablate::finiteVolume::stencil::GaussianConvolution> vertexGaussianConv = process->vertexGaussianConv;
+  // ablate::domain::Range cellRange;
+  // solver.GetCellRangeWithoutGhost(cellRange);
+  Vec cellMaskVec[2] = {nullptr, nullptr};
+  PetscScalar *cellMaskArray[2] = {nullptr, nullptr};
+  process->MemoryHelper(cellDM, LOCAL, &cellMaskVec[LOCAL], &cellMaskArray[LOCAL]);
+  process->MemoryHelper(cellDM, GLOBAL, &cellMaskVec[GLOBAL], &cellMaskArray[GLOBAL]);
+  Vec vertMaskVec = nullptr;
+  PetscScalar *vertMaskArray = nullptr;
+  process->MemoryHelper(vertDM, LOCAL, &vertMaskVec, &vertMaskArray);
+  Vec locX = solver.GetSubDomain().GetSolutionVector();
+  process->SetMasks(cellRange, dm, locX, phiField.id, cellMaskVec, cellMaskArray, vertMaskArray);
+  Vec sharpeningVec[2] = {nullptr, nullptr};
+  PetscScalar *sharpeningArray[2] = {nullptr, nullptr};
+  process->MemoryHelper(fluxDM, LOCAL, &sharpeningVec[LOCAL], &sharpeningArray[LOCAL]);
+  const PetscScalar *xArray; VecGetArrayRead(locX, &xArray) >> ablate::utilities::PetscUtilities::checkError;
+  PetscInt vStart, vEnd; DMPlexGetDepthStratum(vertDM, 0, &vStart, &vEnd) >> ablate::utilities::PetscUtilities::checkError;
+  for (PetscInt v = vStart; v < vEnd; ++v) {
+    const PetscScalar *maskVal;DMPlexPointLocalRead(vertDM, v, vertMaskArray, &maskVal) >> ablate::utilities::PetscUtilities::checkError;
+    if (*maskVal > 0.5) { PetscReal smoothPhi; vertexGaussianConv->Evaluate(v, nullptr, dm, phiField.id, xArray, 0, 1, &smoothPhi);
+      PetscReal phiGrad[dim], norm = 0.0;
+      for (PetscInt d = 0; d < dim; ++d) {
+        PetscInt dx[3] = {0, 0, 0}; dx[d] = 1; vertexGaussianConv->Evaluate(v, dx, dm, phiField.id, xArray, 0, 1, &phiGrad[d]); norm += PetscSqr(phiGrad[d]);
+      }
+      norm = PetscSqrtReal(norm);
+      PetscScalar *sharpeningFlux; DMPlexPointLocalRead(fluxDM, v, sharpeningArray[LOCAL], &sharpeningFlux);
+      if (norm > PETSC_MACHINE_EPSILON) {
+        smoothPhi = process->epsilon - smoothPhi*(1-smoothPhi)/norm;
+        for (PetscInt d = 0; d < dim; ++d) { sharpeningFlux[d] = phiGrad[d]*smoothPhi; }
+      }
+      else {
+        for (PetscInt d = 0; d < dim; ++d) sharpeningFlux[d] = 0.0;
+      }
+    }
+  }
+  PetscScalar *fArray; VecGetArray(locFVec, &fArray) >> ablate::utilities::PetscUtilities::checkError;
+  DM gasDensityDM = solver.GetSubDomain().GetFieldDM(gasDensityField); 
+  Vec gasDensityVec = solver.GetSubDomain().GetVec(gasDensityField); const PetscScalar *gasDensityArray; VecGetArrayRead(gasDensityVec, &gasDensityArray);
+  process->fluxGradValues.resize(cellRange.end - cellRange.start, std::vector<PetscScalar>(dim, 0.0));
+    // Net force on the cell-center
+    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+      PetscInt cell = cellRange.GetPoint(c);
+      const PetscScalar *phiVal;
+      xDMPlexPointLocalRead(dm, cell, phiField.id, xArray, &phiVal) >> ablate::utilities::PetscUtilities::checkError;
+      if (*phiVal > phiRange[0] && *phiVal < phiRange[1]) {
+        const PetscScalar *euler;
+        xDMPlexPointLocalRead(dm, cell, eulerField.id, xArray, &euler) >> ablate::utilities::PetscUtilities::checkError;
+        PetscReal smoothRhoG; cellGaussianConv->Evaluate(cell, nullptr, gasDensityDM, gasDensityField.id, gasDensityArray, 0, 1, &smoothRhoG); smoothRhoG *= process->Gamma;
+        PetscReal smoothPhi; cellGaussianConv->Evaluate(cell, nullptr, dm, phiField.id, xArray, 0, 1, &smoothPhi);
+        PetscScalar *force; xDMPlexPointLocalRef(dm, cell, densityVFField.id, fArray, &force) >> ablate::utilities::PetscUtilities::checkError;
+        PetscScalar *optr; xDMPlexPointLocalRef(solver.GetSubDomain().GetAuxDM(), cell, ofield.id, auxArray, &optr);
+        for (PetscInt d = 0; d < dim; ++d) {
+          PetscScalar fluxGrad[dim];
+          DMPlexCellGradFromVertex(fluxDM, cell, sharpeningVec[LOCAL], -1, d, fluxGrad);
+          PetscReal u = euler[CompressibleFlowFields::RHOU+d]/euler[CompressibleFlowFields::RHO];PetscReal dRhoG;
+          PetscInt dx[3] = {0, 0, 0}; dx[d] = 1; cellGaussianConv->Evaluate(cell, dx, gasDensityDM, gasDensityField.id, gasDensityArray, 0, 1, &dRhoG);
+          if (process->addToRHS) { *force -= smoothRhoG*fluxGrad[d] + 0.0*smoothPhi*u*dRhoG; }
+          *optr -= fluxGrad[d];
+          process->fluxGradValues[c - cellRange.start][d] = fluxGrad[d];
+        }
+      }
+    }
+    VecRestoreArray(auxVec, &auxArray);
+    VecRestoreArrayRead(gasDensityVec, &gasDensityArray);
+    VecRestoreArrayRead(locX, &xArray) >> ablate::utilities::PetscUtilities::checkError;
+    VecRestoreArray(locFVec, &fArray) >> ablate::utilities::PetscUtilities::checkError;
+    // Clear all of the temporary vectors.
+    process->MemoryHelper();
+  //SaveCellData(dm, locFVec, "force.txt", densityVFField.id, 1, cellRange);
+    solver.RestoreRange(cellRange);
+
+
+  std::cout << "d2" << std::endl; //able to get here
+
+
+    //bring computeterm logic into the prestage directly (End)
+
 
   for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
       const PetscInt cell = cellRange.GetPoint(i);
@@ -298,7 +386,9 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::PreStage(TS flowTs, ab
 
 
       // update alpha according to intsharp-calculated flux grad values
-      const auto &fluxGrad = intSharpProcess->fluxGradValues[i - cellRange.start];
+       std::cout << "d3" << std::endl; //able to get here
+      const auto &fluxGrad = process->fluxGradValues[i - cellRange.start];
+       std::cout << fluxGrad[0] << " " << fluxGrad[1] << " " << fluxGrad[2] << " " << std::endl; //unable to get here
       const PetscScalar oldAlpha = allFields[vfOffset];
       for (PetscInt d = 0; d < dim; ++d) { if (!std::isnan(fluxGrad[d]) && fluxGrad[d] != 0.0) { allFields[vfOffset] -= fluxGrad[d]; } } // this can be thought of as the RHS of the material derivative of alpha in pseudo time
       allFields[vfOffset] = std::max(allFields[vfOffset], 0.0); // enforce alpha >= 0
@@ -480,7 +570,8 @@ xDMPlexPointLocalRef(solver.GetSubDomain().GetAuxDM(), cell, ofield.id, auxArray
           *force -= smoothRhoG*fluxGrad[d] + 0.0*smoothPhi*u*dRhoG;
       }
 
-        *optr -= smoothRhoG*fluxGrad[d];
+        // *optr -= smoothRhoG*fluxGrad[d];
+        *optr -= fluxGrad[d];
 
         // Store the fluxGrad value
         process->fluxGradValues[c - cellRange.start][d] = fluxGrad[d];
