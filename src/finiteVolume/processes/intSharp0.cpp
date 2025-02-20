@@ -323,8 +323,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::PreStage(TS flowTs, ab
     }
   }
   PetscScalar *fArray; VecGetArray(locFVec, &fArray) >> ablate::utilities::PetscUtilities::checkError;
-  DM gasDensityDM = solver.GetSubDomain().GetFieldDM(gasDensityField); Vec gasDensityVec = solver.GetSubDomain().GetVec(gasDensityField); 
-  const PetscScalar *gasDensityArray; VecGetArrayRead(gasDensityVec, &gasDensityArray);
+  DM gasDensityDM = solver.GetSubDomain().GetFieldDM(gasDensityField); Vec gasDensityVec = solver.GetSubDomain().GetVec(gasDensityField); const PetscScalar *gasDensityArray; VecGetArrayRead(gasDensityVec, &gasDensityArray);
   process->fluxGradValues.resize(cellRange.end - cellRange.start, std::vector<PetscScalar>(dim, 0.0));
     // Net force on the cell-center
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
