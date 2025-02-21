@@ -7,7 +7,7 @@
 #include "utilities/petscSupport.hpp"
 #include "utilities/petscUtilities.hpp"
 #include <fstream>
-#include <petsctime.h>
+#include <PetscTime.h>
 
 
 static void IS_CopyDM(DM oldDM, const PetscInt pStart, const PetscInt pEnd, const PetscInt nDOF, DM *newDM) {
@@ -81,12 +81,13 @@ void intSharpPreStageWrapper(TS flowTs, ablate::solver::Solver &solver, PetscRea
 PetscErrorCode ablate::finiteVolume::processes::IntSharp::PreStage(TS flowTs, ablate::solver::Solver &solver, PetscReal stagetime) {
   PetscFunctionBegin;
 
-  PetscLogDouble startTime, endTime, elapsedTime;
+  // PetscLogDouble startTime, endTime, // elapsedTime;
 
-  // PetscPrintf(PETSC_COMM_WORLD, "PreStage function called at time %g\n", stagetime);
+  // // // PetscPrintf(PETSC_COMM_WORLD, "PreStage function called at time %g\n", stagetime);
     
   const auto &fvSolver = dynamic_cast<ablate::finiteVolume::FiniteVolumeSolver &>(solver);
-  ablate::domain::Range cellRange; fvSolver.GetCellRangeWithoutGhost(cellRange);
+  ablate::domain::Range cellRange; 
+  fvSolver.GetCellRangeWithoutGhost(cellRange);
   PetscInt dim; PetscCall(DMGetDimension(fvSolver.GetSubDomain().GetDM(), &dim));
   const auto &eulerOffset = fvSolver.GetSubDomain().GetField(CompressibleFlowFields::EULER_FIELD).offset;
   const auto &vfOffset = fvSolver.GetSubDomain().GetField(VOLUME_FRACTION_FIELD).offset;
@@ -108,7 +109,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::PreStage(TS flowTs, ab
   Vec locX = solver.GetSubDomain().GetSolutionVector(); //had to add this whereas previously locX is given in computeterm as input
   ablate::finiteVolume::processes::IntSharp *process = this;
 
-  // PetscPrintf(PETSC_COMM_WORLD, "process function called at time %g\n", stagetime);
+  // // // PetscPrintf(PETSC_COMM_WORLD, "process function called at time %g\n", stagetime);
 
   std::shared_ptr<ablate::domain::SubDomain> subDomain = process->subDomain;
   subDomain->UpdateAuxLocalVector();
@@ -180,7 +181,7 @@ CREATE_VEC_AND_ARRAY(sharedDM, yLocalVec, yGlobalVec, yLocalArray);
 CREATE_VEC_AND_ARRAY(sharedDM, zLocalVec, zGlobalVec, zLocalArray);
   int rank; MPI_Comm_rank(PETSC_COMM_WORLD, &rank); rank+=1;
 
-  PetscTime(&startTime);
+  // PetscTime(&startTime);
 
   //clean up fields
   for (PetscInt cell = cStart; cell < cEnd; ++cell){
@@ -206,62 +207,74 @@ CREATE_VEC_AND_ARRAY(sharedDM, zLocalVec, zGlobalVec, zLocalArray);
       if (owned>=0){ PetscScalar *rankcptr; xDMPlexPointLocalRef(sharedDM, cell, -1, rankLocalArray, &rankcptr); *rankcptr = rank; }
   }
   
-  PetscTime(&endTime);
-  elapsedTime = endTime - startTime;
-  PetscPrintf(PETSC_COMM_WORLD, "CLEANUP time: %g seconds\n", elapsedTime);
-  PetscTime(&startTime);
+  // PetscTime(&endTime);
+  // elapsedTime = endTime - startTime;
+  // // PetscPrintf(PETSC_COMM_WORLD, "CLEANUP time: %g seconds\n", // elapsedTime);
+  // PetscTime(&startTime);
 
   //init mask field
   for (PetscInt cell = cStart; cell < cEnd; ++cell){
       const PetscScalar *phic; xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic);
       if (*phic > 1e-4 and *phic < 1-1e-4) {
-              PetscInt nNeighbors, *neighbors;
-              DMPlexGetNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
-              for (PetscInt j = 0; j < nNeighbors; ++j) {
-                  PetscInt neighbor = neighbors[j];
+
+              // neighboredit 1
+              
+              const auto &neighbors = cellNeighbors[cell];
+              for (const auto &neighbor : neighbors) {
+              // DMPlexGetNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
+              // for (PetscInt j = 0; j < nNeighbors; ++j) {
+                  // PetscInt neighbor = neighbors[j];
                   PetscScalar *ranknptr; xDMPlexPointLocalRef(sharedDM, neighbor, -1, rankLocalArray, &ranknptr);
                   PetscScalar *ismaskptr; xDMPlexPointLocalRef(sharedDM, neighbor, -1, ismaskLocalArray, &ismaskptr);
                   *ismaskptr = *ranknptr;
               }
-              DMPlexRestoreNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
+              // DMPlexRestoreNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
       }
   }
   PushGhost(sharedDM, ismaskLocalVec, ismaskGlobalVec, ADD_VALUES, false, false);
 
-  PetscTime(&endTime);
-  elapsedTime = endTime - startTime;
-  PetscPrintf(PETSC_COMM_WORLD, "INIT MASK FIELD time: %g seconds\n", elapsedTime);
-  PetscTime(&startTime);
+  // PetscTime(&endTime);
+  // elapsedTime = endTime - startTime;
+  // PetscPrintf(PETSC_COMM_WORLD, "INIT MASK FIELD time: %g seconds\n", // elapsedTime);
+  // PetscTime(&startTime);
 
 // phitilde mask
   for (PetscInt cell = cStart; cell < cEnd; ++cell){
       const PetscScalar *phic; xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic);
       if (*phic > 1e-4 and *phic < 1-1e-4) { PetscScalar *ismaskptr; xDMPlexPointLocalRef(sharedDM, cell, -1, ismaskLocalArray, &ismaskptr); *ismaskptr = 5; }
   }  
-  PetscReal rmin; DMPlexGetMinRadius(dm, &rmin); PetscReal h=2*rmin;
+
   PetscScalar C=1; PetscScalar N=2.6; PetscScalar layers = ceil(C*N);
+  PetscReal rmin; DMPlexGetMinRadius(dm, &rmin); PetscReal h=2*rmin + 0*layers;
+
   for (PetscInt cell = cStart; cell < cEnd; ++cell) {
       PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(sharedDM, cell, -1, phitildemaskLocalArray, &phitildemaskptr); *phitildemaskptr = 0;
   }
   for (PetscInt cell = cStart; cell < cEnd; ++cell) {
       const PetscScalar *phic; xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic) >> ablate::utilities::PetscUtilities::checkError;
       if (*phic > 0.0001 and *phic < 0.9999) {
-              PetscInt nNeighbors, *neighbors; DMPlexGetNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors); //
-              for (PetscInt j = 0; j < nNeighbors; ++j) {
-                  PetscInt neighbor = neighbors[j];
+
+// neighboredit 2
+
+const auto &neighbors = cellNeighbors[cell];
+for (const auto &neighbor : neighbors) {
+
+              // PetscInt nNeighbors, *neighbors; DMPlexGetNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors); //
+              // for (PetscInt j = 0; j < nNeighbors; ++j) {
+              //     PetscInt neighbor = neighbors[j];
                   PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(sharedDM, neighbor, -1, phitildemaskLocalArray, &phitildemaskptr); *phitildemaskptr = 1;
 PetscReal xc, yc, zc; GetCoordinate3D(dm, dim, cell, &xc, &yc, &zc);
 PetscReal xn, yn, zn; GetCoordinate3D(dm, dim, neighbor, &xn, &yn, &zn);
               }
-              DMPlexRestoreNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
+              // DMPlexRestoreNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
       }
   }
   PushGhost(sharedDM, phitildemaskLocalVec, phitildemaskGlobalVec, ADD_VALUES, false, false);
 
-  PetscTime(&endTime);
-  elapsedTime = endTime - startTime;
-  PetscPrintf(PETSC_COMM_WORLD, "PHITILDE MASK FIELD time: %g seconds\n", elapsedTime);
-  PetscTime(&startTime);
+  // PetscTime(&endTime);
+  // elapsedTime = endTime - startTime;
+  // PetscPrintf(PETSC_COMM_WORLD, "PHITILDE MASK FIELD time: %g seconds\n", // elapsedTime);
+  // PetscTime(&startTime);
 
   //phitilde
   for (PetscInt cell = cStart; cell < cEnd; ++cell) {
@@ -272,10 +285,17 @@ PetscReal xn, yn, zn; GetCoordinate3D(dm, dim, neighbor, &xn, &yn, &zn);
       if (*phitildemask < 1e-10){ *phitilde = *phic;
 if (process->flipPhiTilde){*phitilde = 1.00- *phitilde;} }
       else{
-          PetscInt nNeighbors, *neighbors; DMPlexGetNeighbors(auxDM, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
+
+//neighboredit 3
+
+          // PetscInt nNeighbors, *neighbors; DMPlexGetNeighbors(auxDM, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
           PetscReal weightedphi = 0; PetscReal Tw = 0;
-          for (PetscInt j = 0; j < nNeighbors; ++j) {
-              PetscInt neighbor = neighbors[j];
+
+          const auto &neighbors = cellNeighbors[cell];
+          for (const auto &neighbor : neighbors) {
+
+          // for (PetscInt j = 0; j < nNeighbors; ++j) {
+              // PetscInt neighbor = neighbors[j];
               PetscReal *phin; xDMPlexPointLocalRead(dm, neighbor, phiField.id, solArray, &phin);
               PetscReal xn, yn, zn; GetCoordinate3D(dm, dim, neighbor, &xn, &yn, &zn);
 bool periodicfix = true;
@@ -301,15 +321,15 @@ if ((cell==0) and (*rankptr == 5)){ std::cout << "";}
           weightedphi /= Tw;
 if (process->flipPhiTilde){weightedphi = 1.000-weightedphi;}
           *phitilde = weightedphi;
-          DMPlexRestoreNeighbors(auxDM, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
+          // DMPlexRestoreNeighbors(auxDM, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
       }
   }
   PushGhost(sharedDM, phitildeLocalVec, phitildeGlobalVec, INSERT_VALUES, true, true);
 
-  PetscTime(&endTime);
-  elapsedTime = endTime - startTime;
-  PetscPrintf(PETSC_COMM_WORLD, "PHITILDE time: %g seconds\n", elapsedTime);
-  PetscTime(&startTime);
+  // PetscTime(&endTime);
+  // elapsedTime = endTime - startTime;
+  // PetscPrintf(PETSC_COMM_WORLD, "PHITILDE time: %g seconds\n", // elapsedTime);
+  // PetscTime(&startTime);
 
 for (PetscInt cell = cStart; cell < cEnd; ++cell) {
 PetscScalar *optr2; PetscScalar *phitildeptr;
@@ -330,10 +350,10 @@ if ((cell==0) and (*rankptr == 5)){  std::cout << "";   }
       PetscScalar *aptr; xDMPlexPointLocalRef(sharedVertexDM_dim, vertex, -1, aLocalArray, &aptr); *aptr = 0;
   }
 
-  PetscTime(&endTime);
-  elapsedTime = endTime - startTime;
-  PetscPrintf(PETSC_COMM_WORLD, "INIT VEC A time: %g seconds\n", elapsedTime);
-  PetscTime(&startTime);
+  // PetscTime(&endTime);
+  // elapsedTime = endTime - startTime;
+  // PetscPrintf(PETSC_COMM_WORLD, "INIT VEC A time: %g seconds\n", // elapsedTime);
+  // PetscTime(&startTime);
 
   //build vec a
   for (PetscInt vertex = vStart; vertex < vEnd; vertex++) {
@@ -422,10 +442,10 @@ if (( PetscAbs(nz-vz) > maxMask) and (nz < vz)){  nz += (zmax-zmin);  } }
   }
   PushGhost(sharedVertexDM_dim, aLocalVec, aGlobalVec, INSERT_VALUES, true, false);
 
-  PetscTime(&endTime);
-  elapsedTime = endTime - startTime;
-  PetscPrintf(PETSC_COMM_WORLD, "BUILD VEC A time: %g seconds\n", elapsedTime);
-  PetscTime(&startTime);
+  // PetscTime(&endTime);
+  // elapsedTime = endTime - startTime;
+  // PetscPrintf(PETSC_COMM_WORLD, "BUILD VEC A time: %g seconds\n", // elapsedTime);
+  // PetscTime(&startTime);
 
   //div a 
   for (PetscInt cell = cStart; cell < cEnd; ++cell) {
@@ -453,9 +473,9 @@ if (( PetscAbs(nz-vz) > maxMask) and (nz < vz)){  nz += (zmax-zmin);  } }
   }
   PushGhost(sharedDM, divaLocalVec, divaGlobalVec, INSERT_VALUES, true, false);
 
-  PetscTime(&endTime);
-  elapsedTime = endTime - startTime;
-  PetscPrintf(PETSC_COMM_WORLD, "DIV A time: %g seconds\n", elapsedTime);
+  // PetscTime(&endTime);
+  // elapsedTime = endTime - startTime;
+  // PetscPrintf(PETSC_COMM_WORLD, "DIV A time: %g seconds\n", // elapsedTime);
 
   for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
       PetscInt cell = cellRange.GetPoint(c);
@@ -480,9 +500,9 @@ if (process->addtoRHS){*rhophiSource += rhog* *diva;}
 
   //insert computeterm logic end
 
-  // PetscPrintf(PETSC_COMM_WORLD, "diva computed at time %g\n", stagetime);
+  // // PetscPrintf(PETSC_COMM_WORLD, "diva computed at time %g\n", stagetime);
 
-  PetscTime(&startTime);
+  // PetscTime(&startTime);
 
   for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
     const PetscInt cell = cellRange.GetPoint(i);
@@ -497,7 +517,7 @@ if (process->addtoRHS){*rhophiSource += rhog* *diva;}
 
 
 
-// PetscPrintf(PETSC_COMM_WORLD, "This code has been called %d times\n", callCount);
+// // PetscPrintf(PETSC_COMM_WORLD, "This code has been called %d times\n", callCount);
 
     PetscReal *densityG, *densityL, *internalEnergy, *diva;
     xDMPlexPointLocalRead(auxDM, cell, gasDensityField.id, auxArray, &densityG) >> utilities::PetscUtilities::checkError;
@@ -529,12 +549,12 @@ if (process->addtoRHS){*rhophiSource += rhog* *diva;}
 
 }
 
-PetscTime(&endTime);
-elapsedTime = endTime - startTime;
-PetscPrintf(PETSC_COMM_WORLD, "PSEUDO TIMESTEP time: %g seconds\n", elapsedTime);
-PetscTime(&startTime);
+// PetscTime(&endTime);
+// elapsedTime = endTime - startTime;
+// PetscPrintf(PETSC_COMM_WORLD, "PSEUDO TIMESTEP time: %g seconds\n", // elapsedTime);
+// PetscTime(&startTime);
 
-// PetscPrintf(PETSC_COMM_WORLD, "prestage completed at time %g\n", stagetime);
+// // PetscPrintf(PETSC_COMM_WORLD, "prestage completed at time %g\n", stagetime);
 
 
 // Restore
@@ -579,7 +599,7 @@ DMDestroy(&sharedVertexDM_dim);
   DMRestoreLocalVector(process->vertexDM, &vertexVec);
   VecDestroy(&vertexVec); //<--- this is fine
 
-  // PetscPrintf(PETSC_COMM_WORLD, "destroy vecs at time %g\n", stagetime);
+  // // PetscPrintf(PETSC_COMM_WORLD, "destroy vecs at time %g\n", stagetime);
 
 
 
@@ -598,6 +618,54 @@ void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::Fini
     DMSetField(vertexDM, 0, nullptr, (PetscObject)fe_coords) >> utilities::PetscUtilities::checkError;
     PetscFEDestroy(&fe_coords) >> utilities::PetscUtilities::checkError;
     DMCreateDS(vertexDM) >> utilities::PetscUtilities::checkError;
+
+
+    // // PetscPrintf(PETSC_COMM_WORLD, "preparing to compute global cell neighbors\n");
+
+    // global cell neighbors
+    ablate::domain::Range cellRange; 
+    // // PetscPrintf(PETSC_COMM_WORLD, "defined cellrange\n");
+    auto fvSolver = dynamic_cast<ablate::finiteVolume::FiniteVolumeSolver*>(&flow);
+
+    if (!fvSolver) {
+      // // PetscPrintf(PETSC_COMM_WORLD, "Dynamic cast failed\n");
+      return;
+    }
+
+    // // PetscPrintf(PETSC_COMM_WORLD, "got dynamic cast \n");
+    
+    
+    // fvSolver->GetCellRangeWithoutGhost(cellRange);
+    PetscInt cStart, cEnd; DMPlexGetHeightStratum(dm, 0, &cStart, &cEnd);
+    cellRange.start = cStart; cellRange.end = cEnd;
+
+    // // PetscPrintf(PETSC_COMM_WORLD, "got cellrange: start=%d, end=%d\n", cellRange.start, cellRange.end);
+    for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
+        PetscInt cell = cellRange.GetPoint(i);
+        // // PetscPrintf(PETSC_COMM_WORLD, "got cell \n");
+        PetscInt nNeighbors, *neighbors;
+        PetscReal layers=3;
+        // DMPlexGetNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
+
+        DMPlexGetNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
+        // // PetscPrintf(PETSC_COMM_WORLD, "called neighbors \n");
+        cellNeighbors[cell] = std::vector<PetscInt>(neighbors, neighbors + nNeighbors);
+        // // PetscPrintf(PETSC_COMM_WORLD, "populate cellneighbors array \n");
+        DMPlexRestoreNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
+    }
+
+    // // PetscPrintf(PETSC_COMM_WORLD, "global cell neighbors computed\n");
+
+
+    // global vertex neighbors
+    PetscInt vStart, vEnd;
+    DMPlexGetDepthStratum(vertexDM, 0, &vStart, &vEnd);
+    for (PetscInt vertex = vStart; vertex < vEnd; ++vertex) {
+        PetscInt nvn, *vertexneighbors;
+        DMPlexVertexGetCells(dm, vertex, &nvn, &vertexneighbors);
+        vertexNeighbors[vertex] = std::vector<PetscInt>(vertexneighbors, vertexneighbors + nvn);
+        DMPlexVertexRestoreCells(dm, vertex, &nvn, &vertexneighbors);
+    }
 
     //prestage
     auto intSharpPreStage = std::bind(intSharpPreStageWrapper, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, this);
