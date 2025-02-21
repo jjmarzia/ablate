@@ -62,6 +62,8 @@ class IntSharp : public Process {
     inline const static std::string DENSITY_VF_FIELD = ablate::finiteVolume::CompressibleFlowFields::CONSERVED + VOLUME_FRACTION_FIELD;
     PetscErrorCode PreStage(TS flowTs, ablate::solver::Solver &solver, PetscReal stagetime);
     std::vector<std::vector<PetscScalar>> fluxGradValues;
+    std::map<PetscInt, std::vector<PetscInt>> cellNeighbors;
+    std::map<PetscInt, std::vector<PetscInt>> vertexNeighbors;
 };
 }  // namespace ablate::finiteVolume::processes
 #endif
