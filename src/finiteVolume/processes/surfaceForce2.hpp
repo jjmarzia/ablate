@@ -1,12 +1,10 @@
-#ifndef ABLATELIBRARY_FINITEVOLUME_SURFACEFORCE_HPP
-#define ABLATELIBRARY_FINITEVOLUME_SURFACEFORCE_HPP
+#ifndef ABLATELIBRARY_FINITEVOLUME_CHEMISTRY_HPP
+#define ABLATELIBRARY_FINITEVOLUME_CHEMISTRY_HPP
 
 #include <petsc.h>
 #include <memory>
 #include <vector>
 #include "domain/range.hpp"
-#include "domain/RBF/rbf.hpp"
-#include "domain/reverseRange.hpp"
 #include "finiteVolume/fluxCalculator/fluxCalculator.hpp"
 #include "flowProcess.hpp"
 #include "process.hpp"
@@ -16,38 +14,39 @@
 namespace ablate::finiteVolume::processes {
 
 class SurfaceForce : public Process {
-
+    PetscReal sigma;
 
    private:
-    //surface tension coefficient
-    PetscReal sigma;
-    PetscReal C;
-    PetscReal N;
-    bool flipPhiTilde;
-    //mesh for vertex information
-    DM vertexDM{};
-    std::shared_ptr<ablate::domain::SubDomain> subDomain;
+    /**
+     * struct to hold the vortex stencil
+     */
+    struct VertexStencil {
+        /** The points in the stencil*/
+        std::vector<PetscInt> stencil;
+        /** The size of stencil*/
+        PetscInt stencilSize;
+        /** The point*/
+        PetscInt vertexId;
+        /** The weights */
+        std::vector<PetscScalar> gradientWeights;
+        /** Coordinate of the vertex */
+        std::vector<PetscScalar> stencilCoord;
+    };
+    DM dmData;
 
    public:
+    // Hold a list of VortexStencils
+    std::vector<VertexStencil> vertexStencils;
+
+    explicit SurfaceForce(PetscReal sigma);
 
     /**
-     *
-     * @param sigma
-     */
-    explicit SurfaceForce(PetscReal sigma, PetscReal C, PetscReal N, bool flipPhiTilde);
-
-    /**
-     * Clean up the dm created
+     * public function to link this process with the flow
+     * a@param flow
      */
     ~SurfaceForce() override;
 
-    /**
-     * Setup the process to define the vertex dm
-     * @param flow
-     */
     void Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
-    void Initialize(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
-
     /**
      * static function private function to compute surface force and add source to eulerset
      * @param solver
@@ -59,9 +58,6 @@ class SurfaceForce : public Process {
      * @return
      */
     static PetscErrorCode ComputeSource(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx);
-
-    std::map<PetscInt, std::vector<PetscInt>> cellNeighbors;
-    std::map<PetscInt, std::vector<PetscInt>> vertexNeighbors;
 };
 }  // namespace ablate::finiteVolume::processes
 #endif

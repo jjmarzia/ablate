@@ -526,14 +526,16 @@ if (process->addtoRHS){*rhophiSource += rhog* *diva;}
     xDMPlexPointLocalRef(sharedDM, cell, -1, divaLocalArray, &diva);
     const PetscScalar oldAlpha = allFields[vfOffset];
 
-    PetscReal pseudoTime = 1e-4 + 0*oldAlpha;
-    allFields[vfOffset] += pseudoTime * *diva;
+    
 
+    // update corresponding euler field values based on new alpha
+    if (oldAlpha > 1e-3 && oldAlpha < 1-1e-3){
+
+      //inside or outside of oldalpha if statement??
+      PetscReal pseudoTime = 1e-4 + 0*oldAlpha;
+    allFields[vfOffset] += pseudoTime * *diva;
     if (allFields[vfOffset] < 0.0) { allFields[vfOffset] = 0.0; } 
     else if (allFields[vfOffset] > 1.0) { allFields[vfOffset] = 1.0; }
-
-    // // update euler field based on new alpha in the interface
-    if (oldAlpha > 1e-3 && oldAlpha < 1-1e-3){
 
       allFields[rhoAlphaOffset] = (allFields[vfOffset] / oldAlpha) * allFields[rhoAlphaOffset];
 
