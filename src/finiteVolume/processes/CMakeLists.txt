@@ -14,11 +14,11 @@ target_sources(ablateLibrary
         chemistry.cpp
         radiationLoss.cpp
         thermophoreticDiffusion.cpp
-#        surfaceForce.cpp
+       surfaceForce.cpp
         soot.cpp
         intSharp.cpp
 #        intSharp0.cpp
-        surfaceForce0.cpp
+        # surfaceForce0.cpp
 
         PUBLIC
         process.hpp
@@ -36,9 +36,9 @@ target_sources(ablateLibrary
         chemistry.hpp
         radiationLoss.hpp
         thermophoreticDiffusion.hpp
-#        surfaceForce.hpp
+       surfaceForce.hpp
         soot.hpp
         intSharp.hpp
 #        intSharp0.hpp
-        surfaceForce0.hpp
+        # surfaceForce0.hpp
         )

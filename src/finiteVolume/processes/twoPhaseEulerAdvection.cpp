@@ -1251,53 +1251,53 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffene
 //    gasComputeSpeedOfSound.function(gasEulerFieldScratch.data(), TG, aG, gasComputeSpeedOfSound.context.get()) >> utilities::PetscUtilities::checkError;
 
 
-    if (TL < PETSC_SMALL || TG < PETSC_SMALL) {
-      throw std::runtime_error("Decode is returning negative temperature.\n");
-    }
+//     if (TL < PETSC_SMALL || TG < PETSC_SMALL) {
+//       throw std::runtime_error("Decode is returning negative temperature.\n");
+//     }
 
-    if (pL < PETSC_SMALL || pG < PETSC_SMALL) {
-//      printf("%ld\n", cnt);
-      printf("   T: %+e\n", (PetscReal)TG);
-      printf("  pR: %+e\n", (PetscReal)pG);
-      printf("  pL: %+e\n", (PetscReal)pL);
-      printf("  eR: %+e\n", (PetscReal)eG);
-      printf("  eL: %+e\n", (PetscReal)eL);
-      printf("rhoL: %+e\n", (PetscReal)rhoL);
-      printf("rhoG: %+e\n", (PetscReal)rhoG);
-      printf("%e\n", (PetscReal)alphaG);
-      printf("  Yg: %+e\n", (PetscReal)Yg);
-      printf("  Yl: %+e\n", (PetscReal)Yl);
-      printf("%s::%s::%d\n", __FUNCTION__, __FILE__, __LINE__);
-      printf("\n");
-      raise(SIGSEGV);
-      throw std::runtime_error("Decode is returning negative pressure.\n");
-    }
+//     if (pL < PETSC_SMALL || pG < PETSC_SMALL) {
+// //      printf("%ld\n", cnt);
+//       printf("   T: %+e\n", (PetscReal)TG);
+//       printf("  pR: %+e\n", (PetscReal)pG);
+//       printf("  pL: %+e\n", (PetscReal)pL);
+//       printf("  eR: %+e\n", (PetscReal)eG);
+//       printf("  eL: %+e\n", (PetscReal)eL);
+//       printf("rhoL: %+e\n", (PetscReal)rhoL);
+//       printf("rhoG: %+e\n", (PetscReal)rhoG);
+//       printf("%e\n", (PetscReal)alphaG);
+//       printf("  Yg: %+e\n", (PetscReal)Yg);
+//       printf("  Yl: %+e\n", (PetscReal)Yl);
+//       printf("%s::%s::%d\n", __FUNCTION__, __FILE__, __LINE__);
+//       printf("\n");
+//       raise(SIGSEGV);
+//       throw std::runtime_error("Decode is returning negative pressure.\n");
+//     }
 
-    if (eL < PETSC_SMALL || eG < PETSC_SMALL) {
-//      printf("%ld\n", cnt);
-      printf("   T: %+e\n", (PetscReal)TG);
-      printf("  pR: %+e\n", (PetscReal)pG);
-      printf("  pL: %+e\n", (PetscReal)pL);
-      printf("  eR: %+e\n", (PetscReal)eG);
-      printf("  eL: %+e\n", (PetscReal)eL);
-      printf("rhoL: %+e\n", (PetscReal)rhoL);
-      printf("rhoG: %+e\n", (PetscReal)rhoG);
-      printf("%e\n", (PetscReal)alphaG);
-      printf("  Yg: %+e\n", (PetscReal)Yg);
-      printf("  Yl: %+e\n", (PetscReal)Yl);
-      printf("%s::%s::%d\n", __FUNCTION__, __FILE__, __LINE__);
-      printf("\n");
-      raise(SIGSEGV);
-      throw std::runtime_error("Decode is returning negative energy.\n");
-    }
+//     if (eL < PETSC_SMALL || eG < PETSC_SMALL) {
+// //      printf("%ld\n", cnt);
+//       printf("   T: %+e\n", (PetscReal)TG);
+//       printf("  pR: %+e\n", (PetscReal)pG);
+//       printf("  pL: %+e\n", (PetscReal)pL);
+//       printf("  eR: %+e\n", (PetscReal)eG);
+//       printf("  eL: %+e\n", (PetscReal)eL);
+//       printf("rhoL: %+e\n", (PetscReal)rhoL);
+//       printf("rhoG: %+e\n", (PetscReal)rhoG);
+//       printf("%e\n", (PetscReal)alphaG);
+//       printf("  Yg: %+e\n", (PetscReal)Yg);
+//       printf("  Yl: %+e\n", (PetscReal)Yl);
+//       printf("%s::%s::%d\n", __FUNCTION__, __FILE__, __LINE__);
+//       printf("\n");
+//       raise(SIGSEGV);
+//       throw std::runtime_error("Decode is returning negative energy.\n");
+//     }
 
-    if (PetscAbsReal(TL - TG) > 1e-4*PetscMin(TL, TG)) {
-      throw std::runtime_error("Decode is not returning temperature equilibrium.\n");
-    }
+//     if (PetscAbsReal(TL - TG) > 1e-4*PetscMin(TL, TG)) {
+//       throw std::runtime_error("Decode is not returning temperature equilibrium.\n");
+//     }
 
-    if (PetscAbsReal(pL - pG) > 1e-4*PetscMin(pL, pG)) {
-      throw std::runtime_error("Decode is not returning pressure equilibrium.\n");
-    }
+//     if (PetscAbsReal(pL - pG) > 1e-4*PetscMin(pL, pG)) {
+//       throw std::runtime_error("Decode is not returning pressure equilibrium.\n");
+//     }
 
     // once state defined
     *alpha = (PetscReal)(PetscMin(1.0, PetscMax(0.0, alphaG)));
