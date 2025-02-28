@@ -131,7 +131,8 @@ PetscReal zmax=xymax[2];
 
   const auto &gasDensityField = subDomain->GetField("gasDensity");
   const auto &liquidDensityField = subDomain->GetField("liquidDensity");
-  const auto &mixtureEnergyField = subDomain->GetField("mixtureEnergy");
+  const auto &gasEnergyField = subDomain->GetField("gasEnergy");
+  const auto &liquidEnergyField = subDomain->GetField("liquidEnergy");
 
   auto eulerfID = eulerField.id;
   DM auxDM = subDomain->GetAuxDM();
@@ -519,10 +520,11 @@ if (process->addtoRHS){*rhophiSource += rhog* *diva;}
 
 // // PetscPrintf(PETSC_COMM_WORLD, "This code has been called %d times\n", callCount);
 
-    PetscReal *densityG, *densityL, *internalEnergy, *diva;
+    PetscReal *densityG, *densityL, *eG, *eL, *diva;
     xDMPlexPointLocalRead(auxDM, cell, gasDensityField.id, auxArray, &densityG) >> utilities::PetscUtilities::checkError;
     xDMPlexPointLocalRead(auxDM, cell, liquidDensityField.id, auxArray, &densityL) >> utilities::PetscUtilities::checkError;
-    xDMPlexPointLocalRead(auxDM, cell, mixtureEnergyField.id, auxArray, &internalEnergy) >> utilities::PetscUtilities::checkError;
+    xDMPlexPointLocalRead(auxDM, cell, gasEnergyField.id, auxArray, &eG) >> utilities::PetscUtilities::checkError;
+    xDMPlexPointLocalRead(auxDM, cell, liquidEnergyField.id, auxArray, &eL) >> utilities::PetscUtilities::checkError;
     xDMPlexPointLocalRef(sharedDM, cell, -1, divaLocalArray, &diva);
     const PetscScalar oldAlpha = allFields[vfOffset];
 
@@ -537,12 +539,11 @@ if (process->addtoRHS){*rhophiSource += rhog* *diva;}
     if (allFields[vfOffset] < 0.0) { allFields[vfOffset] = 0.0; } 
     else if (allFields[vfOffset] > 1.0) { allFields[vfOffset] = 1.0; }
 
-      allFields[rhoAlphaOffset] = (allFields[vfOffset] / oldAlpha) * allFields[rhoAlphaOffset];
+    //   allFields[rhoAlphaOffset] = (allFields[vfOffset] / oldAlpha) * allFields[rhoAlphaOffset];
 
-      // densityL = ( allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] - *densityG * oldAlpha )/( 1 - oldAlpha );
-
+    allFields[rhoAlphaOffset] = *densityG * allFields[vfOffset];
     allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] = allFields[vfOffset] * *densityG + (1 - allFields[vfOffset]) * *densityL;
-    allFields[ablate::finiteVolume::CompressibleFlowFields::RHOE] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] * *internalEnergy;
+    allFields[ablate::finiteVolume::CompressibleFlowFields::RHOE] = allFields[rhoAlphaOffset] * *eG + (1 - allFields[rhoAlphaOffset]) * *eL;
     for (PetscInt d = 0; d < dim; ++d) {
         allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] * velocity[d];
     }
