@@ -61,6 +61,7 @@ class SurfaceForce : public Process {
     static PetscErrorCode ComputeSource(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx);
 
     std::map<PetscInt, std::vector<PetscInt>> cellNeighbors;
+    std::map<PetscInt, std::vector<PetscInt>> cellNeighbors1;
     std::map<PetscInt, std::vector<PetscInt>> vertexNeighbors;
 };
 }  // namespace ablate::finiteVolume::processes

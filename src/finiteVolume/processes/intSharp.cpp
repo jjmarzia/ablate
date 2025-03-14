@@ -78,9 +78,12 @@ void intSharpPreStageWrapper(TS flowTs, ablate::solver::Solver &solver, PetscRea
   intSharpProcess->PreStage(flowTs, solver, stagetime);
 }
 
+PetscReal globalminGradient=PETSC_MAX_REAL;
+
 PetscErrorCode ablate::finiteVolume::processes::IntSharp::PreStage(TS flowTs, ablate::solver::Solver &solver, PetscReal stagetime) {
   PetscFunctionBegin;
 
+  
   // PetscLogDouble startTime, endTime, // elapsedTime;
 
   // // // PetscPrintf(PETSC_COMM_WORLD, "PreStage function called at time %g\n", stagetime);
@@ -502,8 +505,38 @@ if (process->addtoRHS){*rhophiSource += rhog* *diva;}
   //insert computeterm logic end
 
   // // PetscPrintf(PETSC_COMM_WORLD, "diva computed at time %g\n", stagetime);
-
   // PetscTime(&startTime);
+
+  //max gradient
+//   PetscReal maxGradient = 0.0;
+//   PetscReal minGradient = PETSC_MAX_REAL;
+//   for (PetscInt cell = cStart; cell < cEnd; ++cell) {
+//       PetscScalar gradphic[dim];
+//       DMPlexCellGradFromCell(sharedDM, cell, phitildeLocalVec, -1, 0, gradphic);
+//       PetscReal normgradphi = 0.0;
+//       for (int k = 0; k < dim; ++k) {
+//           normgradphi += PetscSqr(gradphic[k]);
+//       }
+//       normgradphi = PetscSqrtReal(normgradphi);
+//       if (normgradphi > maxGradient) {
+//           maxGradient = normgradphi;
+//       }
+  
+//       const PetscReal *phitilde;
+//       xDMPlexPointLocalRead(sharedDM, cell, -1, phitildeLocalArray, &phitilde);
+//       if (*phitilde > 0.3 && *phitilde < 0.7) {
+//           if (normgradphi < minGradient) {
+//               minGradient = normgradphi;
+//           }
+//       }
+//   }
+// PetscReal minRadius;
+// DMPlexGetMinRadius(dm, &minRadius);
+// PetscReal theoreticalMaxGradient = 1.0 / (2.0 * minRadius);
+// PetscPrintf(PETSC_COMM_WORLD, "Max Gradient: %g, Min Gradient: %g, Theoretical Max Gradient: %g\n", maxGradient, minGradient, theoreticalMaxGradient);
+
+// conserved variable update
+// if (minGradient <= theoreticalMaxGradient / 5.0) {
 
   for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
     const PetscInt cell = cellRange.GetPoint(i);
@@ -543,7 +576,7 @@ if (process->addtoRHS){*rhophiSource += rhog* *diva;}
 
     allFields[rhoAlphaOffset] = *densityG * allFields[vfOffset];
     allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] = allFields[vfOffset] * *densityG + (1 - allFields[vfOffset]) * *densityL;
-    allFields[ablate::finiteVolume::CompressibleFlowFields::RHOE] = allFields[rhoAlphaOffset] * *eG + (1 - allFields[rhoAlphaOffset]) * *eL;
+    allFields[ablate::finiteVolume::CompressibleFlowFields::RHOE] = allFields[rhoAlphaOffset] * *eG + (allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] - allFields[rhoAlphaOffset]) * *eL;
     for (PetscInt d = 0; d < dim; ++d) {
         allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] * velocity[d];
     }
@@ -551,6 +584,9 @@ if (process->addtoRHS){*rhophiSource += rhog* *diva;}
   }
 
 }
+
+
+// }
 
 // PetscTime(&endTime);
 // elapsedTime = endTime - startTime;
@@ -604,7 +640,11 @@ DMDestroy(&sharedVertexDM_dim);
 
   // // PetscPrintf(PETSC_COMM_WORLD, "destroy vecs at time %g\n", stagetime);
 
+// PetscFunctionReturn(minGradient);
 
+// if (minGradient < globalminGradient){
+//   globalminGradient = minGradient;
+// }
 
 PetscFunctionReturn(0);
 
@@ -616,6 +656,14 @@ void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::Fini
     auto dm = flow.GetSubDomain().GetDM();
     PetscFE fe_coords;
     PetscInt k = 1;
+
+    // Vec locX = flow.GetSubDomain().GetSolutionVector();
+    // PetscPrintf(PETSC_COMM_WORLD, "locX: %p\n", locX);
+    // PetscScalar *solArray; 
+    // // PetscPrintf(PETSC_COMM_WORLD, "solArray: %p\n", solArray);
+    // VecGetArray(locX, &solArray);
+    // PetscPrintf(PETSC_COMM_WORLD, "getarrayread: %p\n", solArray);
+
     DMClone(dm, &vertexDM) >> utilities::PetscUtilities::checkError;
     PetscFECreateLagrange(PETSC_COMM_SELF, dim, dim, PETSC_TRUE, k, PETSC_DETERMINE, &fe_coords) >> utilities::PetscUtilities::checkError;
     DMSetField(vertexDM, 0, nullptr, (PetscObject)fe_coords) >> utilities::PetscUtilities::checkError;
@@ -652,7 +700,8 @@ void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::Fini
 
         DMPlexGetNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         // // PetscPrintf(PETSC_COMM_WORLD, "called neighbors \n");
-        cellNeighbors[cell] = std::vector<PetscInt>(neighbors, neighbors + nNeighbors);
+        // cellNeighbors[cell] = std::vector<PetscInt>(neighbors, neighbors + nNeighbors);
+        cellNeighbors[cell] = std::vector<PetscInt>{cell};
         // // PetscPrintf(PETSC_COMM_WORLD, "populate cellneighbors array \n");
         DMPlexRestoreNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
     }
@@ -670,9 +719,13 @@ void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::Fini
         DMPlexVertexRestoreCells(dm, vertex, &nvn, &vertexneighbors);
     }
 
-    //prestage
-    auto intSharpPreStage = std::bind(intSharpPreStageWrapper, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, this);
-    flow.RegisterPreStage(intSharpPreStage);
+    // call prestage 10 times
+    for (int i = 0; i < 1; ++i) { //for (int i = 0; i < 10; ++i) {
+        auto intSharpPreStage = std::bind(intSharpPreStageWrapper, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, this);
+        flow.RegisterPreStage(intSharpPreStage);
+        // PetscPrintf(PETSC_COMM_WORLD, "globalminGradient: %g\n", globalminGradient);
+
+    }
 
     //computeterm
     // flow.RegisterRHSFunction(ComputeTerm, this);
