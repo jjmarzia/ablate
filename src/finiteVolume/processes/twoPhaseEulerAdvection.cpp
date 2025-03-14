@@ -1539,7 +1539,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::StiffenedGasStiffe
         gasComputePressure.function(gasEulerFieldScratch.data(), *T, &pG, gasComputePressure.context.get()) >> utilities::PetscUtilities::checkError;
     }
 
-if (PetscAbsReal(pL - pG) > PetscMin(pG, pL)*PETSC_SMALL) printf("%e\t%e\t%e\n", pL, pG, PetscAbsReal(pL-pG));
+// if (PetscAbsReal(pL - pG) > PetscMin(pG, pL)*PETSC_SMALL) printf("%e\t%e\t%e\n", pL, pG, PetscAbsReal(pL-pG));
 
     // once state defined
     *densityG = rhoG;

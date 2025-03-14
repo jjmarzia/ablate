@@ -333,15 +333,17 @@ void ablate::finiteVolume::processes::SurfaceForce::Setup(ablate::finiteVolume::
     for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
         PetscInt cell = cellRange.GetPoint(i);
         // // PetscPrintf(PETSC_COMM_WORLD, "got cell \n");
-        PetscInt nNeighbors, *neighbors;
+        PetscInt nNeighbors, *neighbors, nNeighbors1, *neighbors1;
         PetscReal layers=3;
         // DMPlexGetNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
 
         DMPlexGetNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
-        // // PetscPrintf(PETSC_COMM_WORLD, "called neighbors \n");
         cellNeighbors[cell] = std::vector<PetscInt>(neighbors, neighbors + nNeighbors);
-        // // PetscPrintf(PETSC_COMM_WORLD, "populate cellneighbors array \n");
         DMPlexRestoreNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
+
+        DMPlexGetNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors1, &neighbors1);
+        cellNeighbors1[cell] = std::vector<PetscInt>(neighbors1, neighbors1 + nNeighbors1);
+        DMPlexRestoreNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors1, &neighbors1);
     }
 
     // // PetscPrintf(PETSC_COMM_WORLD, "global cell neighbors computed\n");
@@ -614,18 +616,18 @@ PetscReal xmin = -0.05; PetscReal xmax = 0.05; PetscReal ymin = -0.05; PetscReal
 
             // neighboredit 1
 
-            // auto &neighbors = process->cellNeighbors[cell];
-            // for (const auto &neighbor : neighbors) {
+            auto &neighbors = process->cellNeighbors1[cell];
+            for (const auto &neighbor : neighbors) {
 
-            PetscInt nNeighbors, *neighbors;
-            DMPlexGetNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
-            for (PetscInt j = 0; j < nNeighbors; ++j) {
-                PetscInt neighbor = neighbors[j];
+            // PetscInt nNeighbors, *neighbors;
+            // DMPlexGetNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
+            // for (PetscInt j = 0; j < nNeighbors; ++j) {
+                // PetscInt neighbor = neighbors[j];
                 PetscScalar *ranknptr; xDMPlexPointLocalRef(rankDM, neighbor, -1, rankLocalArray, &ranknptr);
                 PetscScalar *sfmaskptr; xDMPlexPointLocalRef(sfmaskDM, neighbor, -1, sfmaskLocalArray, &sfmaskptr);
                 *sfmaskptr = *ranknptr;
             }
-            DMPlexRestoreNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
+            // DMPlexRestoreNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         }
     }
     PushToGhost(sfmaskDM, sfmaskLocalVec, sfmaskGlobalVec, ADD_VALUES);
@@ -738,15 +740,15 @@ if (periodicfix){
 PetscReal maxMask = 0.5*(ymax-ymin);
 if (( PetscAbs(xn-xc) > maxMask) and (xn > xc)){  
     
-    PetscPrintf(PETSC_COMM_WORLD, "C- N+ BEFORE xn: %f, xc: %f, xmax: %f, xmin: %f, maxMask: %f\n", xn, xc, xmax, xmin, maxMask);
+    // PetscPrintf(PETSC_COMM_WORLD, "C- N+ BEFORE xn: %f, xc: %f, xmax: %f, xmin: %f, maxMask: %f\n", xn, xc, xmax, xmin, maxMask);
     xn -= (xmax-xmin);  
-    PetscPrintf(PETSC_COMM_WORLD, "C- N+ AFTER xn: %f, xc: %f, xmax: %f, xmin: %f, maxMask: %f\n", xn, xc, xmax, xmin, maxMask);
+    // PetscPrintf(PETSC_COMM_WORLD, "C- N+ AFTER xn: %f, xc: %f, xmax: %f, xmin: %f, maxMask: %f\n", xn, xc, xmax, xmin, maxMask);
 }
 if (( PetscAbs(xn-xc) > maxMask) and (xn < xc)){  
 
-    PetscPrintf(PETSC_COMM_WORLD, "C+ N- BEFORE xn: %f, xc: %f, xmax: %f, xmin: %f, maxMask: %f\n", xn, xc, xmax, xmin, maxMask);    
+    // PetscPrintf(PETSC_COMM_WORLD, "C+ N- BEFORE xn: %f, xc: %f, xmax: %f, xmin: %f, maxMask: %f\n", xn, xc, xmax, xmin, maxMask);    
     xn += (xmax-xmin);
-    PetscPrintf(PETSC_COMM_WORLD, "C+ N- AFTER xn: %f, xc: %f, xmax: %f, xmin: %f, maxMask: %f\n", xn, xc, xmax, xmin, maxMask);
+    // PetscPrintf(PETSC_COMM_WORLD, "C+ N- AFTER xn: %f, xc: %f, xmax: %f, xmin: %f, maxMask: %f\n", xn, xc, xmax, xmin, maxMask);
 
 }
 if (dim>=2){
