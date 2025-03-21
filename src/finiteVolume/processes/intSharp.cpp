@@ -78,7 +78,7 @@ void intSharpPreStageWrapper(TS flowTs, ablate::solver::Solver &solver, PetscRea
   intSharpProcess->PreStage(flowTs, solver, stagetime);
 }
 
-PetscReal globalminGradient=PETSC_MAX_REAL;
+// PetscReal globalminGradient=PETSC_MAX_REAL;
 
 PetscErrorCode ablate::finiteVolume::processes::IntSharp::PreStage(TS flowTs, ablate::solver::Solver &solver, PetscReal stagetime) {
   PetscFunctionBegin;
@@ -695,13 +695,13 @@ void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::Fini
         PetscInt cell = cellRange.GetPoint(i);
         // // PetscPrintf(PETSC_COMM_WORLD, "got cell \n");
         PetscInt nNeighbors, *neighbors;
-        PetscReal layers=3;
+        PetscReal layers=5;
         // DMPlexGetNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
 
         DMPlexGetNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         // // PetscPrintf(PETSC_COMM_WORLD, "called neighbors \n");
-        // cellNeighbors[cell] = std::vector<PetscInt>(neighbors, neighbors + nNeighbors);
-        cellNeighbors[cell] = std::vector<PetscInt>{cell};
+        cellNeighbors[cell] = std::vector<PetscInt>(neighbors, neighbors + nNeighbors);
+        // cellNeighbors[cell] = std::vector<PetscInt>{cell};
         // // PetscPrintf(PETSC_COMM_WORLD, "populate cellneighbors array \n");
         DMPlexRestoreNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
     }
@@ -720,12 +720,12 @@ void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::Fini
     }
 
     // call prestage 10 times
-    for (int i = 0; i < 1; ++i) { //for (int i = 0; i < 10; ++i) {
+    // for (int i = 0; i < 1; ++i) { //for (int i = 0; i < 10; ++i) {
         auto intSharpPreStage = std::bind(intSharpPreStageWrapper, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, this);
         flow.RegisterPreStage(intSharpPreStage);
         // PetscPrintf(PETSC_COMM_WORLD, "globalminGradient: %g\n", globalminGradient);
 
-    }
+    // }
 
     //computeterm
     // flow.RegisterRHSFunction(ComputeTerm, this);
