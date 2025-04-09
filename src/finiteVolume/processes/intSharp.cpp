@@ -496,7 +496,9 @@ if (( PetscAbs(nz-vz) > maxMask) and (nz < vz)){  nz += (zmax-zmin);  } }
       PetscScalar *optr; xDMPlexPointLocalRef(auxDM, cell, ofield.id, auxArray, &optr);
       *optr = *diva;
 
-if (process->addtoRHS){*rhophiSource += rhog* *diva;}
+if (process->addtoRHS){
+    *rhophiSource += rhog* *diva;
+}
 
   }
   subDomain->UpdateAuxLocalVector();
@@ -538,6 +540,9 @@ if (process->addtoRHS){*rhophiSource += rhog* *diva;}
 // conserved variable update
 // if (minGradient <= theoreticalMaxGradient / 5.0) {
 
+// bool prestage = false;
+// if ( not process->addtoRHS){
+
   for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
     const PetscInt cell = cellRange.GetPoint(i);
     PetscScalar *allFields = nullptr; DMPlexPointLocalRef(dm, cell, flowArray, &allFields) >> utilities::PetscUtilities::checkError;
@@ -566,24 +571,33 @@ if (process->addtoRHS){*rhophiSource += rhog* *diva;}
     // update corresponding euler field values based on new alpha
     if (oldAlpha > 1e-3 && oldAlpha < 1-1e-3){
 
-      //inside or outside of oldalpha if statement??
-      PetscReal pseudoTime = 1e-4 + 0*oldAlpha;
-    allFields[vfOffset] += pseudoTime * *diva;
-    if (allFields[vfOffset] < 0.0) { allFields[vfOffset] = 0.0; } 
-    else if (allFields[vfOffset] > 1.0) { allFields[vfOffset] = 1.0; }
-
-    //   allFields[rhoAlphaOffset] = (allFields[vfOffset] / oldAlpha) * allFields[rhoAlphaOffset];
-
-    allFields[rhoAlphaOffset] = *densityG * allFields[vfOffset];
-    allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] = allFields[vfOffset] * *densityG + (1 - allFields[vfOffset]) * *densityL;
+    //method of adding to rhophi
+    PetscReal pseudoTime = 1e-4 + 0*oldAlpha;
+    allFields[rhoAlphaOffset] += *densityG * pseudoTime * *diva;
+    allFields[vfOffset] = allFields[rhoAlphaOffset] / *densityG;
+    allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] = allFields[rhoAlphaOffset] + (1 - allFields[rhoAlphaOffset] / *densityG) * *densityL;
     allFields[ablate::finiteVolume::CompressibleFlowFields::RHOE] = allFields[rhoAlphaOffset] * *eG + (allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] - allFields[rhoAlphaOffset]) * *eL;
     for (PetscInt d = 0; d < dim; ++d) {
         allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] * velocity[d];
     }
 
+      //method of adding to phi
+    // PetscReal pseudoTime = 1e-4 + 0*oldAlpha;
+    // allFields[vfOffset] += pseudoTime * *diva;
+    // if (allFields[vfOffset] < 0.0) { allFields[vfOffset] = 0.0; } 
+    // else if (allFields[vfOffset] > 1.0) { allFields[vfOffset] = 1.0; }
+    // allFields[rhoAlphaOffset] = *densityG * allFields[vfOffset];
+    // allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] = allFields[vfOffset] * *densityG + (1 - allFields[vfOffset]) * *densityL;
+    // allFields[ablate::finiteVolume::CompressibleFlowFields::RHOE] = allFields[rhoAlphaOffset] * *eG + (allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] - allFields[rhoAlphaOffset]) * *eL;
+    // for (PetscInt d = 0; d < dim; ++d) {
+    //     allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] * velocity[d];
+    // }
+
   }
 
 }
+
+// }
 
 
 // }

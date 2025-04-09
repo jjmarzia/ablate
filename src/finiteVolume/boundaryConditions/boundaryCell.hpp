@@ -13,7 +13,7 @@ class BoundaryCell : public BoundaryCondition {
 //  typedef void (*UpdateFunction)(PetscReal time, const PetscReal* x, PetscScalar* vals);
 
    private:
-    std::shared_ptr<ablate::domain::SubDomain> subDomain = nullptr;
+    
     std::vector<std::string> labelIds = {};
     IS pointsIS = nullptr;
 
@@ -23,9 +23,10 @@ class BoundaryCell : public BoundaryCondition {
     PetscInt dim = -1;
     PetscInt fieldSize = -1;
 
-    virtual void updateFunction(PetscReal, const PetscReal*, PetscScalar*) = 0;
+    virtual void updateFunction(PetscReal, const PetscReal*, PetscScalar*, PetscInt) = 0;
 
    public:
+    std::shared_ptr<ablate::domain::SubDomain> subDomain = nullptr;
 
     BoundaryCondition::Type type() const override { return BoundaryCondition::Type::BOUNDARYCELL; }
 

@@ -522,6 +522,7 @@ if(dim>2){ Drhogz = gradrhogphi[2] - rhog * gradphi[2]; if(*phik > 1e-10){Drhogz
 
         PetscScalar *optr; xDMPlexPointLocalRef(auxDM, cell, ofield.id, auxArray, &optr);
         *optr = *diva;
+        // std::cout << "yes\n";
 
     }
     subDomain->UpdateAuxLocalVector();

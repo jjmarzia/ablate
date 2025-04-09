@@ -1,9 +1,31 @@
 #include "essentialBoundary.hpp"
 ablate::finiteVolume::boundaryConditions::EssentialBoundary::EssentialBoundary(std::string boundaryName, std::vector<std::string> labelIds, std::shared_ptr<ablate::mathFunctions::FieldFunction> boundaryFunction)
-    : BoundaryCell(boundaryFunction->GetName(), boundaryName, labelIds), boundaryFunction(boundaryFunction) {}
+    : BoundaryCell(boundaryFunction->GetName(), boundaryName, labelIds), boundaryFunction(boundaryFunction) {
 
-void ablate::finiteVolume::boundaryConditions::EssentialBoundary::updateFunction(PetscReal time, const PetscReal *x, PetscScalar *vals) {
+    if (!boundaryFunction) {
+        throw std::invalid_argument("EssentialBoundary must be constructed with a valid boundary function");
+    }
+    if (boundaryFunction->GetSolutionField().GetPetscFunction() == nullptr) {
+        throw std::invalid_argument(
+            "EssentialBoundary must be constructed with a valid boundary function that has a solution field (i.e. mathFunction must not be null).");
+    }
+
+
+
+        PetscPrintf(PETSC_COMM_WORLD, "EssentialBoundary created: %s\n", boundaryName.c_str());
+        PetscPrintf(PETSC_COMM_WORLD, "Associated labels: ");
+        for (const auto& label : labelIds) {
+            PetscPrintf(PETSC_COMM_WORLD, "%s ", label.c_str());
+        }
+        PetscPrintf(PETSC_COMM_WORLD, "\n");
+    }
+
+void ablate::finiteVolume::boundaryConditions::EssentialBoundary::updateFunction(PetscReal time, const PetscReal *x, PetscScalar *vals, PetscInt point) {
+
+    // PetscPrintf(PETSC_COMM_WORLD, "prior to update function");
     boundaryFunction->GetSolutionField().GetPetscFunction()(dim, time, x, fieldSize, vals, boundaryFunction->GetSolutionField().GetContext());
+
+    // PetscPrintf(PETSC_COMM_WORLD, "updateFunction called for boundary");
 }
 
 #include "registrar.hpp"

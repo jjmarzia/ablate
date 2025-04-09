@@ -4,10 +4,12 @@ target_sources(ablateLibrary
         ghost.cpp
         essentialGhost.cpp
         essentialBoundary.cpp
+        zeroDerBoundary.cpp
         PUBLIC
         boundaryCell.hpp
         boundaryCondition.hpp
         ghost.hpp
         essentialGhost.hpp
         essentialBoundary.hpp
+        zeroDerBoundary.hpp
         )

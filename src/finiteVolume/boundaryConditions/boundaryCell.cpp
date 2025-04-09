@@ -44,20 +44,60 @@ void ablate::finiteVolume::boundaryConditions::BoundaryCell::SetupBoundary(std::
         IS valuesIS;
         const PetscInt *values;
 
+
         DMLabelGetNonEmptyStratumValuesIS(label, &valuesIS) >> utilities::PetscUtilities::checkError;
+
+
 
         ISGetSize(valuesIS, &numValues) >> utilities::PetscUtilities::checkError;
         ISGetIndices(valuesIS, &values) >> utilities::PetscUtilities::checkError;
 
+
+
         std::vector<IS> subISs(numValues, nullptr);
+
+
 
         // Pull all of points for each value
         for (PetscInt v = 0; v < numValues; ++v) {
+          // PetscPrintf(PETSC_COMM_WORLD, "debug next3\n");
           DMGetStratumIS(dm, id.c_str(), values[v], &subISs[v]) >> utilities::PetscUtilities::checkError;
 
+
+
+          // print all of the coordinates in the stratum
+          PetscInt nPoints;
+          ISGetLocalSize(subISs[v], &nPoints) >> utilities::PetscUtilities::checkError;
+
+          // print the label associated with this region
+          PetscPrintf(PETSC_COMM_WORLD, "Label %s with value %d has %d points\n", id.c_str(), values[v], nPoints);
+
+          const PetscInt *points;  
+          ISGetIndices(subISs[v], &points) >> utilities::PetscUtilities::checkError;
+          for (PetscInt p = 0; p < nPoints; ++p) {
+            PetscInt point = points[p];
+            PetscReal centroid[3];
+            DMPlexComputeCellGeometryFVM(dm, point, nullptr, centroid, nullptr) >> utilities::PetscUtilities::checkError;
+            // PetscPrintf(PETSC_COMM_WORLD, "point %d: (%g, %g, %g)\n", point, centroid[0], centroid[1], centroid[2]);
+          }
+          ISRestoreIndices(subISs[v], &points) >> utilities::PetscUtilities::checkError;
+
+
+          // PetscPrintf(PETSC_COMM_WORLD, "debug next4\n");
           // Remove any points not in the range.
-          ISGeneralFilter(subISs[v], pStart, pEnd) >> utilities::PetscUtilities::checkError;
+//check the validity of subISs[v], pstart, pEnd through printing
+          // PetscPrintf(PETSC_COMM_WORLD, "subISs[%d]: %p\n", v, (void *)subISs[v]);
+          // PetscPrintf(PETSC_COMM_WORLD, "pStart: %d\n", pStart);
+          // PetscPrintf(PETSC_COMM_WORLD, "pEnd: %d\n", pEnd);
+
+          // ISGeneralFilter(subISs[v], pStart, pEnd) >> utilities::PetscUtilities::checkError;
+
+          // PetscPrintf(PETSC_COMM_WORLD, "debug next5\n");
+
         }
+
+        // PetscPrintf(PETSC_COMM_WORLD, "debug next6\n");
+
 
         ISRestoreIndices(valuesIS, &values) >> utilities::PetscUtilities::checkError;
         ISDestroy(&valuesIS) >> utilities::PetscUtilities::checkError;
@@ -68,6 +108,9 @@ void ablate::finiteVolume::boundaryConditions::BoundaryCell::SetupBoundary(std::
         for (PetscInt v = 0; v < numValues; ++v) {
           ISDestroy(&subISs[v]);
         }
+
+        PetscPrintf(PETSC_COMM_WORLD, "debug last\n");
+
     }
 
     // Now create the points list
@@ -108,7 +151,7 @@ void ablate::finiteVolume::boundaryConditions::BoundaryCell::ComputeBoundary(Pet
 
       PetscScalar *vals;
       xDMPlexPointLocalRef(dmData, points[p], field.id, array, &vals) >> utilities::PetscUtilities::checkError;
-      updateFunction(time, cg->centroid, vals);
+      updateFunction(time, cg->centroid, vals, points[p]);
 
     }
     VecRestoreArray(locX, &array) >> utilities::PetscUtilities::checkError;

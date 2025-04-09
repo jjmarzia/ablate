@@ -28,7 +28,21 @@ void *ablate::finiteElement::boundaryConditions::Essential::GetContext() { retur
 void ablate::finiteElement::boundaryConditions::Essential::SetupBoundary(DM dm, PetscDS problem, PetscInt fieldId) {
     DMLabel label;
     DMGetLabel(dm, labelName.c_str(), &label) >> utilities::PetscUtilities::checkError;
-    PetscDSAddBoundary(problem,
+
+
+    PetscErrorCode ierr;
+    PetscPrintf(PETSC_COMM_WORLD, "Setting up boundary condition: %s with label: %s\n", GetBoundaryName().c_str(), labelName.c_str());
+    ierr = DMGetLabel(dm, labelName.c_str(), &label);
+    if (ierr || !label) {
+        PetscPrintf(PETSC_COMM_WORLD, "Error: Label %s not found in the mesh.\n", labelName.c_str());
+    }
+    PetscPrintf(PETSC_COMM_WORLD, "Applying boundary condition to label IDs: ");
+    for (auto id : labelIds) {
+        PetscPrintf(PETSC_COMM_WORLD, "%d ", id);
+    }
+    PetscPrintf(PETSC_COMM_WORLD, "\n");
+
+    ierr = PetscDSAddBoundary(problem,
                        DM_BC_ESSENTIAL,
                        GetBoundaryName().c_str(),
                        label,
@@ -40,8 +54,10 @@ void ablate::finiteElement::boundaryConditions::Essential::SetupBoundary(DM dm, 
                        (void (*)(void))GetBoundaryFunction(),
                        (void (*)(void))GetBoundaryTimeDerivativeFunction(),
                        GetContext(),
-                       NULL) >>
-        utilities::PetscUtilities::checkError;
+                       NULL);
+    if (ierr) {
+        PetscPrintf(PETSC_COMM_WORLD, "Error: Failed to add boundary condition %s.\n", GetBoundaryName().c_str());
+    }
 }
 
 #include "registrar.hpp"
