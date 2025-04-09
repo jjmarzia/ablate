@@ -28,6 +28,10 @@ void ablate::finiteVolume::boundaryConditions::EssentialBoundary::updateFunction
     // PetscPrintf(PETSC_COMM_WORLD, "updateFunction called for boundary");
 }
 
+void ablate::finiteVolume::boundaryConditions::EssentialBoundary::ExtraSetup() {
+    // PetscPrintf(PETSC_COMM_WORLD, "EssentialBoundary ExtraSetup called\n");
+}
+
 #include "registrar.hpp"
 REGISTER(ablate::finiteVolume::boundaryConditions::BoundaryCondition, ablate::finiteVolume::boundaryConditions::EssentialBoundary, "essential (Dirichlet condition) for boundary cells created by adding a layer next to the domain. See boxMeshBoundaryCells for an example.",
          ARG(std::string, "boundaryName", "the name for this boundary condition"),

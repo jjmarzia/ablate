@@ -51,12 +51,10 @@ void ablate::finiteVolume::boundaryConditions::BoundaryCell::SetupBoundary(std::
 
         ISGetSize(valuesIS, &numValues) >> utilities::PetscUtilities::checkError;
         ISGetIndices(valuesIS, &values) >> utilities::PetscUtilities::checkError;
-
-
-
         std::vector<IS> subISs(numValues, nullptr);
 
-
+        //print numvalues
+        PetscPrintf(PETSC_COMM_WORLD, "numValues: %d\n", numValues);
 
         // Pull all of points for each value
         for (PetscInt v = 0; v < numValues; ++v) {
@@ -109,7 +107,7 @@ void ablate::finiteVolume::boundaryConditions::BoundaryCell::SetupBoundary(std::
           ISDestroy(&subISs[v]);
         }
 
-        PetscPrintf(PETSC_COMM_WORLD, "debug last\n");
+        // PetscPrintf(PETSC_COMM_WORLD, "debug last\n");
 
     }
 
@@ -120,6 +118,8 @@ void ablate::finiteVolume::boundaryConditions::BoundaryCell::SetupBoundary(std::
     for (size_t l = 0; l < labelIds.size(); ++l) {
       ISDestroy(&listISs[l]);
     }
+
+    ExtraSetup(); // for ZeroDerBoundary
 
 }
 

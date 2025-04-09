@@ -24,6 +24,7 @@ class BoundaryCell : public BoundaryCondition {
     PetscInt fieldSize = -1;
 
     virtual void updateFunction(PetscReal, const PetscReal*, PetscScalar*, PetscInt) = 0;
+    virtual void ExtraSetup() = 0;
 
    public:
     std::shared_ptr<ablate::domain::SubDomain> subDomain = nullptr;
@@ -36,6 +37,8 @@ class BoundaryCell : public BoundaryCondition {
 
     void SetupBoundary(std::shared_ptr<ablate::domain::SubDomain> subDomain, PetscInt fieldId) override;
     void SetupBoundary(DM dm, PetscDS problem, PetscInt fieldId) override {}
+
+    
 
     void ComputeBoundary(PetscReal time, Vec locX, Vec locX_t, Vec cellGeomVec) override;
 };

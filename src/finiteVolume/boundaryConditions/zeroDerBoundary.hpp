@@ -15,6 +15,8 @@ class ZeroDerBoundary : public BoundaryCell {
    private:
     void updateFunction(PetscReal time, const PetscReal* x, PetscScalar* vals, PetscInt point) override;
 
+    void ExtraSetup() override;
+
     const std::shared_ptr<ablate::mathFunctions::FieldFunction> boundaryFunction;
 
    public:
