@@ -8,7 +8,7 @@ namespace ablate::finiteVolume::boundaryConditions {
 
 class EssentialBoundary : public BoundaryCell {
    private:
-    void updateFunction(PetscReal time, const PetscReal* x, PetscScalar* vals) override;
+    void updateFunction(PetscReal time, const PetscReal* x, PetscScalar* vals, PetscInt point) override;
 
     const std::shared_ptr<ablate::mathFunctions::FieldFunction> boundaryFunction;
 
