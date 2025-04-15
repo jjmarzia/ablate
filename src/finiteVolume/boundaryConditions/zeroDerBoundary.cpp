@@ -30,6 +30,8 @@ ablate::finiteVolume::boundaryConditions::ZeroDerBoundary::ZeroDerBoundary(std::
 
     }
 
+    
+
 void ablate::finiteVolume::boundaryConditions::ZeroDerBoundary::ExtraSetup() {
     PetscPrintf(PETSC_COMM_WORLD, "ZeroDerBoundary ExtraSetup called\n");
     DM dm = subDomain->GetDM();
@@ -69,9 +71,19 @@ void ablate::finiteVolume::boundaryConditions::ZeroDerBoundary::ExtraSetup() {
     PetscPrintf(PETSC_COMM_WORLD, "domainnumValues: %d\n", domainnumValues);
 
     //create an array to store the domain coordinates with zero length which will be appended to later
-    PetscReal *domainCoords = new PetscReal[0];
+    PetscReal *domainVertexCoords = new PetscReal[0];
+    PetscReal *domainCellCoords = new PetscReal[0];
+    PetscReal *outletVertexCoords = new PetscReal[0];
+    PetscReal *outletCellCoords = new PetscReal[0];
+    
+    PetscInt *outletCellID = new PetscInt[0];
+    PetscInt *domainCellID = new PetscInt[0];
+    
     PetscInt domainCoordsSize = 0;
+    PetscInt outletCoordsSize = 0;
+    
 
+    //loop over the domain cells
     for (PetscInt v = 0; v < domainnumValues; ++v) {
         DMGetStratumIS(dm, "domain", domainvalues[v], &domainsubISs[v]) >> utilities::PetscUtilities::checkError;
         PetscPrintf(PETSC_COMM_WORLD, "-->\n");
@@ -81,32 +93,34 @@ void ablate::finiteVolume::boundaryConditions::ZeroDerBoundary::ExtraSetup() {
         PetscPrintf(PETSC_COMM_WORLD, "--> Label %s with value %d has %d points\n", "domain", domainvalues[v], ndomainPoints);
         const PetscInt *points;
         ISGetIndices(domainsubISs[v], &points) >> utilities::PetscUtilities::checkError;
-        Vec domainsolVec;
-        PetscScalar *domainsolArray;
-        DMGetGlobalVector(subDomain->GetDM(), &domainsolVec) >> utilities::PetscUtilities::checkError;
-        VecGetArray(domainsolVec, &domainsolArray) >> utilities::PetscUtilities::checkError;
+        // Vec domainsolVec;
+        // PetscScalar *domainsolArray;
+        // DMGetGlobalVector(subDomain->GetDM(), &domainsolVec) >> utilities::PetscUtilities::checkError;
+        // VecGetArray(domainsolVec, &domainsolArray) >> utilities::PetscUtilities::checkError;
         //create a global array containing the coordinates of all the points in the domain
         for (PetscInt p = 0; p < ndomainPoints; ++p) {
             PetscInt point = points[p];
             PetscReal centroid[3];
             DMPlexComputeCellGeometryFVM(dm, point, nullptr, centroid, nullptr) >> utilities::PetscUtilities::checkError;
 
-            //loop over the vertices and store each vertex location in the domainCoords array
             PetscInt nVerts;
             PetscInt *verts;
             DMPlexCellGetVertices(dm, point, &nVerts, &verts) >> utilities::PetscUtilities::checkError;
-            //store each vertex location in the domainCoords array
+            //store each vertex location (and corresponding cell) in the domainCoords arrays
             for (PetscInt v = 0; v < nVerts; ++v) {
                 PetscInt vertex = verts[v];
                 PetscReal vertexCoords[3];
                 DMPlexComputeCellGeometryFVM(dm, vertex, nullptr, vertexCoords, nullptr) >> utilities::PetscUtilities::checkError;
-                //append the vertex coords to the domainCoords array
-                // domainCoords = (PetscReal *)realloc(domainCoords, (domainCoordsSize + 1) * 3 * sizeof(PetscReal));
-                domainCoords[domainCoordsSize * 3] = vertexCoords[0];
-                domainCoords[domainCoordsSize * 3 + 1] = vertexCoords[1];
-                domainCoords[domainCoordsSize * 3 + 2] = vertexCoords[2];
+                domainVertexCoords[domainCoordsSize * 3] = vertexCoords[0];
+                domainVertexCoords[domainCoordsSize * 3 + 1] = vertexCoords[1];
+                domainVertexCoords[domainCoordsSize * 3 + 2] = vertexCoords[2];
+                domainCellCoords[domainCoordsSize * 3] = centroid[0];
+                domainCellCoords[domainCoordsSize * 3 + 1] = centroid[1];
+                domainCellCoords[domainCoordsSize * 3 + 2] = centroid[2];
+                domainCellID[domainCoordsSize] = point;
                 domainCoordsSize++;
             }
+            DMPlexCellRestoreVertices(dm, point, &nVerts, &verts) >> utilities::PetscUtilities::checkError;
         }
     }
 
@@ -115,157 +129,111 @@ void ablate::finiteVolume::boundaryConditions::ZeroDerBoundary::ExtraSetup() {
         DMGetStratumIS(dm, "outletCells", outletvalues[v], &outletsubISs[v]) >> utilities::PetscUtilities::checkError;
         PetscInt noutletPoints;
         ISGetLocalSize(outletsubISs[v], &noutletPoints) >> utilities::PetscUtilities::checkError;
+        PetscPrintf(PETSC_COMM_WORLD, "--> Label %s with value %d has %d points\n", "outlet", outletvalues[v], noutletPoints);
         const PetscInt *points;
         ISGetIndices(outletsubISs[v], &points) >> utilities::PetscUtilities::checkError;
-        Vec outletsolVec;
-        PetscScalar *outletsolArray;
-        DMGetGlobalVector(subDomain->GetDM(), &outletsolVec) >> utilities::PetscUtilities::checkError;
-        VecGetArray(outletsolVec, &outletsolArray) >> utilities::PetscUtilities::checkError;
+        // Vec outletsolVec;
+        // PetscScalar *outletsolArray;
+        // DMGetGlobalVector(subDomain->GetDM(), &outletsolVec) >> utilities::PetscUtilities::checkError;
+        // VecGetArray(outletsolVec, &outletsolArray) >> utilities::PetscUtilities::checkError;
 
-        //create an array marking the outlet cells of size noutletPoints that share a vertex with the domain
-        PetscInt *shareVertexCount = new PetscInt[noutletPoints];
-
+        //create a global array containing the coordinates of all the points in the outlet
         for (PetscInt p = 0; p < noutletPoints; ++p) {
             PetscInt point = points[p];
-            // PetscReal centroid[3];
-            //get the vertices associated with this cell
+            PetscReal centroid[3];
+            DMPlexComputeCellGeometryFVM(dm, point, nullptr, centroid, nullptr) >> utilities::PetscUtilities::checkError;
+
             PetscInt nVerts;
             PetscInt *verts;
             DMPlexCellGetVertices(dm, point, &nVerts, &verts) >> utilities::PetscUtilities::checkError;
-            //loop over the vertices and check to see if the vertex location is anywhere inside the domainCoords array with a tolerance of 0.0001
-            for (PetscInt v = 0; v < nVerts; ++v) {
-                PetscInt vertex = verts[v];
+            //store each vertex location (and corresponding cell) in the outletCoords arrays
+            for (PetscInt vt = 0; vt < nVerts; ++vt) {
+                PetscInt vertex = verts[vt];
                 PetscReal vertexCoords[3];
                 DMPlexComputeCellGeometryFVM(dm, vertex, nullptr, vertexCoords, nullptr) >> utilities::PetscUtilities::checkError;
-                //check to see if the vertexCoords are in the domainCoords array
-                for (PetscInt d = 0; d < domainCoordsSize; ++d) {
-                    PetscReal tol = 0.0000001;
-                    if (PetscAbsReal(vertexCoords[0] - domainCoords[d * 3]) < tol && PetscAbsReal(vertexCoords[1] - domainCoords[d * 3 + 1]) < tol && PetscAbsReal(vertexCoords[2] - domainCoords[d * 3 + 2]) < tol) {
-                        //print the coordinates of the vertex
-                        // PetscPrintf(PETSC_COMM_WORLD, "vertexCoords: %g %g %g\n", vertexCoords[0], vertexCoords[1], vertexCoords[2]);
-                        //mark the outlet cell as sharing a vertex with the domain by adding 1 to an array containing the number of vertices shared with the domain
-                        shareVertexCount[p]++;
-                        break;
-                    }
-                }
+                outletVertexCoords[outletCoordsSize * 3] = vertexCoords[0];
+                outletVertexCoords[outletCoordsSize * 3 + 1] = vertexCoords[1];
+                outletVertexCoords[outletCoordsSize * 3 + 2] = vertexCoords[2];
+                outletCellCoords[outletCoordsSize * 3] = centroid[0];
+                outletCellCoords[outletCoordsSize * 3 + 1] = centroid[1];
+                outletCellCoords[outletCoordsSize * 3 + 2] = centroid[2];
+                outletCellID[outletCoordsSize] = point;
+                outletCoordsSize++;
             }
+            DMPlexCellRestoreVertices(dm, point, &nVerts, &verts) >> utilities::PetscUtilities::checkError;
+        }
+    }
+
+
+    // Vec solVec;
+    // PetscScalar *solArray;
+    // DMGetGlobalVector(subDomain->GetDM(), &solVec);
+    // VecGetArray(solVec, &solArray);
+    PetscInt *correspondingDomainCellID = new PetscInt[outletCoordsSize];
+    // PetscInt sharedSize = 0;
+
+    for (PetscInt j=0; j<domainCoordsSize; j++){
+        
+    }
+
+    //loop over outletCoordsSize/all vertices in the outlet
+    for(PetscInt i=0; i<outletCoordsSize; i++){
+
+        // if (PetscAbs(outletVertexCoords[i*3] - 1.5e-3) < 1e-5){
+        //     PetscPrintf(PETSC_COMM_WORLD, "outletVertexCoords[%d]: %g %g %g\n", i, outletVertexCoords[i*3], outletVertexCoords[i*3+1], outletVertexCoords[i*3+2]);
+        // }
+
+        for(PetscInt j=0; j<domainCoordsSize; j++){
+
+            if (PetscAbs(domainVertexCoords[j*3] - 1.5e-3) < 1e-5){
+                PetscPrintf(PETSC_COMM_WORLD, "-> domainVertexCoords[%d]: %g %g %g\n", j, domainVertexCoords[j*3], domainVertexCoords[j*3+1], domainVertexCoords[j*3+2]);
+            }
+
+            std::cout << "";
+
+            PetscReal tol1 = 1e-5;
+            PetscBool bool1 = (PetscAbsReal(outletVertexCoords[i*3] - domainVertexCoords[j * 3]) < tol1 &&
+                   PetscAbsReal(outletVertexCoords[i*3+1] - domainVertexCoords[j * 3 + 1]) < tol1 &&
+                   PetscAbsReal(outletVertexCoords[i*3+2] - domainVertexCoords[j * 3 + 2]) < tol1) ? PETSC_TRUE : PETSC_FALSE;
+
+            // PetscReal tol2 = 0.0000075;
+            // bool bool1 = (fabs(outletVertexCoords[i*3] - domainVertexCoords[j*3]) < tol1 && fabs(outletVertexCoords[i*3+1] - domainVertexCoords[j*3+1]) < tol1 && fabs(outletVertexCoords[i*3+2] - domainVertexCoords[j*3+2]) < tol1);
+            // bool bool2 = ( fabs(outletCellCoords[i*3+1] - domainCellCoords[j*3+1]) < tol2 );
+
+            if (bool1 == PETSC_TRUE){
+                correspondingDomainCellID[i] = domainCellID[j];
+            }
+            else{
+                correspondingDomainCellID[i] = -1;
+            }
+
             
         }
+    }
 
-        //print all elements of the shareVertexCount array
-        for (PetscInt p = 0; p < noutletPoints; ++p) {
-            PetscPrintf(PETSC_COMM_WORLD, "shareVertexCount[%d]: %d\n", p, shareVertexCount[p]);
-        }
-        //free the shareVertexCount array
-        delete[] shareVertexCount;
+    //print each element of correspondingDomainCellID
+    PetscPrintf(PETSC_COMM_WORLD, "domainCoordsSize: %d\n", domainCoordsSize);
+    PetscPrintf(PETSC_COMM_WORLD, "outletCoordsSize: %d\n", outletCoordsSize);
+    //print size of correspondingDomainCellID
+
+    PetscPrintf(PETSC_COMM_WORLD, "correspondingDomainCellID: \n");
+    for(PetscInt i=0; i<outletCoordsSize; i++){
+        PetscPrintf(PETSC_COMM_WORLD, "correspondingDomainCellID[%d]: %d\n", i, correspondingDomainCellID[i]);
     }
 
     //free the domainCoords array
-    delete[] domainCoords;
+    delete[] domainVertexCoords;
+    delete[] domainCellCoords;
+    delete[] outletVertexCoords;
+    delete[] outletCellCoords;
+    delete[] domainCellID;
+    delete[] outletCellID;
+    delete[] correspondingDomainCellID;
+    
+
     //free the shareVertexCount array
     // delete[] shareVertexCount;
     
-    PetscPrintf(PETSC_COMM_WORLD, "domainCoordsSize: %d\n", domainCoordsSize);
-
-    for (PetscInt v = 0; v < outletnumValues; ++v) {
-
-        DMGetStratumIS(dm, "outletCells", outletvalues[v], &outletsubISs[v]) >> utilities::PetscUtilities::checkError;
-        PetscInt noutletPoints;
-        ISGetLocalSize(outletsubISs[v], &noutletPoints) >> utilities::PetscUtilities::checkError;
-        //print the label associated with this region
-        PetscPrintf(PETSC_COMM_WORLD, "--> Label %s with value %d has %d points\n", "outletCells", outletvalues[v], noutletPoints);
-        const PetscInt *points;
-        ISGetIndices(outletsubISs[v], &points) >> utilities::PetscUtilities::checkError;
-        Vec outletsolVec;
-        PetscScalar *outletsolArray;
-        DMGetGlobalVector(subDomain->GetDM(), &outletsolVec) >> utilities::PetscUtilities::checkError;
-        PetscPrintf(PETSC_COMM_WORLD, "--> vec\n");
-        VecGetArray(outletsolVec, &outletsolArray) >> utilities::PetscUtilities::checkError;
-        PetscPrintf(PETSC_COMM_WORLD, "--> array\n");
-
-        for (PetscInt p = 0; p < noutletPoints; ++p) {
-            PetscInt point = points[p];
-
-
-            // PetscReal centroid[3];
-            // DMPlexComputeCellGeometryFVM(dm, point, nullptr, centroid, nullptr) >> utilities::PetscUtilities::checkError;
-            // if ( centroid[0] < (0.0015 + 0.001515)/2 - (0.0015 - 0.001515)/4 ) {
-            //     PetscInt neighbor;
-            //     PetscReal neighborcentroid[3] = {0.001499, centroid[1], centroid[2]};
-            //     DMPlexFindCell(dm, neighborcentroid, (0.0015 - 0.001515)/2, &neighbor) >> utilities::PetscUtilities::checkError;
-            //     PetscPrintf(PETSC_COMM_WORLD, "point %d: (%g, %g, %g) neighbor centroid: %g %g %g neighbor: %d\n", point, centroid[0], centroid[1], centroid[2], neighborcentroid[0], neighborcentroid[1], neighborcentroid[2], neighbor);
-
-            // }
-
-            //using petscsupport.cpp functions get the vertices associated with this cell
-            PetscInt nVerts;
-            PetscInt *verts;
-            DMPlexCellGetVertices(dm, point, &nVerts, &verts) >> utilities::PetscUtilities::checkError;
-            //loop over the vertices and get the cells corresponding to each vertex
-            for (PetscInt v = 0; v < nVerts; ++v) {
-                PetscInt vertex = verts[v];
-                PetscInt nCells;
-                PetscInt *cells;
-                DMPlexVertexGetCells(dm, vertex, &nCells, &cells) >> utilities::PetscUtilities::checkError;
-                //print the number of cell associated with this vertex;
-                // PetscPrintf(PETSC_COMM_WORLD, "vertex %d has %d cells\n", vertex, nCells);
-                //for each cell IF the x coordinate of the cell is less than 0.0015, then print the cell
-                for (PetscInt c = 0; c < nCells; ++c) {
-                    //get the centroid of cells[c]
-                    PetscReal centroid[3];
-                    DMPlexComputeCellGeometryFVM(dm, cells[c], nullptr, centroid, nullptr) >> utilities::PetscUtilities::checkError;
-                    //if the x coordinate of the centroid is less than 0.0015, then print the cell
-                    if (centroid[0] < 0.0015) {
-                        PetscPrintf(PETSC_COMM_WORLD, "--> pt %d cell neighbor is x=%lf y=%lf  cell %d\n", point, centroid[0], centroid[1], cells[c]);
-                    }
-                }
-                DMPlexVertexRestoreCells(dm, vertex, &nCells, &cells) >> utilities::PetscUtilities::checkError;
-            }
-            DMPlexCellRestoreVertices(dm, point, &nVerts, &verts) >> utilities::PetscUtilities::checkError;
-
-
-            // PetscInt nNeighbors, *neighbors;
-            // DMPlexGetNeighbors(dm, point, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors) >> utilities::PetscUtilities::checkError;
-            // //print the neighbors
-            // PetscPrintf(PETSC_COMM_WORLD, "point %d has %d neighbors\n", point, nNeighbors);
-            // for (PetscInt n = 0; n < nNeighbors; ++n) {
-            //     PetscPrintf(PETSC_COMM_WORLD, "--> pt %d x=%lf y=%lf  neighbor %d\n", point, centroid[0], centroid[1], neighbors[n]);
-            // }
-            // DMPlexRestoreNeighbors(dm, point, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors) >> utilities::PetscUtilities::checkError;
-
-            // PetscScalar *boundaryFields = nullptr; 
-            // DMPlexPointLocalRef(subDomain->GetDM(), point, solArray, &boundaryFields);
-            //     boundaryFields[ablate::finiteVolume::CompressibleFlowFields::RHO] = 5;
-            //     boundaryFields[ablate::finiteVolume::CompressibleFlowFields::RHOE] = 5;
-            //     boundaryFields[ablate::finiteVolume::CompressibleFlowFields::RHOU] = 5;
-            //     boundaryFields[ablate::finiteVolume::CompressibleFlowFields::RHOV] = 5;
-            //     boundaryFields[ablate::finiteVolume::CompressibleFlowFields::RHOW] = 5;
-            //     boundaryFields[subDomain->GetField(VOLUME_FRACTION_FIELD).offset] = 5;
-            //     boundaryFields[subDomain->GetField(DENSITY_VF_FIELD).offset] = 5;
-
-            // PetscPrintf(PETSC_COMM_WORLD, "point %d: (%g, %g, %g)\n", point, centroid[0], centroid[1], centroid[2]);
-        }
-        // DMRestoreGlobalVector(subDomain->GetDM(), &solVec) >> utilities::PetscUtilities::checkError;
-        // VecRestoreArray(solVec, &solArray) >> utilities::PetscUtilities::checkError;
-        ISRestoreIndices(outletsubISs[v], &points) >> utilities::PetscUtilities::checkError;
-
-    }
-
-
-    //print the number of cells based on pstart, pend
-    // PetscPrintf(PETSC_COMM_WORLD, "pStart: %d, pEnd: %d\n", pStart, pEnd);
-    //print the number of cells betweeen pstart and pend
-    // PetscPrintf(PETSC_COMM_WORLD, "Number of cells: %d\n", pEnd - pStart);
-    // for (PetscInt i = pStart; i < pEnd; ++i) {
-    //     PetscInt cell = i;
-    //     PetscInt nNeighbors, *neighbors;
-    //     DMPlexGetNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors) >> utilities::PetscUtilities::checkError;
-    //     //print the number of neighbors
-    //     // PetscPrintf(PETSC_COMM_WORLD, "cell: %d, nNeighbors: %d\n", cell, nNeighbors);
-    //     // cellNeighbors[cell] = std::vector<PetscInt>(neighbors, neighbors + nNeighbors);
-
-    //     DMPlexRestoreNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors) >> utilities::PetscUtilities::checkError;
-    // }
     
 
     

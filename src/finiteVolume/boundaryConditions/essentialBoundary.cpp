@@ -22,10 +22,11 @@ ablate::finiteVolume::boundaryConditions::EssentialBoundary::EssentialBoundary(s
 
 void ablate::finiteVolume::boundaryConditions::EssentialBoundary::updateFunction(PetscReal time, const PetscReal *x, PetscScalar *vals, PetscInt point) {
 
-    // PetscPrintf(PETSC_COMM_WORLD, "prior to update function");
+
+    // PetscPrintf(PETSC_COMM_WORLD, "prior to update function\n");s
     boundaryFunction->GetSolutionField().GetPetscFunction()(dim, time, x, fieldSize, vals, boundaryFunction->GetSolutionField().GetContext());
 
-    // PetscPrintf(PETSC_COMM_WORLD, "updateFunction called for boundary");
+    // PetscPrintf(PETSC_COMM_WORLD, "updateFunction called for boundary\n");
 }
 
 void ablate::finiteVolume::boundaryConditions::EssentialBoundary::ExtraSetup() {
