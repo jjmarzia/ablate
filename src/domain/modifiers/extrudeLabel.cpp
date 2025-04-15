@@ -5,8 +5,6 @@
 #include <utility>
 #include "tagLabelInterface.hpp"
 #include "utilities/petscUtilities.hpp"
-#include "utilities/petscSupport.hpp"
-
 
 ablate::domain::modifiers::ExtrudeLabel::ExtrudeLabel(std::vector<std::shared_ptr<domain::Region>> regions, std::shared_ptr<domain::Region> boundaryRegion,
                                                       std::shared_ptr<domain::Region> originalRegion, std::shared_ptr<domain::Region> extrudedRegion, double thickness)
@@ -23,47 +21,30 @@ std::string ablate::domain::modifiers::ExtrudeLabel::ToString() const {
 
 void ablate::domain::modifiers::ExtrudeLabel::Modify(DM &dm) {
     // create a temporary label to hold adapt information
-    //adaptation label makes which cells need to be extruded
     DMLabel adaptLabel;
     DMLabelCreate(PETSC_COMM_SELF, "Adaptation Label", &adaptLabel) >> utilities::PetscUtilities::checkError;
 
-    // loop through regions ie inlet, outlet, slab etc
+    // add points from each region
     for (const auto &region : regions) {
         region->CheckForLabel(dm, PetscObjectComm((PetscObject)dm));
         DMLabel regionLabel;
         PetscInt regionValue;
         domain::Region::GetLabel(region, dm, regionLabel, regionValue);
 
-// print the name of the label associated with the region
-        if (!regionLabel) {
-            PetscPrintf(PETSC_COMM_SELF, "Warning: Region %s does not exist on the mesh, skipping extrude label for this region.\n", region->ToString().c_str());
-            continue;
-        } else {
-            PetscPrintf(PETSC_COMM_SELF, "Extruding region: %s with label value: %d\n", region->ToString().c_str(), regionValue);
-        }
-
-        // If this label exists on this domain then process its set of points/cells to extrude
+        // If this label exists on this domain
         if (regionLabel) {
             IS bdIS;
             const PetscInt *points;
             PetscInt n, i;
 
-            //gets the points in the region
             DMLabelGetStratumIS(regionLabel, regionValue, &bdIS) >> utilities::PetscUtilities::checkError;
             if (!bdIS) {
                 continue;
             }
-            
-
             ISGetLocalSize(bdIS, &n) >> utilities::PetscUtilities::checkError;
             ISGetIndices(bdIS, &points) >> utilities::PetscUtilities::checkError;
             for (i = 0; i < n; ++i) {
                 DMLabelSetValue(adaptLabel, points[i], DM_ADAPT_REFINE) >> utilities::PetscUtilities::checkError;
-
-                // //print the point being extruded
-                // if (i < 10) {  // only print the first 10 for readability
-                //     PetscPrintf(PETSC_COMM_SELF, "Marking point %d for extrusion in adaptLabel\n", points[i]);
-                // }
             }
             ISRestoreIndices(bdIS, &points) >> utilities::PetscUtilities::checkError;
             ISDestroy(&bdIS) >> utilities::PetscUtilities::checkError;
@@ -80,7 +61,6 @@ void ablate::domain::modifiers::ExtrudeLabel::Modify(DM &dm) {
     PetscReal extrudeThickness = thickness;
     if (extrudeThickness == 0.0) {
         // Get the fv geom
-        //if no thickness specified then just make the thickness twice the minimum radius of the mesh (cell center size)
         DMPlexGetGeometryFVM(dm, nullptr, nullptr, &extrudeThickness) >> utilities::PetscUtilities::checkError;
         extrudeThickness *= 2.0;  // double the thickness
     }
@@ -88,23 +68,15 @@ void ablate::domain::modifiers::ExtrudeLabel::Modify(DM &dm) {
     PetscOptionsSetValue(transformOptions, "-dm_plex_transform_extrude_thickness", extrudeThicknessString.c_str());
 
     // extrude the mesh
-    //create new mesh with extruded cells
     DM dmAdapt;
     DMPlexTransformAdaptLabel(dm, nullptr, adaptLabel, nullptr, transformOptions, &dmAdapt) >> utilities::PetscUtilities::checkError;
 
-    PetscPrintf(PETSC_COMM_WORLD, "Mesh extrusion completed.\n"); //this works
-    if (!dmAdapt) {
-        PetscPrintf(PETSC_COMM_WORLD,
-                     "Error: DMPlexTransformAdaptLabel failed to produce an adapted mesh. Check the input mesh and adaptation label.\n");
-    }
-
-    
     if (dmAdapt) {
-        (dmAdapt)->prealloc_only = dm->prealloc_only; // preserve the preallocation settings of the original dm
+        (dmAdapt)->prealloc_only = dm->prealloc_only; /* maybe this should go .... */
         PetscFree((dmAdapt)->vectype);
-        PetscStrallocpy(dm->vectype, (char **)&(dmAdapt)->vectype); // preserve the vector type of the original dm
+        PetscStrallocpy(dm->vectype, (char **)&(dmAdapt)->vectype);
         PetscFree((dmAdapt)->mattype);
-        PetscStrallocpy(dm->mattype, (char **)&(dmAdapt)->mattype); // preserve the matrix type of the original dm
+        PetscStrallocpy(dm->mattype, (char **)&(dmAdapt)->mattype);
     }
 
     // create hew new labels for each region (on the new adapted dm)
@@ -113,84 +85,11 @@ void ablate::domain::modifiers::ExtrudeLabel::Modify(DM &dm) {
     originalRegion->CreateLabel(dmAdapt, originalRegionLabel, originalRegionValue);
     extrudedRegion->CreateLabel(dmAdapt, extrudedRegionLabel, extrudedRegionValue);
 
-    //confirm the labels were created
-    PetscPrintf(PETSC_COMM_WORLD,
-                 "Created original region label on adapted mesh: %s with value: %d\n",
-                 originalRegion->ToString().c_str(), originalRegionValue);
-    PetscPrintf(PETSC_COMM_WORLD,
-                 "Created extruded region label on adapted mesh: %s with value: %d\n",
-                 extrudedRegion->ToString().c_str(), extrudedRegionValue);
-
-
-
-    PetscInt cOriginalStart, cOriginalEnd;
-    DMPlexGetHeightStratum(dm, 0, &cOriginalStart, &cOriginalEnd) >> utilities::PetscUtilities::checkError;
-        PetscInt cAdaptStart, cAdaptEnd;
+    // March over each cell in this rank and determine if it is original or not
+    PetscInt cAdaptStart, cAdaptEnd;
     DMPlexGetHeightStratum(dmAdapt, 0, &cAdaptStart, &cAdaptEnd) >> utilities::PetscUtilities::checkError;
-        //adapted mesh = boundaryCells
-// get the cell range of the original mesh
-PetscPrintf(PETSC_COMM_WORLD, "Orig mesh cell range: [%d, %d)\n", cOriginalStart, cOriginalEnd);
-// get the cell range of the adapted mesh
-    PetscPrintf(PETSC_COMM_WORLD, "Adapted mesh cell range: [%d, %d)\n", cAdaptStart, cAdaptEnd);
-
-    // store all original mesh x,y,z coordinates into an array
-    std::vector<PetscReal> originalCellCentroids(cOriginalEnd - cOriginalStart);
-    PetscReal *originalCellCentroidPtr = originalCellCentroids.data();
-    for (PetscInt cell = cOriginalStart; cell < cOriginalEnd; ++cell) {
-        PetscReal vol;
-        PetscReal centroid[3];
-        DMPlexComputeCellGeometryFVM(dm, cell, &vol, centroid, nullptr) >> utilities::PetscUtilities::checkError;
-        originalCellCentroidPtr[cell - cOriginalStart] = centroid[0]; 
-        originalCellCentroidPtr[cell - cOriginalStart + 1] = centroid[1];
-        originalCellCentroidPtr[cell - cOriginalStart + 2] = centroid[2]; 
-    }
-    //now store the coordinates of the adapted mesh cells for comparison
-    std::vector<PetscReal> adaptedCellCentroids(cAdaptEnd - cAdaptStart);
-    PetscReal *adaptedCellCentroidPtr = adaptedCellCentroids.data();
-    for (PetscInt cell = cAdaptStart; cell < cAdaptEnd; ++cell) {
-        PetscReal vol;
-        PetscReal centroid[3];
-        DMPlexComputeCellGeometryFVM(dmAdapt, cell, &vol, centroid, nullptr) >> utilities::PetscUtilities::checkError;
-        adaptedCellCentroidPtr[cell - cAdaptStart] = centroid[0];
-        adaptedCellCentroidPtr[cell - cAdaptStart + 1] = centroid[1]; 
-        adaptedCellCentroidPtr[cell - cAdaptStart + 2] = centroid[2]; 
-    }
-    //now check for each adapted cell if it corresponds to an original cell;
-    //PRINT adapted cell if it is not corresponding to an original cell
-    //also count the total number of adapted cells that do not correspond to original cells
-    //let correspondence be within a tolerance of 1e-6 in x,y,z coordinates
-    PetscInt numCorrespondingCells = 0;
-    for (PetscInt cell = cAdaptStart; cell < cAdaptEnd; ++cell) {
-        PetscBool foundCorrespondingCell = PETSC_FALSE;
-        PetscReal *adaptedCentroid = adaptedCellCentroidPtr + (cell - cAdaptStart) * 3;
-
-        for (PetscInt originalCellIndex = 0; originalCellIndex < (cOriginalEnd - cOriginalStart); ++originalCellIndex) {
-            PetscReal *originalCentroid = originalCellCentroidPtr + originalCellIndex * 3;
-
-            // check if the coordinates match within tolerance
-            if (PetscAbsReal(adaptedCentroid[0] - originalCentroid[0]) < 1e-6 &&
-                PetscAbsReal(adaptedCentroid[1] - originalCentroid[1]) < 1e-6 &&
-                PetscAbsReal(adaptedCentroid[2] - originalCentroid[2]) < 1e-6) {
-                foundCorrespondingCell = PETSC_TRUE;
-                numCorrespondingCells++;
-                break;
-            }
-        }
-
-        if (!foundCorrespondingCell or foundCorrespondingCell) { //print all cells for now whether they're original or adapted
-            PetscPrintf(PETSC_COMM_WORLD, "Adapted cell %d does not correspond to any original cell. Coordinates: (%g, %g, %g)\n", cell,
-                        adaptedCentroid[0], adaptedCentroid[1], adaptedCentroid[2]);
-        }
-    }
-    PetscPrintf(PETSC_COMM_WORLD,
-                 "Total number of adapted cells: %d, Number of corresponding original cells: %d\n",
-                 cAdaptEnd - cAdaptStart, numCorrespondingCells);
-
-
-
 
     // cell the depths of the cell layer
-    //depth = the number of layers of cells in the original mesh that were extruded
     PetscInt cellDepth;
     DMPlexGetDepth(dm, &cellDepth) >> utilities::PetscUtilities::checkError;
     DMLabel depthAdaptLabel, ctAdaptLabel, ctLabel;

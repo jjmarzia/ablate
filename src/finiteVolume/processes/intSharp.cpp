@@ -87,7 +87,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::PreStage(TS flowTs, ab
   // PetscLogDouble startTime, endTime, // elapsedTime;
 
   // // // PetscPrintf(PETSC_COMM_WORLD, "PreStage function called at time %g\n", stagetime);
-    
+  PetscReal pseudoTime = 1e-10;
   const auto &fvSolver = dynamic_cast<ablate::finiteVolume::FiniteVolumeSolver &>(solver);
   ablate::domain::Range cellRange; 
   fvSolver.GetCellRangeWithoutGhost(cellRange);
@@ -129,7 +129,7 @@ PetscReal zmax=xymax[2];
 
   const auto &eulerField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
   const auto &densityVFField = subDomain->GetField("densityvolumeFraction");
-  const auto &ofield = subDomain->GetField("debug");
+  const auto &ofield = subDomain->GetField("debug1");
   const auto &ofield2 = subDomain->GetField("debug2");
 
   const auto &gasDensityField = subDomain->GetField("gasDensity");
@@ -474,6 +474,9 @@ if (( PetscAbs(nz-vz) > maxMask) and (nz < vz)){  nz += (zmax-zmin);  } }
           }
       }
       else{ *diva = 0.0; }
+
+      PetscReal xc, yc, zc; GetCoordinate3D(dm, dim, cell, &xc, &yc, &zc);
+      if ((yc < 0.0115)){ *diva = 0.0; }
   }
   PushGhost(sharedDM, divaLocalVec, divaGlobalVec, INSERT_VALUES, true, false);
 
@@ -548,6 +551,8 @@ if (process->addtoRHS){
     PetscScalar *allFields = nullptr; DMPlexPointLocalRef(dm, cell, flowArray, &allFields) >> utilities::PetscUtilities::checkError;
     auto density = allFields[ablate::finiteVolume::CompressibleFlowFields::RHO];
     PetscReal velocity[3]; for (PetscInt d = 0; d < dim; d++) { velocity[d] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] / density; }
+    //get the coordinate of the cell
+    
 
     // decode state (we just need densityG and densityL to reconstruct mixture RHO out of new alpha, and internalEnergy to reconstruct RHOE )
     // PetscReal densityG = 1.0, densityL = 1000.0, internalEnergy = 1e5; 
@@ -569,29 +574,29 @@ if (process->addtoRHS){
     
 
     // update corresponding euler field values based on new alpha
-    if (oldAlpha > 1e-3 && oldAlpha < 1-1e-3){
+    if (oldAlpha > 1e-3 && oldAlpha < 1-1e-3) {
 
     //method of adding to rhophi
-    PetscReal pseudoTime = 1e-4 + 0*oldAlpha;
-    allFields[rhoAlphaOffset] += *densityG * pseudoTime * *diva;
-    allFields[vfOffset] = allFields[rhoAlphaOffset] / *densityG;
-    allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] = allFields[rhoAlphaOffset] + (1 - allFields[rhoAlphaOffset] / *densityG) * *densityL;
-    allFields[ablate::finiteVolume::CompressibleFlowFields::RHOE] = allFields[rhoAlphaOffset] * *eG + (allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] - allFields[rhoAlphaOffset]) * *eL;
-    for (PetscInt d = 0; d < dim; ++d) {
-        allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] * velocity[d];
-    }
-
-      //method of adding to phi
     // PetscReal pseudoTime = 1e-4 + 0*oldAlpha;
-    // allFields[vfOffset] += pseudoTime * *diva;
-    // if (allFields[vfOffset] < 0.0) { allFields[vfOffset] = 0.0; } 
-    // else if (allFields[vfOffset] > 1.0) { allFields[vfOffset] = 1.0; }
-    // allFields[rhoAlphaOffset] = *densityG * allFields[vfOffset];
-    // allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] = allFields[vfOffset] * *densityG + (1 - allFields[vfOffset]) * *densityL;
+    // allFields[rhoAlphaOffset] += *densityG * pseudoTime * *diva;
+    // allFields[vfOffset] = allFields[rhoAlphaOffset] / *densityG;
+    // allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] = allFields[rhoAlphaOffset] + (1 - allFields[rhoAlphaOffset] / *densityG) * *densityL;
     // allFields[ablate::finiteVolume::CompressibleFlowFields::RHOE] = allFields[rhoAlphaOffset] * *eG + (allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] - allFields[rhoAlphaOffset]) * *eL;
     // for (PetscInt d = 0; d < dim; ++d) {
     //     allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] * velocity[d];
     // }
+
+      //method of adding to phi
+    
+    allFields[vfOffset] += pseudoTime * *diva;
+    if (allFields[vfOffset] < 0.0) { allFields[vfOffset] = 0.0; } 
+    else if (allFields[vfOffset] > 1.0) { allFields[vfOffset] = 1.0; }
+    allFields[rhoAlphaOffset] = *densityG * allFields[vfOffset];
+    allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] = allFields[vfOffset] * *densityG + (1 - allFields[vfOffset]) * *densityL;
+    allFields[ablate::finiteVolume::CompressibleFlowFields::RHOE] = allFields[rhoAlphaOffset] * *eG + (allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] - allFields[rhoAlphaOffset]) * *eL;
+    for (PetscInt d = 0; d < dim; ++d) {
+        allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] * velocity[d];
+    }
 
   }
 
@@ -709,7 +714,7 @@ void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::Fini
         PetscInt cell = cellRange.GetPoint(i);
         // // PetscPrintf(PETSC_COMM_WORLD, "got cell \n");
         PetscInt nNeighbors, *neighbors;
-        PetscReal layers=5;
+        PetscReal layers=3;
         // DMPlexGetNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
 
         DMPlexGetNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
