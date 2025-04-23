@@ -20,7 +20,6 @@ class IntSharp : public Process {
     PetscReal Gamma;
     PetscReal epsilon;
     bool flipPhiTilde;
-    bool addtoRHS;
     //mesh for vertex information
     DM vertexDM{};
     std::shared_ptr<ablate::domain::SubDomain> subDomain;
@@ -31,7 +30,7 @@ class IntSharp : public Process {
      * @param Gamma
      * @param epsilon
      */
-    explicit IntSharp(PetscReal Gamma, PetscReal epsilon, bool flipPhiTilde, bool addtoRHS = false);
+    explicit IntSharp(PetscReal Gamma, PetscReal epsilon, bool flipPhiTilde);
 
     /**
      * Clean up the dm created
@@ -61,8 +60,8 @@ class IntSharp : public Process {
     inline const static std::string VOLUME_FRACTION_FIELD = eos::TwoPhase::VF;
     inline const static std::string DENSITY_VF_FIELD = ablate::finiteVolume::CompressibleFlowFields::CONSERVED + VOLUME_FRACTION_FIELD;
     PetscErrorCode PreStage(TS flowTs, ablate::solver::Solver &solver, PetscReal stagetime);
-    std::vector<std::vector<PetscScalar>> fluxGradValues;
     std::map<PetscInt, std::vector<PetscInt>> cellNeighbors;
+    std::map<PetscReal, std::vector<PetscReal>> cellWeights;
     std::map<PetscInt, std::vector<PetscInt>> vertexNeighbors;
 };
 }  // namespace ablate::finiteVolume::processes
