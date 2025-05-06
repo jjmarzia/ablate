@@ -6,6 +6,7 @@ target_sources(ablateLibrary
         chemTab.cpp
         chemistryModel.cpp
         twoPhase.cpp
+        nPhase.cpp
         tChemSoot.cpp
         tChemBase.cpp
         zerork.cpp
@@ -18,6 +19,7 @@ target_sources(ablateLibrary
         chemTab.hpp
         chemistryModel.hpp
         twoPhase.hpp
+        nPhase.hpp
         tChemSoot.hpp
         tChemBase.hpp
         zerork.hpp

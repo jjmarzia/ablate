@@ -1,5 +1,5 @@
-#ifndef ABLATELIBRARY_TWOPHASE_HPP
-#define ABLATELIBRARY_TWOPHASE_HPP
+#ifndef ABLATELIBRARY_NPHASE_HPP
+#define ABLATELIBRARY_NPHASE_HPP
 
 #include <memory>
 #include "eos.hpp"
@@ -7,12 +7,13 @@
 #include "eos/stiffenedGas.hpp"
 #include "parameters/parameters.hpp"
 namespace ablate::eos {
-class TwoPhase : public EOS {  // , public std::enabled_shared_from_this<TwoPhase>
+class NPhase : public EOS {  // , public std::enabled_shared_from_this<NPhase>
    public:
     inline const static std::string VF = "volumeFraction";
 
    private:
     const std::vector<std::shared_ptr<eos::EOS>> eosk;
+    std::vector<std::string> otherPropertiesList = {"VF"};
 
     struct Parameters {
 
@@ -21,9 +22,9 @@ class TwoPhase : public EOS {  // , public std::enabled_shared_from_this<TwoPhas
         std::vector<PetscReal> pik;
         std::vector<PetscReal> Cpk;
 
-        //just in case
-        std::vector<PetscReal> numberSpeciesk; 
-        std::vector<std::vector<std::string>> speciesk; 
+        //just in case?
+        // std::vector<PetscReal> numberSpeciesk; 
+        // std::vector<std::vector<std::string>> speciesk; 
 
     };
     Parameters parameters;
@@ -31,11 +32,11 @@ class TwoPhase : public EOS {  // , public std::enabled_shared_from_this<TwoPhas
 
         PetscInt dim;
 
+        //Allaire variables
+        PetscInt allaireOffset;
+        //need equiv of alphakOffset, alphakrhokOffset for n phases
         PetscInt alphakOffset;
         PetscInt alphakrhokOffset;
-        PetscInt rhouiOffset;
-        PetscInt rhoeOffset;
-
         // PetscInt eulerOffset;
         // PetscInt densityVFOffset;
         // PetscInt volumeFractionOffset;
@@ -69,25 +70,26 @@ class TwoPhase : public EOS {  // , public std::enabled_shared_from_this<TwoPhas
     static PetscErrorCode InternalSensibleEnergyFunction(const PetscReal conserved[], PetscReal* property, void* ctx);
     static PetscErrorCode SpeciesSensibleEnthalpyFunction(const PetscReal conserved[], PetscReal* property, void* ctx);
 
-    // functions for LiquidLiquid
-    static PetscErrorCode PressureFunctionLiquidLiquid(const PetscReal conserved[], PetscReal* property, void* ctx);
-    static PetscErrorCode TemperatureFunctionLiquidLiquid(const PetscReal conserved[], PetscReal* property, void* ctx);
-    static PetscErrorCode SensibleEnthalpyFunctionLiquidLiquid(const PetscReal conserved[], PetscReal* property, void* ctx);
-    static PetscErrorCode SpecificHeatConstantVolumeFunctionLiquidLiquid(const PetscReal conserved[], PetscReal* property, void* ctx);
-    static PetscErrorCode SpecificHeatConstantPressureFunctionLiquidLiquid(const PetscReal conserved[], PetscReal* property, void* ctx);
-    static PetscErrorCode SpeedOfSoundFunctionLiquidLiquid(const PetscReal conserved[], PetscReal* property, void* ctx);
+    static PetscErrorCode ComputeDecode(const PetscReal conserved[], DecodeIn &decodeIn, DecodeOut &decodeOut, void* ctx);
+
+    static PetscErrorCode PressureFunctionNStiff(const PetscReal conserved[], PetscReal* property, void* ctx);
+    static PetscErrorCode TemperatureFunctionNStiff(const PetscReal conserved[], PetscReal* property, void* ctx);
+    static PetscErrorCode SensibleEnthalpyFunctionNStiff(const PetscReal conserved[], PetscReal* property, void* ctx);
+    static PetscErrorCode SpecificHeatConstantVolumeFunctionNStiff(const PetscReal conserved[], PetscReal* property, void* ctx);
+    static PetscErrorCode SpecificHeatConstantPressureFunctionNStiff(const PetscReal conserved[], PetscReal* property, void* ctx);
+    static PetscErrorCode SpeedOfSoundFunctionNStiff(const PetscReal conserved[], PetscReal* property, void* ctx);
 
     using ThermodynamicStaticFunction = PetscErrorCode (*)(const PetscReal conserved[], PetscReal* property, void* ctx);
-// map for LiquidLiquid case
-    std::map<ThermodynamicProperty, ThermodynamicStaticFunction> thermodynamicFunctionsLiquidLiquid = {
+
+    std::map<ThermodynamicProperty, ThermodynamicStaticFunction> thermodynamicFunctionsNStiff = {
         {ThermodynamicProperty::Density, DensityFunction},
-        {ThermodynamicProperty::Pressure, PressureFunctionLiquidLiquid},
-        {ThermodynamicProperty::Temperature, TemperatureFunctionLiquidLiquid},
+        {ThermodynamicProperty::Pressure, PressureFunctionNStiff},
+        {ThermodynamicProperty::Temperature, TemperatureFunctionNStiff},
         {ThermodynamicProperty::InternalSensibleEnergy, InternalSensibleEnergyFunction},
-        {ThermodynamicProperty::SensibleEnthalpy, SensibleEnthalpyFunctionLiquidLiquid},
-        {ThermodynamicProperty::SpecificHeatConstantVolume, SpecificHeatConstantVolumeFunctionLiquidLiquid},
-        {ThermodynamicProperty::SpecificHeatConstantPressure, SpecificHeatConstantPressureFunctionLiquidLiquid},
-        {ThermodynamicProperty::SpeedOfSound, SpeedOfSoundFunctionLiquidLiquid},
+        {ThermodynamicProperty::SensibleEnthalpy, SensibleEnthalpyFunctionNStiff},
+        {ThermodynamicProperty::SpecificHeatConstantVolume, SpecificHeatConstantVolumeFunctionNStiff},
+        {ThermodynamicProperty::SpecificHeatConstantPressure, SpecificHeatConstantPressureFunctionNStiff},
+        {ThermodynamicProperty::SpeedOfSound, SpeedOfSoundFunctionNStiff},
         {ThermodynamicProperty::SpeciesSensibleEnthalpy, SpeciesSensibleEnthalpyFunction}};
 
     /**
@@ -96,7 +98,7 @@ class TwoPhase : public EOS {  // , public std::enabled_shared_from_this<TwoPhas
     const std::set<ThermodynamicProperty> speciesSizedProperties = {ThermodynamicProperty::SpeciesSensibleEnthalpy};
 
    public:
-    explicit NPhase(std::vector<std::shared_ptr<eos::EOS>> eosk) : eosk(std::move(eosk)) {} //need std::move?
+    explicit NPhase(std::vector<std::shared_ptr<eos::EOS>> eosk);
 
     void View(std::ostream& stream) const override;
 
@@ -112,9 +114,9 @@ class TwoPhase : public EOS {  // , public std::enabled_shared_from_this<TwoPhas
     EOSFunction GetFieldFunctionFunction(const std::string& field, ThermodynamicProperty property1, ThermodynamicProperty property2, std::vector<std::string> otherProperties) const override;
     const std::vector<std::string>& GetFieldFunctionProperties() const override { return otherPropertiesList; }  // list of other properties i.e. VF;
 
-    const std::vector<std::string>& GetSpeciesVariables() const override { return species; }  // lists species of eos1 first, then eos2, no distinction for which fluid the species exists in
-    [[nodiscard]] virtual const std::vector<std::string>& GetProgressVariables() const override { return ablate::utilities::VectorUtilities::Empty<std::string>; }
+    // const std::vector<std::string>& GetSpeciesVariables() const override { return species; }  // lists species of eos1 first, then eos2, no distinction for which fluid the species exists in
+    // [[nodiscard]] virtual const std::vector<std::string>& GetProgressVariables() const override { return ablate::utilities::VectorUtilities::Empty<std::string>; }
 };
 }  // namespace ablate::eos
 
-#endif  // ABLATELIBRARY_TWOPHASE_HPP
+#endif  // ABLATELIBRARY_NPHASE_HPP

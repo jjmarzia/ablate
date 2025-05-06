@@ -2,6 +2,7 @@ target_sources(ablateLibrary
         PRIVATE
         finiteVolumeSolver.cpp
         compressibleFlowFields.cpp
+        nPhaseFlowFields.cpp
         compressibleFlowSolver.cpp
         faceInterpolant.cpp
         cellInterpolant.cpp
@@ -11,6 +12,7 @@ target_sources(ablateLibrary
         PUBLIC
         finiteVolumeSolver.hpp
         compressibleFlowFields.hpp
+        nPhaseFlowFields.hpp
         compressibleFlowSolver.hpp
         faceInterpolant.hpp
         cellInterpolant.hpp
