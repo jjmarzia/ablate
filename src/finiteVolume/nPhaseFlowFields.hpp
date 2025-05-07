@@ -22,7 +22,7 @@ class NPhaseFlowFields : public domain::FieldDescriptor {
     //! The conserved prefix used for fields that have a conserved and non conserved form
     // inline const static std::string CONSERVED = "density";
 
-    // alpha_k rho_k for each phase
+    // alpha_k rho_k for each phase; this might actually belong in nPhaseEulerAdvection ?
     inline static std::string ALPHAKRHOK(PetscInt phase){
         return "alpharho" + std::to_string(phase);
     } 

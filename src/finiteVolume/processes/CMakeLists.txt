@@ -5,6 +5,7 @@ target_sources(ablateLibrary
         speciesTransport.cpp
         evTransport.cpp
         twoPhaseEulerAdvection.cpp
+        # nPhaseAllaireAdvection.cpp
         gravity.cpp
         pressureGradientScaling.cpp
         arbitrarySource.cpp
@@ -14,12 +15,10 @@ target_sources(ablateLibrary
         chemistry.cpp
         radiationLoss.cpp
         thermophoreticDiffusion.cpp
-       surfaceForce.cpp
+        surfaceForce.cpp
         soot.cpp
         intSharp.cpp
         locations.cpp
-#        intSharp0.cpp
-        # surfaceForce0.cpp
 
         PUBLIC
         process.hpp
@@ -28,6 +27,7 @@ target_sources(ablateLibrary
         speciesTransport.hpp
         evTransport.hpp
         twoPhaseEulerAdvection.hpp
+        # nPhaseAllaireAdvection.hpp
         gravity.hpp
         pressureGradientScaling.hpp
         arbitrarySource.hpp
@@ -37,10 +37,8 @@ target_sources(ablateLibrary
         chemistry.hpp
         radiationLoss.hpp
         thermophoreticDiffusion.hpp
-       surfaceForce.hpp
+        surfaceForce.hpp
         soot.hpp
         intSharp.hpp
         locations.hpp
-#        intSharp0.hpp
-        # surfaceForce0.hpp
         )

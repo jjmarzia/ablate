@@ -9,11 +9,13 @@
 namespace ablate::eos {
 class NPhase : public EOS {  // , public std::enabled_shared_from_this<NPhase>
    public:
-    inline const static std::string VF = "volumeFraction";
+    std::vector<std::string> species;
+    inline const static std::string ALPHAKRHOK = "alphakrhok";
+    inline const static std::string ALPHAK = "alphak";
 
    private:
     const std::vector<std::shared_ptr<eos::EOS>> eosk;
-    std::vector<std::string> otherPropertiesList = {"VF"};
+    std::vector<std::string> otherPropertiesList = {"ALPHAKRHOK, ALPHAK"};
 
     struct Parameters {
 
@@ -23,8 +25,8 @@ class NPhase : public EOS {  // , public std::enabled_shared_from_this<NPhase>
         std::vector<PetscReal> Cpk;
 
         //just in case?
-        // std::vector<PetscReal> numberSpeciesk; 
-        // std::vector<std::vector<std::string>> speciesk; 
+        std::vector<PetscReal> numberSpeciesk; 
+        std::vector<std::vector<std::string>> speciesk; 
 
     };
     Parameters parameters;
@@ -79,18 +81,23 @@ class NPhase : public EOS {  // , public std::enabled_shared_from_this<NPhase>
     static PetscErrorCode SpecificHeatConstantPressureFunctionNStiff(const PetscReal conserved[], PetscReal* property, void* ctx);
     static PetscErrorCode SpeedOfSoundFunctionNStiff(const PetscReal conserved[], PetscReal* property, void* ctx);
 
-    using ThermodynamicStaticFunction = PetscErrorCode (*)(const PetscReal conserved[], PetscReal* property, void* ctx);
+    static PetscErrorCode nullNStiff(const PetscReal conserved[], PetscReal T, PetscReal* property, void* ctx);
 
-    std::map<ThermodynamicProperty, ThermodynamicStaticFunction> thermodynamicFunctionsNStiff = {
-        {ThermodynamicProperty::Density, DensityFunction},
-        {ThermodynamicProperty::Pressure, PressureFunctionNStiff},
-        {ThermodynamicProperty::Temperature, TemperatureFunctionNStiff},
-        {ThermodynamicProperty::InternalSensibleEnergy, InternalSensibleEnergyFunction},
-        {ThermodynamicProperty::SensibleEnthalpy, SensibleEnthalpyFunctionNStiff},
-        {ThermodynamicProperty::SpecificHeatConstantVolume, SpecificHeatConstantVolumeFunctionNStiff},
-        {ThermodynamicProperty::SpecificHeatConstantPressure, SpecificHeatConstantPressureFunctionNStiff},
-        {ThermodynamicProperty::SpeedOfSound, SpeedOfSoundFunctionNStiff},
-        {ThermodynamicProperty::SpeciesSensibleEnthalpy, SpeciesSensibleEnthalpyFunction}};
+    using ThermodynamicStaticFunction = PetscErrorCode (*)(const PetscReal conserved[], PetscReal* property, void* ctx);
+    using nullfunction = PetscErrorCode (*)(const PetscReal conserved[], PetscReal temperature, PetscReal* property, void* ctx);
+
+    std::map<ThermodynamicProperty, std::pair<ThermodynamicStaticFunction, nullfunction>> thermodynamicFunctionsNStiff = {
+        //p, rhok, ui, rho, e, epsk, Tk, ck
+    
+        {ThermodynamicProperty::Density, {DensityFunction, nullNStiff}},
+        {ThermodynamicProperty::Pressure, {PressureFunctionNStiff, nullNStiff}},
+        {ThermodynamicProperty::Temperature, {TemperatureFunctionNStiff, nullNStiff}},
+        {ThermodynamicProperty::InternalSensibleEnergy, {InternalSensibleEnergyFunction, nullNStiff}},
+        {ThermodynamicProperty::SensibleEnthalpy, {SensibleEnthalpyFunctionNStiff, nullNStiff}},
+        {ThermodynamicProperty::SpecificHeatConstantVolume, {SpecificHeatConstantVolumeFunctionNStiff, nullNStiff}},
+        {ThermodynamicProperty::SpecificHeatConstantPressure, {SpecificHeatConstantPressureFunctionNStiff, nullNStiff}},
+        {ThermodynamicProperty::SpeedOfSound, {SpeedOfSoundFunctionNStiff, nullNStiff}},
+        {ThermodynamicProperty::SpeciesSensibleEnthalpy, {SpeciesSensibleEnthalpyFunction, nullNStiff}}};
 
     /**
      * Store a list of properties that are sized by species, everything is assumed to be size one
@@ -102,7 +109,7 @@ class NPhase : public EOS {  // , public std::enabled_shared_from_this<NPhase>
 
     void View(std::ostream& stream) const override;
 
-    const std::shared_ptr<ablate::eos::EOS> GetEOSk(PetscInt k) const { 
+    const std::shared_ptr<ablate::eos::EOS> GetEOSk(std::size_t k) const { 
         if (k < 0 || k >= eosk.size()) {
             throw std::out_of_range("invalid index");
         }
@@ -111,11 +118,14 @@ class NPhase : public EOS {  // , public std::enabled_shared_from_this<NPhase>
 
     ThermodynamicFunction GetThermodynamicFunction(ThermodynamicProperty property, const std::vector<domain::Field>& fields) const override;
 
+    ThermodynamicTemperatureFunction GetThermodynamicTemperatureFunction(ThermodynamicProperty property, const std::vector<domain::Field>& fields) const override;
+    const std::vector<std::string>& GetSpeciesVariables() const override;
+    const std::vector<std::string>& GetProgressVariables() const override;
+
+
     EOSFunction GetFieldFunctionFunction(const std::string& field, ThermodynamicProperty property1, ThermodynamicProperty property2, std::vector<std::string> otherProperties) const override;
     const std::vector<std::string>& GetFieldFunctionProperties() const override { return otherPropertiesList; }  // list of other properties i.e. VF;
 
-    // const std::vector<std::string>& GetSpeciesVariables() const override { return species; }  // lists species of eos1 first, then eos2, no distinction for which fluid the species exists in
-    // [[nodiscard]] virtual const std::vector<std::string>& GetProgressVariables() const override { return ablate::utilities::VectorUtilities::Empty<std::string>; }
 };
 }  // namespace ablate::eos
 

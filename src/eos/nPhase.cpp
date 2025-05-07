@@ -56,7 +56,6 @@ static inline void NStiffDecode(PetscInt dim, ablate::eos::NPhase::DecodeIn *in,
         out->Tk[k] = in->parameters.gammak[k] * (out->epsk[k] - in->parameters.pik[k] / out->rhok[k]) / in->parameters.Cpk[k];
     }
 
-    //c = sqrt( (sumk alphak/(gammak(p+pik))  )^-1/rho   ); might not need this
     out->c = 0.0;
     for (std::size_t k = 0; k < in->alphak.size(); ++k) {
         out->c += in->alphak[k] / (in->parameters.gammak[k] * (out->p + in->parameters.pik[k]));
@@ -118,28 +117,15 @@ ablate::eos::ThermodynamicFunction ablate::eos::NPhase::GetThermodynamicFunction
         return field.name == ablate::finiteVolume::NPhaseFlowFields::ALPHAK(0);
     });
 
-    // Look for the euler field
-    // auto eulerField = std::find_if(fields.begin(), fields.end(), [](const auto &field) { return field.name == ablate::finiteVolume::NPhaseFlowFields::EULER_FIELD; });
-    // auto densityVFField = std::find_if(fields.begin(), fields.end(), [](const auto &field) { return field.name == ablate::finiteVolume::processes::TwoPhaseEulerAdvection::DENSITY_VF_FIELD; });
-    // auto volumeFractionField =
-    //     std::find_if(fields.begin(), fields.end(), [](const auto &field) { return field.name == ablate::finiteVolume::processes::TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD; });
-    // // maybe need to throw error for not having densityVF or volumeFraction fields
-    // if (eulerField == fields.end()) {
-    //     throw std::invalid_argument("The ablate::eos::TwoPhase requires the ablate::finiteVolume::NPhaseFlowFields::EULER_FIELD Field");
-    // }
-
     // Determine the property size
     PetscInt propertySize = 1;
 
     return ThermodynamicFunction{
-        .function = thermodynamicFunctionsNStiff.at(property), //.first was for back when we had a pair
+        .function = thermodynamicFunctionsNStiff.at(property).first, //.first if you have a pair
         .context = std::make_shared<FunctionContext>(FunctionContext{.dim = allaireField->numberComponents - 1,
         .allaireOffset = allaireField->offset,
         .alphakrhokOffset = alphakrhokField->offset,
         .alphakOffset = alphakField->offset,
-        // .allaireOffset = eulerField->offset,
-        // .alphakrhokOffset = ,
-        // .alphakOffset = volumeFractionField->offset,
         .parameters = parameters}),
         .propertySize = propertySize};
 }
@@ -149,52 +135,60 @@ ablate::eos::EOSFunction ablate::eos::NPhase::GetFieldFunctionFunction(
     ablate::eos::ThermodynamicProperty property1, 
     ablate::eos::ThermodynamicProperty property2,
     std::vector<std::string> otherProperties) const {
-    if (otherProperties != std::vector<std::string>{VF}) {  
-        throw std::invalid_argument("ablate::eos::TwoPhase expects other properties to include VF (volume fraction) as first entry");
-    }
 
-        //assume that ALLAIRE_FIELD was specified and that we have p,tk, alphak
-    auto tp = [this](std::vector<PetscReal> tk, std::vector<PetscReal> alphak, PetscReal pressure, PetscInt dim, const PetscReal velocity[], 
+    if (otherProperties != std::vector<std::string>{ALPHAKRHOK, ALPHAK}) {  // VF not in otherProperties){
+        throw std::invalid_argument("ablate::eos::NPhase expects other properties to include ALPHAKRHOK (partial density of 1..k..N phasesa) and ALPHAK (volume fraction of 1..k..N phases) as first and second entries");
+    }
+    // if (otherProperties != std::vector<std::string>{VF}) {  
+    //     throw std::invalid_argument("ablate::eos::TwoPhase expects other properties to include VF (volume fraction) as first entry");
+    // }
+    // auto tp = [this](PetscReal temperature, PetscReal pressure, PetscInt dim, const PetscReal velocity[], const PetscReal yi[], PetscReal conserved[])
+        //assume that ALLAIRE_FIELD was specified and that we have p,tk, (alphak, alphakrhok) = otherk
+    auto tp = [this](PetscReal temperature, PetscReal pressure, PetscInt dim, const PetscReal velocity[], const PetscReal otherk[], 
             PetscReal conserved[]) {
 
-            std::vector<PetscReal> rhok;
-            std::vector<PetscReal> epsk;
-
-            //if tk and alphak are of different size, throw an error
-            if (tk.size() != alphak.size()) {
-                throw std::invalid_argument("tk and alphak must be the same size");
+            std::size_t phases = this->parameters.gammak.size();
+            if (this->parameters.pik.size() != phases || this->parameters.gammak.size() != phases || this->parameters.Cpk.size() != phases) {
+                throw std::invalid_argument("pik, gammak, and Cpk must be the same size");
             }
 
-            PetscInt phases = tk.size();
+            //otherk is formerly yi
+            //otherk must be a vector of size 2*phases, first half is alphakrhok, second half is alphak
+            const PetscReal *alphakrhok = &otherk[0];
+            const PetscReal *alphak = &otherk[phases];
+            
+            //if any of pik size, gammak size, Cpk size are not the same as phases, throw an error
+            
+
+            PetscReal rhok[phases];
+            PetscReal epsk[phases];
 
             //loop over the elements of rhok and epsk for however many phases exist
-            for (PetscInt k=0; k<phases; k++){
-                rhok.push_back((pressure + parameters.pik[k]) / (parameters.gammak[k] - 1) * parameters.gammak[k] / parameters.Cpk[k] / tk[k]);
-                epsk.push_back((tk[k] * parameters.Cpk[k] / parameters.gammak[k] + parameters.pik[k]) / (parameters.gammak[k] - 1));
+
+            for (std::size_t k=0; k<phases; k++){
+                // rhok[k] = (pressure + parameters.pik[k]) / (parameters.gammak[k] - 1) * parameters.gammak[k] / parameters.Cpk[k] / tk[k]; //check ? this was in twophase
+                // epsk[k] = (tk[k] * parameters.Cpk[k] / parameters.gammak[k] + parameters.pik[k]) / (parameters.gammak[k] - 1); //check ? this was in twophase
+
+                rhok[k] = alphakrhok[k] / alphak[k];
+                epsk[k] = (pressure + parameters.gammak[k] * parameters.pik[k]) / ((parameters.gammak[k] - 1) * rhok[k]);
                 
             }
+
             //density is sum of alphak * rhok
             PetscReal density = 0.0;
-            for (PetscInt k=0; k<phases; k++){
-                density += alphak[k] * rhok[k];
+            for (std::size_t k=0; k<phases; k++){
+                density += alphakrhok[k];
             }
             //rhoe is 0.5*uiui + sum_k rho_k * alphak * epsk
             PetscReal rhoe = 0.0;
-            for (PetscInt k=0; k<phases; k++){
-                rhoe += rhok[k] * alphak[k] * epsk[k];
+            for (std::size_t k=0; k<phases; k++){
+                rhoe += alphakrhok[k] * epsk[k];
             }
             PetscReal uiui = 0.0;
             for (PetscInt d = 0; d < dim; d++) {
                 uiui += velocity[d] * velocity[d];
             }
             rhoe += 0.5 * uiui;
-
-            // convert to total sensibleEnergy
-            PetscReal kineticEnergy = 0;
-            for (PetscInt d = 0; d < dim; d++) {
-                kineticEnergy += PetscSqr(velocity[d]);
-            }
-            kineticEnergy *= 0.5;
 
             conserved[ablate::finiteVolume::NPhaseFlowFields::RHOE] = rhoe;
 
@@ -211,8 +205,8 @@ ablate::eos::EOSFunction ablate::eos::NPhase::GetFieldFunctionFunction(
 PetscErrorCode ablate::eos::NPhase::ComputeDecode(const PetscReal *conserved, DecodeIn &decodeIn, DecodeOut &decodeOut, void *ctx) {
     PetscFunctionBeginUser;
     auto functionContext = (FunctionContext *)ctx;
-    DecodeOut decodeOut;
-    DecodeIn decodeIn;
+    // DecodeOut decodeOut;
+    // DecodeIn decodeIn;
     decodeIn.parameters = functionContext->parameters;
     PetscReal phases = functionContext->parameters.gammak.size();
     //if any of pik size, gammak size, Cpk size are not the same as phases, throw an error
@@ -221,7 +215,7 @@ PetscErrorCode ablate::eos::NPhase::ComputeDecode(const PetscReal *conserved, De
     }
     decodeIn.alphak.resize(phases);
     decodeIn.alphakrhok.resize(phases);
-    for (std::size_t k = 0; k < phases; ++k) {
+    for (PetscInt k = 0; k < phases; ++k) {
         decodeIn.alphak[k] = conserved[functionContext->alphakOffset + k];
         decodeIn.alphakrhok[k] = conserved[functionContext->alphakrhokOffset + k];
     }
@@ -246,183 +240,168 @@ PetscErrorCode ablate::eos::NPhase::PressureFunctionNStiff(const PetscReal *cons
     PetscFunctionReturn(0);
 }
 
-//still need work
-
 PetscErrorCode ablate::eos::NPhase::TemperatureFunctionNStiff(const PetscReal *conserved, PetscReal *temperature, void *ctx) {
     //call ComputeDecode to get p
     PetscFunctionBeginUser;
     DecodeOut decodeOut;
     DecodeIn decodeIn;
     ComputeDecode(conserved, decodeIn, decodeOut, ctx);
-    *temperature = decodeOut.Tk[0];
+    for (std::size_t k = 0; k < decodeIn.alphak.size(); ++k) {
+        temperature[k] = decodeOut.Tk[k]; //PetscReal can be an array of temperatures
+    }
     PetscFunctionReturn(0);
 }
 
+
+//the map requires a pair including (static function, temperature function), whereas we don't have use for temperature functions,
+//so this is its placeholder
+PetscErrorCode ablate::eos::NPhase::nullNStiff(const PetscReal *conserved, PetscReal T, PetscReal *property, void *ctx) {
+    return 0;
+}
+
+const std::vector<std::string>& ablate::eos::NPhase::GetSpeciesVariables() const {
+    static const std::vector<std::string> none{};
+    return none;
+}
+
+const std::vector<std::string>& ablate::eos::NPhase::GetProgressVariables() const {
+    static const std::vector<std::string> none{};
+    return none;
+}
+
+ablate::eos::ThermodynamicTemperatureFunction ablate::eos::NPhase::GetThermodynamicTemperatureFunction(
+    ablate::eos::ThermodynamicProperty property, const std::vector<ablate::domain::Field>& fields) const {
+    throw std::invalid_argument("GetThermodynamicTemperatureFunction is not implemented for ablate::eos::NPhase");
+}
+
 PetscErrorCode ablate::eos::NPhase::InternalSensibleEnergyFunction(const PetscReal *conserved, PetscReal *internalEnergy, void *ctx) {
+
+    //total eps = sumk epsk
+
     PetscFunctionBeginUser;
+    DecodeOut decodeOut;
+    DecodeIn decodeIn;
+    ComputeDecode(conserved, decodeIn, decodeOut, ctx);
     auto functionContext = (FunctionContext *)ctx;
 
-    // get the velocity for kinetic energy
-    PetscReal density = conserved[functionContext->allaireOffset + ablate::finiteVolume::NPhaseFlowFields::RHO];
-    PetscReal ke = 0.0;
+    // ui = rhoui/(rho = sumk alphakrhok)
+    PetscReal uiui = 0.0;
     for (PetscInt d = 0; d < functionContext->dim; d++) {
-        ke += PetscSqr(conserved[functionContext->allaireOffset + ablate::finiteVolume::NPhaseFlowFields::RHOU + d] / density);
+        uiui += (decodeIn.rhoui[d] / decodeOut.rho) * (decodeIn.rhoui[d] / decodeOut.rho);
     }
-    ke *= 0.5;
-
-    // compute internal energy
-    *internalEnergy = conserved[functionContext->allaireOffset + ablate::finiteVolume::NPhaseFlowFields::RHOE] / density - ke;
+    *internalEnergy = decodeIn.rhoe / decodeOut.rho - 0.5 * uiui;
     PetscFunctionReturn(0);
 }
 
 PetscErrorCode ablate::eos::NPhase::SensibleEnthalpyFunctionNStiff(const PetscReal *conserved, PetscReal *sensibleEnthalpy, void *ctx) {
+    
+    //internalsensibleenergyfunction + p/rho
+
     PetscFunctionBeginUser;
-    // Total Enthalpy == Sensible Enthalpy = e + p/rho
-    auto functionContext = (FunctionContext *)ctx;
-    PetscReal density = conserved[functionContext->allaireOffset + ablate::finiteVolume::NPhaseFlowFields::RHO];
+    // auto functionContext = (FunctionContext *)ctx;
+    DecodeOut decodeOut;
+    DecodeIn decodeIn;
+    ComputeDecode(conserved, decodeIn, decodeOut, ctx);
 
     PetscReal sensibleInternalEnergy;
     InternalSensibleEnergyFunction(conserved, &sensibleInternalEnergy, ctx);
 
-    DecodeOut decodeOut;
-    DecodeIn decodeIn;
-    decodeIn.alpha = conserved[functionContext->alphakOffset];
-    decodeIn.alphaRho1 = conserved[functionContext->alphakrhokOffset];
-    decodeIn.rho = density;
-    decodeIn.e = sensibleInternalEnergy;
-    decodeIn.parameters = functionContext->parameters;
-
-    NStiffDecode(functionContext->dim, &decodeIn, &decodeOut);
     PetscReal p = decodeOut.p;  // [rho1, rho2, e1, e2, p, T]
 
     // compute enthalpy
-    *sensibleEnthalpy = sensibleInternalEnergy + p / density;
+    *sensibleEnthalpy = sensibleInternalEnergy + p / decodeOut.rho;
     PetscFunctionReturn(0);
 }
+
 PetscErrorCode ablate::eos::NPhase::SpecificHeatConstantVolumeFunctionNStiff(const PetscReal *conserved, PetscReal *specificHeat, void *ctx) {
+
+    //cv = sumk ( alphak Cvk Tk ) / sumk (alphak Tk) 
     PetscFunctionBeginUser;
-    // cv_mix
     auto functionContext = (FunctionContext *)ctx;
-    PetscReal density = conserved[functionContext->allaireOffset + ablate::finiteVolume::NPhaseFlowFields::RHO];
-
-    // get kinetic energy for internal energy calculation
-    PetscReal ke = 0.0;
-    for (PetscInt d = 0; d < functionContext->dim; d++) {
-        ke += PetscSqr(conserved[functionContext->allaireOffset + ablate::finiteVolume::NPhaseFlowFields::RHOU + d] / density);
-    }
-    ke *= 0.5;
-
-    // compute internal energy
-    PetscReal internalEnergy = conserved[functionContext->allaireOffset + ablate::finiteVolume::NPhaseFlowFields::RHOE] / density - ke;
-    // simple decode to compute pressure
     DecodeOut decodeOut;
     DecodeIn decodeIn;
-    decodeIn.alpha = conserved[functionContext->alphakOffset];
-    decodeIn.alphaRho1 = conserved[functionContext->alphakrhokOffset];
-    decodeIn.rho = density;
-    decodeIn.e = internalEnergy;
-    decodeIn.parameters = functionContext->parameters;
+    ComputeDecode(conserved, decodeIn, decodeOut, ctx);
 
-    PetscReal cv1, cv2, at1, at2;  // initialize variables for at_mix
+    *specificHeat = 0.0;
+    for (std::size_t k = 0; k < decodeIn.alphak.size(); ++k) {
+        *specificHeat += decodeIn.alphak[k] * (functionContext->parameters.Cpk[k]/functionContext->parameters.gammak[k]) * decodeOut.Tk[k];
+    }
+    PetscReal denom = 0.0;
+    for (std::size_t k = 0; k < decodeIn.alphak.size(); ++k) {
+        denom += decodeIn.alphak[k] * decodeOut.Tk[k];
+    }
+    *specificHeat /= denom;
 
-    NStiffDecode(functionContext->dim, &decodeIn, &decodeOut);
-    cv1 = functionContext->parameters.Cp1 / functionContext->parameters.gamma1;
-    cv2 = functionContext->parameters.Cp2 / functionContext->parameters.gamma2;
-    at1 = PetscSqrtReal((functionContext->parameters.gamma1 - 1) / functionContext->parameters.gamma1 * functionContext->parameters.Cp1 * decodeOut.T);  // stiffened gas eos
-    at2 = PetscSqrtReal((functionContext->parameters.gamma2 - 1) / functionContext->parameters.gamma2 * functionContext->parameters.Cp2 * decodeOut.T);  // stiffened gas eos
-
-    PetscReal rho1 = decodeOut.rho1;
-    PetscReal rho2 = decodeOut.rho2;
-    PetscReal T = decodeOut.T;  // [rho1, rho2, e1, e2, p, T]
-    PetscReal gamma1 = functionContext->parameters.gamma1;
-    PetscReal gamma2 = functionContext->parameters.gamma2;
-    PetscReal Y1 = conserved[functionContext->alphakrhokOffset] / density;
-    PetscReal Y2 = (density - conserved[functionContext->alphakrhokOffset]) / density;
-
-    // mixed specific heat constant volume
-    PetscReal w1 = Y1 / PetscSqr(rho1 * at1);
-    PetscReal w2 = Y2 / PetscSqr(rho2 * at2);
-    (*specificHeat) = Y1 * cv1 + Y2 * cv2 + (w1 * w2) / (w1 + w2) * PetscSqr(cv1 * (gamma1 - 1) * rho1 - cv2 * (gamma2 - 1) * rho2) * T;
     PetscFunctionReturn(0);
+
+
 }
+
 PetscErrorCode ablate::eos::NPhase::SpecificHeatConstantPressureFunctionNStiff(const PetscReal *conserved, PetscReal *specificHeat, void *ctx) {
     PetscFunctionBeginUser;
     auto functionContext = (FunctionContext *)ctx;
-    const auto &parameters = ((FunctionContext *)ctx)->parameters;
-    PetscReal Y1 = conserved[functionContext->alphakrhokOffset] / conserved[functionContext->allaireOffset + ablate::finiteVolume::NPhaseFlowFields::RHO];
-    PetscReal Y2 = (conserved[functionContext->allaireOffset + ablate::finiteVolume::NPhaseFlowFields::RHO] - conserved[functionContext->alphakrhokOffset]) /
-                   conserved[functionContext->allaireOffset + ablate::finiteVolume::NPhaseFlowFields::RHO];
-    PetscReal cp1, cp2;
-    cp1 = parameters.Cp1;
-    cp2 = parameters.Cp2;
-
-    // mixed specific heat constant pressure
-    (*specificHeat) = Y1 * cp1 + Y2 * cp2;
-    PetscFunctionReturn(0);
-}
-PetscErrorCode ablate::eos::NPhase::SpeedOfSoundFunctionNStiff(const PetscReal *conserved, PetscReal *a, void *ctx) {
-    PetscFunctionBeginUser;
-    // isentropic sound speed a_mix
-    auto functionContext = (FunctionContext *)ctx;
-    PetscReal density = conserved[functionContext->allaireOffset + ablate::finiteVolume::NPhaseFlowFields::RHO];
-
-    // get kinetic energy for internal energy calculation
-    PetscReal ke = 0.0;
-    for (PetscInt d = 0; d < functionContext->dim; d++) {
-        ke += PetscSqr(conserved[functionContext->allaireOffset + ablate::finiteVolume::NPhaseFlowFields::RHOU + d] / density);
-    }
-    ke *= 0.5;
-
-    // compute internal energy
-    PetscReal internalEnergy = conserved[functionContext->allaireOffset + ablate::finiteVolume::NPhaseFlowFields::RHOE] / density - ke;
-    // simple decode to compute pressure
     DecodeOut decodeOut;
     DecodeIn decodeIn;
-    decodeIn.alpha = conserved[functionContext->alphakOffset];
-    decodeIn.alphaRho1 = conserved[functionContext->alphakrhokOffset];
-    decodeIn.rho = density;
-    decodeIn.e = internalEnergy;
-    decodeIn.parameters = functionContext->parameters;
+    ComputeDecode(conserved, decodeIn, decodeOut, ctx);
 
-    PetscReal cv1, cv2, at1, at2;  // initialize variables for at_mix
+    PetscInt phases = decodeIn.alphakrhok.size();
 
-    NStiffDecode(functionContext->dim, &decodeIn, &decodeOut);
-    cv1 = functionContext->parameters.Cp1 / functionContext->parameters.gamma1;
-    cv2 = functionContext->parameters.Cp2 / functionContext->parameters.gamma2;
-    at1 = PetscSqrtReal((functionContext->parameters.gamma1 - 1) / functionContext->parameters.gamma1 * functionContext->parameters.Cp1 * decodeOut.T);  // stiffened gas eos
-    at2 = PetscSqrtReal((functionContext->parameters.gamma2 - 1) / functionContext->parameters.gamma2 * functionContext->parameters.Cp2 * decodeOut.T);  // stiffened gas eos
 
-    PetscReal rho1 = decodeOut.rho1;
-    PetscReal rho2 = decodeOut.rho2;
-    PetscReal T = decodeOut.T;  // [rho1, rho2, e1, e2, p, T]
-    PetscReal gamma1 = functionContext->parameters.gamma1;
-    PetscReal gamma2 = functionContext->parameters.gamma2;
-    PetscReal Y1 = conserved[functionContext->alphakrhokOffset] / density;
-    PetscReal Y2 = (density - conserved[functionContext->alphakrhokOffset]) / density;
+    // Cp = sumk (Yk cpk Tk) / sumk  (Yk Tk), Yk = rhokalphak/rho
+    *specificHeat = 0.0;
+    for (PetscInt k = 0; k < phases; ++k) {
+        *specificHeat += (conserved[functionContext->alphakrhokOffset + k] / decodeOut.rho) * functionContext->parameters.Cpk[k] * decodeOut.Tk[k];
+    }
+    PetscReal denom = 0.0;
+    for (PetscInt k = 0; k < phases; ++k) {
+        denom += (conserved[functionContext->alphakrhokOffset + k] / decodeOut.rho) * decodeOut.Tk[k];
+    }
+    *specificHeat /= denom;
 
-    // mixed specific heat constant volume
-    PetscReal w1 = Y1 / PetscSqr(rho1 * at1);
-    PetscReal w2 = Y2 / PetscSqr(rho2 * at2);
-    PetscReal cv_mix = Y1 * cv1 + Y2 * cv2 + (w1 * w2) / (w1 + w2) * PetscSqr(cv1 * (gamma1 - 1) * rho1 - cv2 * (gamma2 - 1) * rho2) * T;
-    // mixed isothermal sound speed
-    PetscReal at_mix = PetscSqrtReal(1 / (w1 + w2)) / density;
-    PetscReal Gamma = (w1 * cv1 * (gamma1 - 1) * rho1 + w2 * cv2 * (gamma2 - 1) * rho2) / ((w1 + w2) * cv_mix * density);
-    // mixed isentropic sound speed
-    *a = PetscSqrtReal(PetscSqr(at_mix) + PetscSqr(Gamma) * cv_mix * T);
     PetscFunctionReturn(0);
 }
+
+//still need work
+
+PetscErrorCode ablate::eos::NPhase::SpeedOfSoundFunctionNStiff(const PetscReal *conserved, PetscReal *a, void *ctx) {
+
+    PetscFunctionBeginUser;
+    // auto functionContext = (FunctionContext *)ctx;
+    DecodeOut decodeOut;
+    DecodeIn decodeIn;
+    ComputeDecode(conserved, decodeIn, decodeOut, ctx);
+
+    *a = decodeOut.c;
+
+    PetscFunctionReturn(0);
+}
+
 PetscErrorCode ablate::eos::NPhase::SpeciesSensibleEnthalpyFunction(const PetscReal *conserved, PetscReal *hi, void *ctx) {
     PetscFunctionBeginUser;
     const auto &parameters = ((FunctionContext *)ctx)->parameters;
-    for (PetscInt s = 0; s < parameters.numberSpecies1 + parameters.numberSpecies2; s++) {
+
+    //total number species = sumk numberSpeciesk
+    PetscReal totalNumberSpecies = 0;
+    PetscInt phases = parameters.gammak.size();
+    for (PetscInt k = 0; k < phases; ++k) {
+        totalNumberSpecies += parameters.numberSpeciesk[k];
+    }
+
+    for (PetscInt s = 0; s < totalNumberSpecies; s++) {
         hi[s] = 0.0;
     }
     PetscFunctionReturn(0);
 }
+
 PetscErrorCode ablate::eos::NPhase::DensityFunction(const PetscReal *conserved, PetscReal *density, void *ctx) {
     PetscFunctionBeginUser;
-    auto functionContext = (FunctionContext *)ctx;
-    *density = conserved[functionContext->allaireOffset + ablate::finiteVolume::NPhaseFlowFields::RHO];
+    // auto functionContext = (FunctionContext *)ctx;
+    DecodeOut decodeOut;
+    DecodeIn decodeIn;
+    ComputeDecode(conserved, decodeIn, decodeOut, ctx);
+
+    *density = decodeOut.rho;
+
     PetscFunctionReturn(0);
 }
 
