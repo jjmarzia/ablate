@@ -111,10 +111,10 @@ ablate::eos::ThermodynamicFunction ablate::eos::NPhase::GetThermodynamicFunction
     }
 
     auto alphakrhokField = std::find_if(fields.begin(), fields.end(), [](const auto &field) { 
-        return field.name == ablate::finiteVolume::NPhaseFlowFields::ALPHAKRHOK(0);
+        return field.name == ablate::finiteVolume::NPhaseFlowFields::ALPHAKRHOK;
     });
     auto alphakField = std::find_if(fields.begin(), fields.end(), [](const auto &field) { 
-        return field.name == ablate::finiteVolume::NPhaseFlowFields::ALPHAK(0);
+        return field.name == ablate::finiteVolume::NPhaseFlowFields::ALPHAK;
     });
 
     // Determine the property size
@@ -136,12 +136,10 @@ ablate::eos::EOSFunction ablate::eos::NPhase::GetFieldFunctionFunction(
     ablate::eos::ThermodynamicProperty property2,
     std::vector<std::string> otherProperties) const {
 
-    if (otherProperties != std::vector<std::string>{ALPHAKRHOK, ALPHAK}) {  // VF not in otherProperties){
+    if (otherProperties != std::vector<std::string>{ALPHAKRHOK, ALPHAK}) {  
         throw std::invalid_argument("ablate::eos::NPhase expects other properties to include ALPHAKRHOK (partial density of 1..k..N phasesa) and ALPHAK (volume fraction of 1..k..N phases) as first and second entries");
     }
-    // if (otherProperties != std::vector<std::string>{VF}) {  
-    //     throw std::invalid_argument("ablate::eos::TwoPhase expects other properties to include VF (volume fraction) as first entry");
-    // }
+
     // auto tp = [this](PetscReal temperature, PetscReal pressure, PetscInt dim, const PetscReal velocity[], const PetscReal yi[], PetscReal conserved[])
         //assume that ALLAIRE_FIELD was specified and that we have p,tk, (alphak, alphakrhok) = otherk
     auto tp = [this](PetscReal temperature, PetscReal pressure, PetscInt dim, const PetscReal velocity[], const PetscReal otherk[], 

@@ -5,7 +5,7 @@ target_sources(ablateLibrary
         speciesTransport.cpp
         evTransport.cpp
         twoPhaseEulerAdvection.cpp
-        # nPhaseAllaireAdvection.cpp
+        nPhaseAllaireAdvection.cpp
         gravity.cpp
         pressureGradientScaling.cpp
         arbitrarySource.cpp
@@ -27,7 +27,7 @@ target_sources(ablateLibrary
         speciesTransport.hpp
         evTransport.hpp
         twoPhaseEulerAdvection.hpp
-        # nPhaseAllaireAdvection.hpp
+        nPhaseAllaireAdvection.hpp
         gravity.hpp
         pressureGradientScaling.hpp
         arbitrarySource.hpp

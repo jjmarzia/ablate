@@ -22,31 +22,37 @@ class NPhaseFlowFields : public domain::FieldDescriptor {
     //! The conserved prefix used for fields that have a conserved and non conserved form
     // inline const static std::string CONSERVED = "density";
 
+    inline const static std::string ALPHAKRHOK = "alphakrhok";
+    inline const static std::string ALPHAK = "alphak";
+
     // alpha_k rho_k for each phase; this might actually belong in nPhaseEulerAdvection ?
-    inline static std::string ALPHAKRHOK(PetscInt phase){
-        return "alpharho" + std::to_string(phase);
-    } 
-    inline static std::string ALPHAK(PetscInt phase){
-        return "alpha" + std::to_string(phase);
-    }
+    // inline static std::string ALPHAKRHOK(PetscInt phase){
+    //     return "alpharho" + std::to_string(phase);
+    // } 
+    // inline static std::string ALPHAK(PetscInt phase){
+    //     return "alpha" + std::to_string(phase);
+    // }
 
-    inline static std::string RHOK(PetscInt phase){
-        return "rho" + std::to_string(phase);
-    }
+    // inline static std::string RHOK(PetscInt phase){
+    //     return "rho" + std::to_string(phase);
+    // }
 
-    inline static std::string TK(PetscInt phase){
-        return "t" + std::to_string(phase);
-    }
+    // inline static std::string TK(PetscInt phase){
+    //     return "t" + std::to_string(phase);
+    // }
 
-    inline static std::string EPSK(PetscInt phase){
-        return "eps" + std::to_string(phase);
-    }
+    // inline static std::string EPSK(PetscInt phase){
+    //     return "eps" + std::to_string(phase);
+    // }
 
     //! some common aux fields
-    inline const static std::string VELOCITY_FIELD = "ui";
-    inline const static std::string PRESSURE_FIELD = "p";
-    inline const static std::string DENSITY_FIELD = "rho";
-    inline const static std::string ENERGY_FIELD = "e";
+    inline const static std::string UI = "ui";
+    inline const static std::string TK = "tk";
+    inline const static std::string PRESSURE = "p";
+    inline const static std::string RHO = "rho";
+    inline const static std::string RHOK = "rhok";
+    inline const static std::string E = "e";
+    inline const static std::string EK = "ek";
 
    protected:
     const std::shared_ptr<eos::EOS> eos;
