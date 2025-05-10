@@ -215,7 +215,7 @@ void ablate::finiteVolume::FiniteVolumeSolver::Initialize() {
 
 PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(PetscReal time, Vec locXVec, Vec locFVec) {
     PetscFunctionBeginUser;
-    PetscPrintf(MPI_COMM_WORLD, "Starting ComputeRHSFunction at time %g\n", time);
+    // PetscPrintf(MPI_COMM_WORLD, "Starting ComputeRHSFunction at time %g\n", time);
     ablate::domain::Range faceRange, cellRange;
     GetFaceRange(faceRange);
     GetCellRange(cellRange);
@@ -443,7 +443,7 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeBoundary(PetscRe
 
 PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::PreRHSFunction(TS ts, PetscReal time, bool initialStage, Vec locX) {
     PetscFunctionBeginUser;
-    PetscPrintf(MPI_COMM_WORLD, "Starting PreRHSFunction at time %g, initialStage=%d\n", time, initialStage);
+    // PetscPrintf(MPI_COMM_WORLD, "Starting PreRHSFunction at time %g, initialStage=%d\n", time, initialStage);
     StartEvent("FiniteVolumeSolver::PreRHSFunction");
     try {
         // update any aux fields, including ghost cells

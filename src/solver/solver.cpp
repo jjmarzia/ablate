@@ -60,7 +60,7 @@ void ablate::solver::Solver::SetupCellRangeWithoutGhost() {
 }
 
 void ablate::solver::Solver::PreStage(TS ts, PetscReal stagetime) {
-    PetscPrintf(MPI_COMM_WORLD, "PreStage called\n");
+    // PetscPrintf(MPI_COMM_WORLD, "PreStage called\n");
     for (auto &function : preStageFunctions) {
         function(ts, *this, stagetime);
     }

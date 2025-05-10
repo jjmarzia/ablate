@@ -8,11 +8,11 @@ timestepper:
   name: theMainTimeStepper
   arguments:
     ts_type: euler
-    ts_max_time: 10000e-6
+    ts_max_time: 100e-6
     ts_dt: 1e-6
     ts_adapt_type: none
   io: !<!ablate::io::Hdf5MultiFileSerializer>
-    interval: !<!ablate::io::interval::FixedInterval> 100
+    interval: !<!ablate::io::interval::FixedInterval> 10
   domain: !<!ablate::domain::BoxMesh> &1
     name: testMesh
     faces: [100, 100]
@@ -26,7 +26,7 @@ timestepper:
         labelName: ""
     fields:
       - !<!ablate::finiteVolume::NPhaseFlowFields>
-        eos: !<!ablate::eos::NPhase>
+        eos: !<!ablate::eos::NPhase> &eos
           eosk:
             - !<!ablate::eos::KthStiffenedGas>  # Phase 1 (background)
               parameters:
@@ -49,22 +49,25 @@ timestepper:
       - name: alphak
         type: FVM
         components: [alphak0, alphak1, alphak2]
-      - name: pressure
+      - name: p
         location: AUX
         type: FVM
       - name: rhok
         location: AUX
         type: FVM
+        components: [rhok0, rhok1, rhok2]
       - name: tk
         location: AUX
         type: FVM
-      - name: ek
+        components: [tk0, tk1, tk2]
+      - name: epsilonk
         location: AUX
         type: FVM
+        components: [epsilonk0, epsilonk1, epsilonk2]
   initialization:
     - fieldName: allaire
       field: !<!ablate::mathFunctions::Formula>
-        formula: "rho*e, rho*100.0, rho*0.0"
+        formula: "rho*e, rho*0.0, rho*0.0"
         constants:
           rho: 998.23
           e: 2428423.82269
@@ -76,11 +79,11 @@ timestepper:
           rho2: 998.23
           rho3: 998.23
         nested:
-          circle1: !<!ablate::levelSet::VOFMathFunction>
+          circle1: !<!ablate::levelSet::VOFMathFunction> &circ1
             domain: *1
             levelSet: !<!ablate::mathFunctions::Formula>
               formula: "sqrt((x-0.3)^2 + (y-0.5)^2) - 0.1"
-          circle2: !<!ablate::levelSet::VOFMathFunction>
+          circle2: !<!ablate::levelSet::VOFMathFunction> &circ2
             domain: *1
             levelSet: !<!ablate::mathFunctions::Formula>
               formula: "sqrt((x-0.7)^2 + (y-0.5)^2) - 0.1"
@@ -88,35 +91,13 @@ timestepper:
       field: !<!ablate::mathFunctions::Formula>
         formula: "1 - max(circle1, circle2), circle1, circle2"
         nested:
-          circle1: !<!ablate::levelSet::VOFMathFunction>
-            domain: *1
-            levelSet: !<!ablate::mathFunctions::Formula>
-              formula: "sqrt((x-0.3)^2 + (y-0.5)^2) - 0.1"
-          circle2: !<!ablate::levelSet::VOFMathFunction>
-            domain: *1
-            levelSet: !<!ablate::mathFunctions::Formula>
-              formula: "sqrt((x-0.7)^2 + (y-0.5)^2) - 0.1"
+          circle1: *circ1
+          circle2: *circ2
 solver: !<!ablate::finiteVolume::FiniteVolumeSolver>
   id: nPhase Problem
   processes:
     - !<!ablate::finiteVolume::processes::NPhaseAllaireAdvection>
-      eos: !<!ablate::eos::NPhase>
-        eosk:
-          - !<!ablate::eos::KthStiffenedGas>  # Phase 1 (background)
-            parameters:
-              gamma: 1.932
-              Cp: 8095.08
-              p0: 1169350402.52
-          - !<!ablate::eos::KthStiffenedGas>  # Phase 2 (first circle)
-            parameters:
-              gamma: 1.932
-              Cp: 8095.08
-              p0: 1169350402.52
-          - !<!ablate::eos::KthStiffenedGas>  # Phase 3 (second circle)
-            parameters:
-              gamma: 1.932
-              Cp: 8095.08
-              p0: 1169350402.52
+      eos: *eos
       cfl: 0.5
       fluxCalculatorNStiff: !<!ablate::finiteVolume::fluxCalculator::AusmpUp>
         parameters:
@@ -129,7 +110,7 @@ solver: !<!ablate::finiteVolume::FiniteVolumeSolver>
       boundaryValue:
         fieldName: allaire
         field: !<!ablate::mathFunctions::Formula>
-          formula: "rho*e, rho*100.0, rho*0.0"
+          formula: "rho*e, rho*0.0, rho*0.0"
           constants:
             rho: 998.23
             e: 2428423.82269
