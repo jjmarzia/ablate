@@ -70,11 +70,13 @@ ablate::solver::TimeStepper::~TimeStepper() { TSDestroy(&ts) >> utilities::Petsc
 
 bool ablate::solver::TimeStepper::Initialize() {
     StartEvent((this->name + "::Initialize").c_str());
+    PetscPrintf(MPI_COMM_WORLD, "Starting TimeStepper::Initialize\n");
 
     // Keep track if this need to be initialized
     bool justInitialized = false;
 
     if (!initialized) {
+        PetscPrintf(MPI_COMM_WORLD, "TimeStepper not initialized, initializing now\n");
         domain->InitializeSubDomains(solvers, initializations, exactSolutions);
         TSSetDM(ts, domain->GetDM()) >> utilities::PetscUtilities::checkError;
         initialized = true;
@@ -85,6 +87,7 @@ bool ablate::solver::TimeStepper::Initialize() {
             DMTSSetBoundaryLocal(domain->GetDM(), SolverComputeBoundaryFunctionLocal, this) >> utilities::PetscUtilities::checkError;
         }
         if (!rhsFunctionSolvers.empty()) {
+            PetscPrintf(MPI_COMM_WORLD, "Registering RHS functions\n");
             DMTSSetRHSFunction(domain->GetDM(), SolverComputeRHSFunction, this) >> utilities::PetscUtilities::checkError;
         }
         if (!iFunctionSolvers.empty()) {
@@ -109,6 +112,7 @@ bool ablate::solver::TimeStepper::Initialize() {
 
         // set the ts from options
         TSSetSolution(ts, solutionVec) >> utilities::PetscUtilities::checkError;
+        PetscPrintf(MPI_COMM_WORLD, "Setting TS from options\n");
         TSSetFromOptions(ts) >> utilities::PetscUtilities::checkError;
 
         TSAdapt adapt = nullptr;
@@ -126,11 +130,13 @@ bool ablate::solver::TimeStepper::Initialize() {
             serializer->RestoreTS(ts);
         }
     }
+    PetscPrintf(MPI_COMM_WORLD, "TimeStepper::Initialize complete\n");
     EndEvent();
     return justInitialized;
 }
 
 void ablate::solver::TimeStepper::Solve() {
+    PetscPrintf(MPI_COMM_WORLD, "Starting TimeStepper::Solve\n");
     // Call initialize, this will only initialize if it has not been called
     Initialize();
 
@@ -139,6 +145,7 @@ void ablate::solver::TimeStepper::Solve() {
 
     // If there are no solvers
     if (solvers.empty()) {
+        PetscPrintf(MPI_COMM_WORLD, "No solvers registered!\n");
         // write at least one output
         if (serializer) {
             PetscInt step;
@@ -190,47 +197,10 @@ void ablate::solver::TimeStepper::Solve() {
     PetscLogEventSetDof(logEvent, 0, dof) >> utilities::PetscUtilities::checkError;
     PetscLogEventBegin(logEvent, 0, 0, 0, 0);
 
-//for (PetscInt iter=0;iter<10;++iter) {
+    PetscPrintf(MPI_COMM_WORLD, "About to call TSSolve\n");
+    TSSolve(ts, nullptr) >> utilities::PetscUtilities::checkError;
+    PetscPrintf(MPI_COMM_WORLD, "TSSolve complete\n");
 
-//  printf("%ld\t", iter);
-
-//  TSStep(ts);
-
-//  PetscMPIInt  rank;
-//  MPI_Comm_rank(PETSC_COMM_WORLD, &rank) >> ablate::utilities::PetscUtilities::checkError;
-//  PetscScalar *array;
-//  VecGetArray(solutionVec, &array);
-
-//  char fname[255];
-//  sprintf(fname, "sol%ld.txt", iter);
-//  FILE *f1 = fopen(fname, "w");
-
-//  DM dm = domain->GetDM();
-//  PetscInt cStart, cEnd;
-//  DMPlexGetHeightStratum(dm, 0, &cStart, &cEnd);
-//  for (PetscInt c = cStart; c < cEnd; ++c) {
-//    PetscReal x[3];
-//    DMPlexComputeCellGeometryFVM(dm, c, NULL, x, NULL);
-
-//    PetscScalar *vals;
-//    DMPlexPointLocalRef(dm, c, array, &vals) >> utilities::PetscUtilities::checkError;
-
-//    fprintf(f1, "%+f\t%+f\t", x[0], x[1]);
-//    for (PetscInt i=0; i < 6; ++i) fprintf(f1,"%+e\t", vals[i]);
-//    fprintf(f1, "\n");
-
-//    if (PetscAbsReal(x[0] - 0.0025)<1e-6 && PetscAbsReal(x[1] + 0.0495)<1e-6) {
-//      for (PetscInt i=0; i < 6; ++i) printf("%+e\t", vals[i]);
-//      printf("\n");
-//    }
-//  }
-//  fclose(f1);
-//  VecRestoreArray(solutionVec, &array);
-//}
-//NOTE0EXIT("");
-
-
-    TSSolve(ts, solutionVec) >> utilities::PetscUtilities::checkError;
     PetscLogEventEnd(logEvent, 0, 0, 0, 0);
 }
 
@@ -241,6 +211,8 @@ double ablate::solver::TimeStepper::GetTime() const {
 }
 
 void ablate::solver::TimeStepper::Register(const std::shared_ptr<ablate::solver::Solver>& solver, const std::vector<std::shared_ptr<monitors::Monitor>>& solverMonitors) {
+    PetscPrintf(MPI_COMM_WORLD, "Registering solver %s\n", solver->GetSolverId().c_str());
+    
     // Save the solver and setup the domain
     solvers.push_back(solver);
 
@@ -257,17 +229,22 @@ void ablate::solver::TimeStepper::Register(const std::shared_ptr<ablate::solver:
 
     // check to see if the solver implements a solver function
     if (auto interface = std::dynamic_pointer_cast<IFunction>(solver)) {
+        PetscPrintf(MPI_COMM_WORLD, "Solver %s implements IFunction\n", solver->GetSolverId().c_str());
         iFunctionSolvers.push_back(interface);
     }
     if (auto interface = std::dynamic_pointer_cast<RHSFunction>(solver)) {
+        PetscPrintf(MPI_COMM_WORLD, "Solver %s implements RHSFunction\n", solver->GetSolverId().c_str());
         rhsFunctionSolvers.push_back(interface);
     }
     if (auto interface = std::dynamic_pointer_cast<BoundaryFunction>(solver)) {
+        PetscPrintf(MPI_COMM_WORLD, "Solver %s implements BoundaryFunction\n", solver->GetSolverId().c_str());
         boundaryFunctionSolvers.push_back(interface);
     }
     if (auto interface = std::dynamic_pointer_cast<PhysicsTimeStepFunction>(solver)) {
+        PetscPrintf(MPI_COMM_WORLD, "Solver %s implements PhysicsTimeStepFunction\n", solver->GetSolverId().c_str());
         physicsTimeStepFunctionSolvers.push_back(interface);
     }
+    PetscPrintf(MPI_COMM_WORLD, "Completed registering solver %s\n", solver->GetSolverId().c_str());
 }
 
 PetscErrorCode ablate::solver::TimeStepper::TSPreStepFunction(TS ts) {

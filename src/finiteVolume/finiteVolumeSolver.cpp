@@ -9,6 +9,8 @@
 #include "utilities/petscUtilities.hpp"
 #include "utilities/petscSupport.hpp"
 #include "compressibleFlowFields.hpp"
+#include "nPhaseFlowFields.hpp"
+
 
 ablate::finiteVolume::FiniteVolumeSolver::FiniteVolumeSolver(std::string solverId, std::shared_ptr<domain::Region> region, std::shared_ptr<parameters::Parameters> options,
                                                              std::vector<std::shared_ptr<processes::Process>> processes,
@@ -78,9 +80,28 @@ void ablate::finiteVolume::FiniteVolumeSolver::Initialize() {
             // Get the boundary
             PetscDSGetBoundary(flowProblem, bc, nullptr, &type, &name, &label, &numberIds, &ids, &field, nullptr, nullptr, nullptr, nullptr, nullptr) >> utilities::PetscUtilities::checkError;
 
-            // If this is for euler and DM_BC_NATURAL_RIEMANN add it to the aux
-            auto eulerField = subDomain->GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
-            if (type == DM_BC_NATURAL_RIEMANN && field == eulerField.id) {
+            bool isEulerField = false;
+            bool isAllaireField = false;
+            PetscInt fieldId = -1;
+
+            try {
+                auto eulerField = subDomain->GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
+                isEulerField = (type == DM_BC_NATURAL_RIEMANN && field == eulerField.id);
+                if (isEulerField) fieldId = eulerField.id;
+            } catch (const std::exception&) {
+                // euler field not found, continue
+            }
+
+            try {
+                auto allaireField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::ALLAIRE_FIELD);
+                isAllaireField = (type == DM_BC_NATURAL_RIEMANN && field == allaireField.id);
+                if (isAllaireField) fieldId = allaireField.id;
+            } catch (const std::exception&) {
+                // allaire field not found either (you need one or the other)
+            }
+
+            // If either field type is found, add the boundary
+            if ((isEulerField || isAllaireField) && fieldId != -1) {
                 for (PetscInt af = 0; af < numberAuxFields; af++) {
                     PetscDSAddBoundary(auxProblem, type, name, label, numberIds, ids, af, 0, nullptr, nullptr, nullptr, nullptr, nullptr) >> utilities::PetscUtilities::checkError;
                 }
@@ -194,6 +215,7 @@ void ablate::finiteVolume::FiniteVolumeSolver::Initialize() {
 
 PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(PetscReal time, Vec locXVec, Vec locFVec) {
     PetscFunctionBeginUser;
+    PetscPrintf(MPI_COMM_WORLD, "Starting ComputeRHSFunction at time %g\n", time);
     ablate::domain::Range faceRange, cellRange;
     GetFaceRange(faceRange);
     GetCellRange(cellRange);
@@ -421,6 +443,7 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeBoundary(PetscRe
 
 PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::PreRHSFunction(TS ts, PetscReal time, bool initialStage, Vec locX) {
     PetscFunctionBeginUser;
+    PetscPrintf(MPI_COMM_WORLD, "Starting PreRHSFunction at time %g, initialStage=%d\n", time, initialStage);
     StartEvent("FiniteVolumeSolver::PreRHSFunction");
     try {
         // update any aux fields, including ghost cells

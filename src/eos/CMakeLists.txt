@@ -2,6 +2,7 @@ target_sources(ablateLibrary
         PRIVATE
         perfectGas.cpp
         stiffenedGas.cpp
+        kthStiffenedGas.cpp
         tChem.cpp
         chemTab.cpp
         chemistryModel.cpp
@@ -16,6 +17,7 @@ target_sources(ablateLibrary
         perfectGas.hpp
         tChem.hpp
         stiffenedGas.hpp
+        kthStiffenedGas.hpp
         chemTab.hpp
         chemistryModel.hpp
         twoPhase.hpp

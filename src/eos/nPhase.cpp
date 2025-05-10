@@ -2,6 +2,7 @@
 #include "finiteVolume/nPhaseFlowFields.hpp"
 #include "finiteVolume/processes/twoPhaseEulerAdvection.hpp"
 #include "eos/stiffenedGas.hpp"
+#include "eos/kthStiffenedGas.hpp"
 
 static inline void NStiffDecode(PetscInt dim, ablate::eos::NPhase::DecodeIn *in, ablate::eos::NPhase::DecodeOut *out) {
     
@@ -77,19 +78,27 @@ ablate::eos::NPhase::NPhase(std::vector<std::shared_ptr<eos::EOS>> eosk) : EOS("
             throw std::invalid_argument("invalid eos");
         }
         auto eosPhase = std::dynamic_pointer_cast<eos::StiffenedGas>(eos);
-        parameters.gammak.push_back(eosPhase->GetSpecificHeatRatio());
-        parameters.pik.push_back(eosPhase->GetReferencePressure());
-        parameters.Cpk.push_back(eosPhase->GetSpecificHeatCp());
-        // parameters.numberSpeciesk.push_back(eosPhase->GetSpeciesVariables().size());
-        // parameters.speciesk.push_back(eosPhase->GetSpeciesVariables());
-        // species.insert(species.end(), eosPhase->GetSpeciesVariables().begin(), eosPhase->GetSpeciesVariables().end());
+        if (!eosPhase) {
+            // let either stiffened gas or kth stiffened gas be the eos (for debugging reasons; eventually we just want kth stiffened gas)
+            auto kthEosPhase = std::dynamic_pointer_cast<eos::KthStiffenedGas>(eos);
+            if (!kthEosPhase) {
+                throw std::invalid_argument("EOS must be either StiffenedGas or KthStiffenedGas");
+            }
+            parameters.gammak.push_back(kthEosPhase->GetSpecificHeatRatio());
+            parameters.pik.push_back(kthEosPhase->GetReferencePressure());
+            parameters.Cpk.push_back(kthEosPhase->GetSpecificHeatCp());
+        } else {
+            parameters.gammak.push_back(eosPhase->GetSpecificHeatRatio());
+            parameters.pik.push_back(eosPhase->GetReferencePressure());
+            parameters.Cpk.push_back(eosPhase->GetSpecificHeatCp());
+        }
     }
 }
 
 void ablate::eos::NPhase::View(std::ostream &stream) const {
     stream << "EOS with " << eosk.size() << " phases:" << std::endl;
     for (std::size_t k = 0; k < eosk.size(); ++k) {
-        stream << "  phase " << k + 1 << ": ";
+        stream << "  phase " << k << ": ";
         if (eosk[k]) {
             stream << *eosk[k];
         } else {

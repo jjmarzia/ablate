@@ -3,6 +3,7 @@
 
 #include <petsc.h>
 #include "eos/stiffenedGas.hpp"
+#include "eos/kthStiffenedGas.hpp"
 #include "eos/nPhase.hpp"
 #include "finiteVolume/nPhaseFlowFields.hpp"
 #include "finiteVolume/fluxCalculator/fluxCalculator.hpp"
@@ -83,7 +84,7 @@ class NPhaseAllaireAdvection : public Process {
      */
     class NStiffDecoder : public NPhaseDecoder {
 
-        const std::vector<std::shared_ptr<eos::StiffenedGas>> eosk;
+        const std::vector<std::shared_ptr<eos::KthStiffenedGas>> eosk;
 
 
         /**
@@ -100,7 +101,7 @@ class NPhaseAllaireAdvection : public Process {
         std::vector<eos::ThermodynamicFunction> kComputePressure;
 
        public:
-        NStiffDecoder(PetscInt dim, const std::vector<std::shared_ptr<eos::StiffenedGas>> &eosk);
+        NStiffDecoder(PetscInt dim, const std::vector<std::shared_ptr<eos::KthStiffenedGas>> &eosk);
 
         void DecodeNPhaseAllaireState(PetscInt dim, const PetscInt *uOff, const PetscReal *conservedValues, const PetscReal *normal, PetscReal *density, std::vector<PetscReal> *densityk,
             PetscReal *normalVelocity, PetscReal *velocity, PetscReal *internalEnergy, std::vector<PetscReal> *internalEnergyk, std::vector<PetscReal> *ak,

@@ -126,6 +126,8 @@ class NPhase : public EOS {  // , public std::enabled_shared_from_this<NPhase>
     EOSFunction GetFieldFunctionFunction(const std::string& field, ThermodynamicProperty property1, ThermodynamicProperty property2, std::vector<std::string> otherProperties) const override;
     const std::vector<std::string>& GetFieldFunctionProperties() const override { return otherPropertiesList; }  // list of other properties i.e. VF;
 
+    std::size_t GetNumberOfPhases() const { return eosk.size(); }
+
 };
 }  // namespace ablate::eos
 
