@@ -1,0 +1,145 @@
+environment:
+  title: zalesak-disc
+  tagDirectory: true
+arguments:
+  dm_plex_gmsh_use_regions: true
+  dm_plex_check_all: true
+timestepper:
+  name: theMainTimeStepper
+  arguments:
+    ts_type: euler
+    ts_max_time: 1e-7 #1  # One full rotation
+    ts_dt: 1e-7
+    ts_adapt_type: none
+  io: !<!ablate::io::Hdf5MultiFileSerializer>
+    interval: !<!ablate::io::interval::FixedInterval> 100
+  domain: !<!ablate::domain::BoxMesh> &1
+    name: zalesakDomain
+    faces: [200, 200]
+    lower: [0.0, 0.0]
+    upper: [1.0, 1.0]
+    boundary: [NONE, NONE]
+    modifiers:
+      - !<!ablate::domain::modifiers::DistributeWithGhostCells>
+        ghostCellDepth: 2
+      - !<!ablate::domain::modifiers::GhostBoundaryCells>
+        labelName: ""
+    fields:
+      - !<!ablate::finiteVolume::NPhaseFlowFields>
+        eos: !<!ablate::eos::NPhase> &eos
+          eosk:
+            - !<!ablate::eos::KthStiffenedGas>  # Phase 1 (background)
+              parameters:
+                gamma: 1.4
+                Cp: 1005.0
+                p0: 0.0
+            - !<!ablate::eos::KthStiffenedGas>  # Phase 2 (disc)
+              parameters:
+                gamma: 1.4
+                Cp: 1005.0
+                p0: 0.0
+      - name: alphakrhok
+        type: FVM
+        components: [alphakrhok0, alphakrhok1]
+      - name: alphak
+        type: FVM
+        components: [alphak0, alphak1]
+      - name: p
+        location: AUX
+        type: FVM
+      - name: rhok
+        location: AUX
+        type: FVM
+        components: [rhok0, rhok1]
+      - name: tk
+        location: AUX
+        type: FVM
+        components: [tk0, tk1]
+      - name: epsilonk
+        location: AUX
+        type: FVM
+        components: [epsilonk0, epsilonk1]
+  initialization:
+    - fieldName: allaire
+      field: !<!ablate::mathFunctions::Formula>
+        formula: "rho*e, rho*u, rho*v"
+        constants:
+          rho: 1.0
+          e: 2.5  # For gamma=1.4, e = p/((gamma-1)*rho) + 0.5*(u^2 + v^2) = 1.0/(0.4*1.0) + 0.5*(4π^2*0.25) ≈ 2.5
+        nested:
+          u: !<!ablate::mathFunctions::Formula>
+            formula: "-2*3.14159*(y - 0.5)"
+          v: !<!ablate::mathFunctions::Formula>
+            formula: "2*3.14159*(x - 0.5)"
+    - fieldName: alphakrhok
+      field: !<!ablate::mathFunctions::Formula>
+        formula: "rho1*(1 - max(circle, notch)), rho2*max(circle, notch)"
+        constants:
+          rho1: 1.0
+          rho2: 1.0
+        nested:
+          circle: !<!ablate::levelSet::VOFMathFunction>
+            domain: *1
+            levelSet: !<!ablate::mathFunctions::Formula>
+              formula: "sqrt((x-0.5)^2 + (y-0.75)^2) - 0.15"
+          notch: !<!ablate::levelSet::VOFMathFunction>
+            domain: *1
+            levelSet: !<!ablate::mathFunctions::Formula>
+              formula: "min(min(x-0.475, 0.525-x), y-0.5)"
+    - fieldName: alphak
+      field: !<!ablate::mathFunctions::Formula>
+        formula: "1 - max(circle, notch), max(circle, notch)"
+        nested:
+          circle: !<!ablate::levelSet::VOFMathFunction>
+            domain: *1
+            levelSet: !<!ablate::mathFunctions::Formula>
+              formula: "sqrt((x-0.5)^2 + (y-0.75)^2) - 0.15"
+          notch: !<!ablate::levelSet::VOFMathFunction>
+            domain: *1
+            levelSet: !<!ablate::mathFunctions::Formula>
+              formula: "min(min(x-0.475, 0.525-x), y-0.5)"
+solver: !<!ablate::finiteVolume::FiniteVolumeSolver>
+  id: Zalesak Disc Problem
+  processes:
+    - !<!ablate::finiteVolume::processes::NPhaseAllaireAdvection>
+      eos: *eos
+      cfl: 0.5
+      fluxCalculatorNStiff: !<!ablate::finiteVolume::fluxCalculator::AusmpUp>
+        parameters:
+          beta: 0.125
+          mInf: 0.0
+  boundaryConditions:
+    - !<!ablate::finiteVolume::boundaryConditions::EssentialGhost>
+      boundaryName: allaire walls
+      labelIds: [1, 2, 3, 4]
+      boundaryValue:
+        fieldName: allaire
+        field: !<!ablate::mathFunctions::Formula>
+          formula: "rho*e, rho*u, rho*v"
+          constants:
+            rho: 1.0
+            e: 2.5
+          nested:
+            u: !<!ablate::mathFunctions::Formula>
+              formula: "-2*3.14159*(y - 0.5)"
+            v: !<!ablate::mathFunctions::Formula>
+              formula: "2*3.14159*(x - 0.5)"
+    - !<!ablate::finiteVolume::boundaryConditions::EssentialGhost>
+      boundaryName: alphakrhok walls
+      labelIds: [1, 2, 3, 4]
+      boundaryValue:
+        fieldName: alphakrhok
+        field: !<!ablate::mathFunctions::Formula>
+          formula: "rho1, 0"
+          constants:
+            rho1: 1.0
+    - !<!ablate::finiteVolume::boundaryConditions::EssentialGhost>
+      boundaryName: alphak walls
+      labelIds: [1, 2, 3, 4]
+      boundaryValue:
+        fieldName: alphak
+        field: !<!ablate::mathFunctions::Formula>
+          formula: "1, 0"
+  monitors:
+    - !<!ablate::monitors::TimeStepMonitor>
+      interval: 1

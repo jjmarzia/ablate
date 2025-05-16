@@ -4,6 +4,7 @@ target_sources(ablateLibrary
         averageFlux.cpp
         offFlux.cpp
         ausmpUp.cpp
+        # ausmpUpAllaire.cpp
         riemann.cpp
         riemann2Gas.cpp
         riemannSolver.cpp
@@ -15,6 +16,7 @@ target_sources(ablateLibrary
         averageFlux.hpp
         offFlux.hpp
         ausmpUp.hpp
+        # ausmpUpAllaire.hpp
         riemann.hpp
         riemann2Gas.hpp
         riemannSolver.hpp

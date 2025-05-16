@@ -18,6 +18,23 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
             region,
             conservedFieldOptions),
 
+        //register alphakrhok, alphak
+        std::make_shared<domain::FieldDescription>(
+            ALPHAKRHOK, ALPHAKRHOK,
+            std::vector<std::string>{"alphakrhok"},
+            domain::FieldLocation::SOL,
+            domain::FieldType::FVM,
+            region,
+            conservedFieldOptions),
+
+        std::make_shared<domain::FieldDescription>(
+            ALPHAK, ALPHAK,
+            std::vector<std::string>{"alphak"},
+            domain::FieldLocation::SOL,
+            domain::FieldType::FVM,
+            region,
+            conservedFieldOptions),
+
         //do tk, p, rho, rhok, e, ek
         // std::make_shared<domain::FieldDescription>(
         //     TK, TK, 

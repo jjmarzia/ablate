@@ -45,6 +45,21 @@ class AusmpUp : public fluxCalculator::FluxCalculator {
     static PetscReal M4Minus(PetscReal m);
     static PetscReal P5Plus(PetscReal m, double fa);
     static PetscReal P5Minus(PetscReal m, double fa);
+
+    // Override the new interface methods
+    bool SupportsFullFluxVector() const override { return true; }
+    
+    bool ComputeFullFluxVector(void* ctx, 
+                             PetscReal uL, PetscReal aL, PetscReal rhoL, PetscReal pL,
+                             PetscReal uR, PetscReal aR, PetscReal rhoR, PetscReal pR,
+                             PetscInt dim, const PetscReal* normal, PetscReal areaMag,
+                             const PetscReal* velocityL, const PetscReal* velocityR,
+                             PetscReal internalEnergyL, PetscReal internalEnergyR,
+                             const std::vector<PetscReal>& alphakL,
+                             const std::vector<PetscReal>& alphakR,
+                             const std::vector<PetscReal>& alphakRhokL,
+                             const std::vector<PetscReal>& alphakRhokR,
+                             fluxCalculator::FullFluxVector* fluxVector) override;
 };
 
 }  // namespace ablate::finiteVolume::fluxCalculator

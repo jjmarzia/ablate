@@ -1,5 +1,5 @@
 environment:
-  title: nphase-water-test
+  title: nphase-water1air2-test
   tagDirectory: true
 arguments:
   dm_plex_gmsh_use_regions: true
@@ -8,11 +8,11 @@ timestepper:
   name: theMainTimeStepper
   arguments:
     ts_type: euler
-    ts_max_time: 100e-6
+    ts_max_time: 11e-6
     ts_dt: 1e-6
     ts_adapt_type: none
   io: !<!ablate::io::Hdf5MultiFileSerializer>
-    interval: !<!ablate::io::interval::FixedInterval> 10
+    interval: !<!ablate::io::interval::FixedInterval> 1
   domain: !<!ablate::domain::BoxMesh> &1
     name: testMesh
     faces: [100, 100]
@@ -28,21 +28,18 @@ timestepper:
       - !<!ablate::finiteVolume::NPhaseFlowFields>
         eos: !<!ablate::eos::NPhase> &eos
           eosk:
-            - !<!ablate::eos::KthStiffenedGas>  # Phase 1 (background)
+            #- !<!ablate::eos::KthStiffenedGas> &watereos  
+            #  parameters:
+            #    gamma: 1.932
+            #    Cp: 8095.08
+            #    p0: 1169350402.52
+            - !<!ablate::eos::KthStiffenedGas> &aireos  
               parameters:
-                gamma: 1.932
-                Cp: 8095.08
-                p0: 1169350402.52
-            - !<!ablate::eos::KthStiffenedGas>  # Phase 2 (first circle)
-              parameters:
-                gamma: 1.932
-                Cp: 8095.08
-                p0: 1169350402.52
-            - !<!ablate::eos::KthStiffenedGas>  # Phase 3 (second circle)
-              parameters:
-                gamma: 1.932
-                Cp: 8095.08
-                p0: 1169350402.52
+                gamma: 1.4 
+                Cp: 1004.5 
+                p0: 0.0 
+            - *aireos
+            - *aireos
       - name: alphakrhok
         type: FVM
         components: [alphakrhok0, alphakrhok1, alphakrhok2]
@@ -67,17 +64,16 @@ timestepper:
   initialization:
     - fieldName: allaire
       field: !<!ablate::mathFunctions::Formula>
-        formula: "rho*e, rho*0.0, rho*0.0"
-        constants:
-          rho: 998.23
-          e: 2428423.82269
-    - fieldName: alphakrhok
-      field: !<!ablate::mathFunctions::Formula>
-        formula: "rho1*(1 - max(circle1, circle2)), rho2*circle1, rho3*circle2"
-        constants:
-          rho1: 998.23
-          rho2: 998.23
-          rho3: 998.23
+        formula: "(rho1*(eps1 + (u*u + v*v)/2))*(1 - max(circle1, circle2)) + (rho2*(eps2 + (u*u + v*v)/2))*circle1 + (rho3*(eps3 + (u*u + v*v)/2))*circle2, rho1*u*(1 - max(circle1, circle2)) + rho2*u*circle1 + rho3*u*circle2, rho1*v*(1 - max(circle1, circle2)) + rho2*v*circle1 + rho3*v*circle2"
+        constants: &constants
+          rho1: 998.22999999849000  # Water density
+          rho2: 1.1614401858304297   # Air density
+          rho3: 1.1614401858304297   
+          eps1: 2428423.82269  # Water internal energy
+          eps2: 215250.000000  # Air internal energy 
+          eps3: 215250.000000  
+          u: 100
+          v: 0
         nested:
           circle1: !<!ablate::levelSet::VOFMathFunction> &circ1
             domain: *1
@@ -87,6 +83,13 @@ timestepper:
             domain: *1
             levelSet: !<!ablate::mathFunctions::Formula>
               formula: "sqrt((x-0.7)^2 + (y-0.5)^2) - 0.1"
+    - fieldName: alphakrhok
+      field: !<!ablate::mathFunctions::Formula>
+        formula: "rho1*(1 - max(circle1, circle2)), rho2*circle1, rho3*circle2"
+        constants: *constants
+        nested:
+          circle1: *circ1
+          circle2: *circ2
     - fieldName: alphak
       field: !<!ablate::mathFunctions::Formula>
         formula: "1 - max(circle1, circle2), circle1, circle2"
@@ -106,14 +109,12 @@ solver: !<!ablate::finiteVolume::FiniteVolumeSolver>
   boundaryConditions:
     - !<!ablate::finiteVolume::boundaryConditions::EssentialGhost>
       boundaryName: allaire walls
-      labelIds: [1, 2, 3, 4]  # Assuming these are the boundary labels
+      labelIds: [1, 2, 3, 4]  
       boundaryValue:
         fieldName: allaire
         field: !<!ablate::mathFunctions::Formula>
-          formula: "rho*e, rho*0.0, rho*0.0"
-          constants:
-            rho: 998.23
-            e: 2428423.82269
+          formula: "rho1*(eps1 + (u*u + v*v)/2), rho1*u, rho1*v"  # Background phase at boundaries
+          constants: *constants
     - !<!ablate::finiteVolume::boundaryConditions::EssentialGhost>
       boundaryName: alphakrhok walls
       labelIds: [1, 2, 3, 4]
@@ -121,8 +122,7 @@ solver: !<!ablate::finiteVolume::FiniteVolumeSolver>
         fieldName: alphakrhok
         field: !<!ablate::mathFunctions::Formula>
           formula: "rho1, 0, 0"  # Background phase only
-          constants:
-            rho1: 998.23
+          constants: *constants
     - !<!ablate::finiteVolume::boundaryConditions::EssentialGhost>
       boundaryName: alphak walls
       labelIds: [1, 2, 3, 4]

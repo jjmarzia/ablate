@@ -68,9 +68,9 @@ static inline void NStiffDecode(PetscInt dim, ablate::eos::NPhase::DecodeIn *in,
 //do the above twophase but for nphase
 ablate::eos::NPhase::NPhase(std::vector<std::shared_ptr<eos::EOS>> eosk) : EOS("nPhase"), eosk(std::move(eosk)) {
     // check that eos is nPhase
-    if (this->eosk.size() < 2) {
-        throw std::invalid_argument("you need at least two phases");
-    }
+    // if (this->eosk.size() < 2) {
+    //     throw std::invalid_argument("you need at least two phases");
+    // }
 
     // populate component eoses
     for (const auto &eos : this->eosk) {

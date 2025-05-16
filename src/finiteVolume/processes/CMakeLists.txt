@@ -6,6 +6,7 @@ target_sources(ablateLibrary
         evTransport.cpp
         twoPhaseEulerAdvection.cpp
         nPhaseAllaireAdvection.cpp
+        nPhaseNonconservativeRHS.cpp
         gravity.cpp
         pressureGradientScaling.cpp
         arbitrarySource.cpp
@@ -28,6 +29,7 @@ target_sources(ablateLibrary
         evTransport.hpp
         twoPhaseEulerAdvection.hpp
         nPhaseAllaireAdvection.hpp
+        nPhaseNonconservativeRHS.hpp
         gravity.hpp
         pressureGradientScaling.hpp
         arbitrarySource.hpp
