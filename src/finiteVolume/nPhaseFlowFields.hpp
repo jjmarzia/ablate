@@ -53,6 +53,8 @@ class NPhaseFlowFields : public domain::FieldDescriptor {
     inline const static std::string RHOK = "rhok";
     inline const static std::string EPSILON = "epsilon";
     inline const static std::string EPSILONK = "epsilonk";
+    inline const static std::string SOSK = "sosk";
+    // inline const static std::string USTAR = "ustar";
 
    protected:
     const std::shared_ptr<eos::EOS> eos;

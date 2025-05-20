@@ -334,6 +334,7 @@ void ablate::finiteVolume::CellInterpolant::ComputeFieldGradients(const domain::
     // Get the dm for this grad field
     // If there is no grad, return
     if (!dmGrad) {
+        // PetscPrintf(PETSC_COMM_WORLD, "dmGrad is nullptr\n");
         return;
     }
 
@@ -418,6 +419,7 @@ void ablate::finiteVolume::CellInterpolant::ComputeFieldGradients(const domain::
     // Check for a limiter the limiter
     PetscLimiter lim;
     PetscFVGetLimiter(fvm, &lim) >> utilities::PetscUtilities::checkError;
+    PetscPrintf(PETSC_COMM_WORLD, "lim = %p\n", lim);
     if (lim) {
         /* Limit interior gradients (using cell-based loop because it generalizes better to vector limiters) */
         // Get the cell geometry
@@ -579,8 +581,8 @@ void ablate::finiteVolume::CellInterpolant::ComputeFluxSourceTerms(DM dm, PetscD
             DMLabelGetValue(regionLabel, faceCells[1], &rightFlowLabelValue);
         }
         // compute the left/right face values
-        ProjectToFace(subDomain->GetFields(), ds, *fg, faceCells[0], *cgL, dm, xArray, dmGrads, locGradArrays, uL, gradL, leftFlowLabelValue == regionValue && false);
-        ProjectToFace(subDomain->GetFields(), ds, *fg, faceCells[1], *cgR, dm, xArray, dmGrads, locGradArrays, uR, gradR, rightFlowLabelValue == regionValue && false);
+        ProjectToFace(subDomain->GetFields(), ds, *fg, faceCells[0], *cgL, dm, xArray, dmGrads, locGradArrays, uL, gradL, leftFlowLabelValue == regionValue); // && false);
+        ProjectToFace(subDomain->GetFields(), ds, *fg, faceCells[1], *cgR, dm, xArray, dmGrads, locGradArrays, uR, gradR, rightFlowLabelValue == regionValue); // && false);
 
         // determine the left/right cells
         if (auxArray) {
@@ -666,6 +668,7 @@ void ablate::finiteVolume::CellInterpolant::ProjectToFace(const std::vector<doma
             }
 
         } else if (dmGrads[field.subId]) {
+            // PetscPrintf(PETSC_COMM_WORLD, "Projecting to face %d\n", field.subId);
             // Project the cell centered value onto the face
             DMPlexPointLocalRead(dmGrads[field.subId], cellId, gradArrays[field.subId], &gradCell) >> utilities::PetscUtilities::checkError;
             // Project the cell centered value onto the face
@@ -679,6 +682,7 @@ void ablate::finiteVolume::CellInterpolant::ProjectToFace(const std::vector<doma
             }
 
         } else {
+            // PetscPrintf(PETSC_COMM_WORLD, "Not projecting to face %d\n", field.subId);
             // Just copy the cell centered value on to the face
             for (PetscInt c = 0; c < field.numberComponents; ++c) {
                 u[offsets[field.subId] + c] = xCell[c];

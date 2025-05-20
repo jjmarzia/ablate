@@ -8,8 +8,8 @@ timestepper:
   name: theMainTimeStepper
   arguments:
     ts_type: euler
-    ts_max_time: 11e-6
-    ts_dt: 1e-6
+    ts_max_time: 2e-4
+    ts_dt: 1e-4
     ts_adapt_type: none
 #  io: !<!ablate::io::Hdf5MultiFileSerializer>
 #    interval: !<!ablate::io::interval::FixedInterval> 1
@@ -49,6 +49,16 @@ timestepper:
         location: AUX
         type: FVM
         components: [epsilonk0]
+      - name: rho
+        location: AUX
+        type: FVM
+      - name: sosk
+        location: AUX
+        type: FVM
+        components: [sosk0]
+      - name: debug
+        location: AUX
+        type: FVM
   initialization:
     - fieldName: allaire
       field: !<!ablate::mathFunctions::Formula> &allaireInit
@@ -76,7 +86,10 @@ solver: !<!ablate::finiteVolume::FiniteVolumeSolver>
   processes:
     - !<!ablate::finiteVolume::processes::NPhaseAllaireAdvection>
       eos: *eos
-      fluxCalculatorNStiff: !<!ablate::finiteVolume::fluxCalculator::AusmpUp> ""
+      fluxCalculatorNStiff: !<!ablate::finiteVolume::fluxCalculator::AusmpUp>
+        mInf: 0.3
+    - !<!ablate::finiteVolume::processes::NPhaseNonconservativeRHS>
+      mInf: 0.3
   boundaryConditions:
     - !<!ablate::finiteVolume::boundaryConditions::EssentialGhost>
       boundaryName: allaire walls
@@ -100,4 +113,4 @@ solver: !<!ablate::finiteVolume::FiniteVolumeSolver>
     - !<!ablate::monitors::TimeStepMonitor>
       interval: 1
     - !<!ablate::monitors::CurveMonitor>
-      interval: 10000
+      interval: 1

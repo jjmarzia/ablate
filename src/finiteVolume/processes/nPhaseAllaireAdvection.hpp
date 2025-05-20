@@ -32,6 +32,9 @@ class NPhaseAllaireAdvection : public Process {
     inline const static std::string ALPHAKRHOK = eos::NPhase::ALPHAKRHOK;
 
 
+    
+
+
 
     /**
      * General two phase decoder interface
@@ -40,7 +43,7 @@ class NPhaseAllaireAdvection : public Process {
         public:
          virtual void DecodeNPhaseAllaireState(PetscInt dim, const PetscInt *uOff, const PetscReal *conservedValues, const PetscReal *normal, PetscReal *density, std::vector<PetscReal> *densityk,
             PetscReal *normalVelocity, PetscReal *velocity, PetscReal *internalEnergy, std::vector<PetscReal> *internalEnergyk, std::vector<PetscReal> *ak,
-            std::vector<PetscReal> *Mk, PetscReal *p, std::vector<PetscReal> *Tk, std::vector<PetscReal> *alphak) = 0;
+            std::vector<PetscReal> *Mk, PetscReal *p, std::vector<PetscReal> *Tk, std::vector<PetscReal> *alpha) = 0;
          virtual ~NPhaseDecoder() = default;
      };
      
@@ -53,6 +56,7 @@ class NPhaseAllaireAdvection : public Process {
 
 
    private:
+
 
     // struct DecodeDataStructStiff {
         // PetscReal etot;

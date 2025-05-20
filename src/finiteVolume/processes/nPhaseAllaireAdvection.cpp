@@ -111,7 +111,7 @@ void ablate::finiteVolume::processes::NPhaseAllaireAdvection::Setup(ablate::fini
     flow.RegisterRHSFunction(NPhaseFlowComputeAllaireFlux, this, NPhaseFlowFields::ALLAIRE_FIELD, {ALPHAK, ALPHAKRHOK, NPhaseFlowFields::ALLAIRE_FIELD}, {});
     //register the alphakrhok and alphak fluxes
     flow.RegisterRHSFunction(NPhaseFlowComputeAlphakRhokFlux, this, ALPHAKRHOK, {ALPHAK, ALPHAKRHOK, NPhaseFlowFields::ALLAIRE_FIELD}, {});
-    // flow.RegisterRHSFunction(NPhaseFlowComputeAlphakFlux, this, ALPHAK, {ALPHAK, ALPHAKRHOK, NPhaseFlowFields::ALLAIRE_FIELD}, {});
+    flow.RegisterRHSFunction(NPhaseFlowComputeAlphakFlux, this, ALPHAK, {ALPHAK, ALPHAKRHOK, NPhaseFlowFields::ALLAIRE_FIELD}, {});
 
     flow.RegisterComputeTimeStepFunction(ComputeCflTimeStep, &timeStepData, "cfl");
     timeStepData.computeSpeedOfSound = eosNPhase->GetThermodynamicFunction(eos::ThermodynamicProperty::SpeedOfSound, subDomain.GetFields());
@@ -140,6 +140,9 @@ void ablate::finiteVolume::processes::NPhaseAllaireAdvection::Setup(ablate::fini
     }
     if (subDomain.ContainsField(NPhaseFlowFields::EPSILONK) && (subDomain.GetField(NPhaseFlowFields::EPSILONK).location == ablate::domain::FieldLocation::AUX)) {
       auxUpdateFields.push_back(NPhaseFlowFields::EPSILONK);
+    }
+    if (subDomain.ContainsField(NPhaseFlowFields::SOSK) && (subDomain.GetField(NPhaseFlowFields::SOSK).location == ablate::domain::FieldLocation::AUX)) {
+      auxUpdateFields.push_back(NPhaseFlowFields::SOSK);
     }
 
     // if (subDomain.ContainsField(ALPHAK) && (subDomain.GetField(ALPHAK).location == ablate::domain::FieldLocation::AUX)) {
@@ -250,6 +253,11 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::UpdateAu
         else if (fields[f] == NPhaseFlowFields::EPSILONK) {
             for (std::size_t k = 0; k < nPhaseAllaireAdvection->eosk.size(); k++) {
                 auxField[aOff[f] + k] = internalEnergyk[k];
+            }
+        }
+        else if (fields[f] == NPhaseFlowFields::SOSK) {
+            for (std::size_t k = 0; k < nPhaseAllaireAdvection->eosk.size(); k++) {
+                auxField[aOff[f] + k] = ak[k];
             }
         }
         // else if (fields[f] == NPhaseFlowFields::ALPHAKRHOK) {
@@ -696,8 +704,16 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseFl
         // Use the computed flux vector directly
         for (std::size_t k = 0; k < nPhaseAllaireAdvection->eosk.size(); k++) {
             flux[k] = fluxVec.alphakFlux[k];
-        }
+            // if (PetscAbs(fluxVec.alphakFlux[k]) > PETSC_SMALL) {
+            //     PetscPrintf(PETSC_COMM_WORLD, "fluxVec.alphakFlux[%zu] %f\n", k, fluxVec.alphakFlux[k]);
+            // }
+        } 
+        
 
+        // PetscReal ustar[dim];
+        // for (PetscInt d = 0; d < dim; d++) {
+        //     ustar[d] = fluxVec.ustar[d];
+        // }
 
 
     } 

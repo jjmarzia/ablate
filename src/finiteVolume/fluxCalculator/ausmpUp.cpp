@@ -140,6 +140,9 @@ bool ablate::finiteVolume::fluxCalculator::AusmpUp::ComputeFullFluxVector(void* 
     // Compute the Riemann velocity
     PetscReal vRiem = a12 * m12;
 
+    //print: rhoL, rhoR, pL, pR, sosL, sosR, unL, unR, mBar2, m12, vRiem
+    // PetscPrintf(PETSC_COMM_WORLD, "rhoL %f, rhoR %f, pL %f, pR %f, sosL %f, sosR %f, unL %f, unR %f, mBar2 %f, m12 %f, vRiem %f\n", rhoL, rhoR, pL, pR, aL, aR, uL, uR, mBar2, m12, vRiem);
+
     // Split the velocity
     PetscReal lPlus = 0.5 * (vRiem + PetscAbs(vRiem));
     PetscReal lMinus = 0.5 * (vRiem - PetscAbs(vRiem));
@@ -188,6 +191,13 @@ bool ablate::finiteVolume::fluxCalculator::AusmpUp::ComputeFullFluxVector(void* 
         fluxVector->alphakRhokFlux[k] = (lPlus * alphakRhokL[k] + lMinus * alphakRhokR[k]) * areaMag;
         fluxVector->alphakFlux[k] = (lPlus * alphakL[k] + lMinus * alphakR[k]) * areaMag;
     }
+
+    fluxVector->vriem = vRiem;
+
+    //calculate ustar, needed for RHS of alphak equation
+    // for (PetscInt d = 0; d < dim; d++) {
+    //     fluxVector->ustar[d] = (lPlus * velocityL[d] + lMinus * velocityR[d]) * areaMag;
+    // }
 
 
     return true;

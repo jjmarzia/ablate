@@ -51,6 +51,14 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
             domain::FieldType::FVM, 
             region, 
             auxFieldOptions)
+
+        // std::make_shared<domain::FieldDescription>(
+        //     USTAR, USTAR,
+        //     std::vector<std::string>{"ustar" + domain::FieldDescription::DIMENSION},
+        //     domain::FieldLocation::AUX,
+        //     domain::FieldType::FVM,
+        //     region,
+        //     auxFieldOptions)
         };
         
         // if (!eos->GetSpeciesVariables().empty()) {

@@ -14,6 +14,8 @@ struct FullFluxVector {
     PetscReal energyFlux;         // Energy flux
     std::vector<PetscReal> alphakRhokFlux;  // Alpha*rho flux for each phase
     std::vector<PetscReal> alphakFlux;      // Alpha flux for each phase
+    PetscReal vriem;
+    // PetscReal ustar[3];
 
     // Constructor to initialize vectors with given size
     explicit FullFluxVector(size_t nPhases = 0) : alphakRhokFlux(nPhases, 0.0), alphakFlux(nPhases, 0.0) {}
