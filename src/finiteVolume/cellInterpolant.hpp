@@ -51,6 +51,11 @@ class CellInterpolant {
     std::vector<DM> gradientCellDms;
 
     /**
+     * Function to compute the gradient FVM
+     */
+    static PetscErrorCode ComputeGradientFVM(DM dm, DMLabel regionLabel, PetscInt regionValue, PetscFV fvm, Vec faceGeometry, Vec cellGeometry, DM* dmGrad);
+
+    /**
      * Function to compute the flux source terms
      */
     void ComputeFluxSourceTerms(DM dm, PetscDS ds, PetscInt totDim, const PetscScalar* xArray, DM dmAux, PetscDS dsAux, PetscInt totDimAux, const PetscScalar* auxArray, DM faceDM,

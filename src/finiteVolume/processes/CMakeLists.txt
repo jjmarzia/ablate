@@ -4,9 +4,11 @@ target_sources(ablateLibrary
         navierStokesTransport.cpp
         speciesTransport.cpp
         evTransport.cpp
-        twoPhaseEulerAdvection.cpp
+        #twoPhaseEulerAdvection.cpp
         nPhaseAllaireAdvection.cpp
         nPhaseNonconservativeRHS.cpp
+        intSharp.cpp
+        locations.cpp
         gravity.cpp
         pressureGradientScaling.cpp
         arbitrarySource.cpp
@@ -27,9 +29,11 @@ target_sources(ablateLibrary
         navierStokesTransport.hpp
         speciesTransport.hpp
         evTransport.hpp
-        twoPhaseEulerAdvection.hpp
+        #twoPhaseEulerAdvection.hpp
         nPhaseAllaireAdvection.hpp
         nPhaseNonconservativeRHS.hpp
+        intSharp.hpp
+        locations.hpp
         gravity.hpp
         pressureGradientScaling.hpp
         arbitrarySource.hpp

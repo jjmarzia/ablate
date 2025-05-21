@@ -108,10 +108,10 @@ void ablate::finiteVolume::processes::NPhaseAllaireAdvection::Setup(ablate::fini
 //    flow.RegisterRHSFunction(CompressibleFlowCompleteFlux, this);
     // flow.RegisterRHSFunction(NPhaseFlowCompleteFlux, this); //necessary?
 
-    flow.RegisterRHSFunction(NPhaseFlowComputeAllaireFlux, this, NPhaseFlowFields::ALLAIRE_FIELD, {ALPHAK, ALPHAKRHOK, NPhaseFlowFields::ALLAIRE_FIELD}, {});
+    flow.RegisterRHSFunction(NPhaseFlowComputeAllaireFlux, this, {NPhaseFlowFields::ALLAIRE_FIELD}, {ALPHAK, ALPHAKRHOK, NPhaseFlowFields::ALLAIRE_FIELD}, {});
     //register the alphakrhok and alphak fluxes
-    flow.RegisterRHSFunction(NPhaseFlowComputeAlphakRhokFlux, this, ALPHAKRHOK, {ALPHAK, ALPHAKRHOK, NPhaseFlowFields::ALLAIRE_FIELD}, {});
-    flow.RegisterRHSFunction(NPhaseFlowComputeAlphakFlux, this, ALPHAK, {ALPHAK, ALPHAKRHOK, NPhaseFlowFields::ALLAIRE_FIELD}, {});
+    flow.RegisterRHSFunction(NPhaseFlowComputeAlphakRhokFlux, this, {ALPHAKRHOK}, {ALPHAK, ALPHAKRHOK, NPhaseFlowFields::ALLAIRE_FIELD}, {});
+    flow.RegisterRHSFunction(NPhaseFlowComputeAlphakFlux, this, {ALPHAK}, {ALPHAK, ALPHAKRHOK, NPhaseFlowFields::ALLAIRE_FIELD}, {});
 
     flow.RegisterComputeTimeStepFunction(ComputeCflTimeStep, &timeStepData, "cfl");
     timeStepData.computeSpeedOfSound = eosNPhase->GetThermodynamicFunction(eos::ThermodynamicProperty::SpeedOfSound, subDomain.GetFields());
