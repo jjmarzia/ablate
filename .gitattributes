@@ -1,0 +1,21 @@
+# Use our custom merge driver for n-phase files
+src/eos/nPhase.cpp merge=nphase
+src/eos/nPhase.hpp merge=nphase
+src/eos/kthStiffenedGas.cpp merge=nphase
+src/eos/kthStiffenedGas.hpp merge=nphase
+src/finiteVolume/processes/nPhaseAllaireAdvection.cpp merge=nphase
+src/finiteVolume/processes/nPhaseAllaireAdvection.hpp merge=nphase
+src/finiteVolume/processes/nPhaseNonconservativeRHS.cpp merge=nphase
+src/finiteVolume/processes/nPhaseNonconservativeRHS.hpp merge=nphase
+src/finiteVolume/nPhaseFlowFields.cpp merge=nphase
+src/finiteVolume/nPhaseFlowFields.hpp merge=nphase
+src/finiteVolume/processes/nphase-advection-2d.yaml merge=nphase
+src/finiteVolume/processes/nphase.yaml merge=nphase
+src/finiteVolume/processes/nphase-sod.yaml merge=nphase
+
+# For CMake files, we'll handle manually
+CMakeLists.txt merge=manual
+src/CMakeLists.txt merge=manual
+src/eos/CMakeLists.txt merge=manual
+src/finiteVolume/CMakeLists.txt merge=manual
+src/finiteVolume/processes/CMakeLists.txt merge=manual
