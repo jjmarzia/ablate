@@ -20,6 +20,8 @@ target_sources(ablateLibrary
         thermophoreticDiffusion.cpp
         surfaceForce.cpp
         soot.cpp
+        compactCompressibleNSSpeciesTransport.cpp
+        compactCompressibleNSSpeciesSingleProgressTransport.cpp
         intSharp.cpp
         locations.cpp
 
@@ -44,6 +46,8 @@ target_sources(ablateLibrary
         radiationLoss.hpp
         thermophoreticDiffusion.hpp
         surfaceForce.hpp
+        compactCompressibleNSSpeciesTransport.hpp
+        compactCompressibleNSSpeciesSingleProgressTransport.hpp
         soot.hpp
         intSharp.hpp
         locations.hpp
