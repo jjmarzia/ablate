@@ -344,7 +344,7 @@ void ablate::finiteVolume::CellInterpolant::ComputeFieldGradients(const domain::
     // Get the correct sized vec (gradient for this field)
     Vec gradGlobVec;
     DMGetGlobalVector(dmGrad, &gradGlobVec) >> utilities::PetscUtilities::checkError;
-    VecZeroEntries(gradGlobVec) >> utilities::PetscUtilities::checkError;
+    VecZeroEntries(gradGlobVec) >> utilities::PetscUtilities::checkError; 
 
     // check to see if there is a ghost label
     DMLabel ghostLabel;

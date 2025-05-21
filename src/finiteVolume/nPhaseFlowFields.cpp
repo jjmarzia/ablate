@@ -3,12 +3,28 @@
 #include <utility>
 #include "domain/fieldDescription.hpp"
 #include "utilities/vectorUtilities.hpp"
+#include "eos/nPhase.hpp"
 
 ablate::finiteVolume::NPhaseFlowFields::NPhaseFlowFields(std::shared_ptr<eos::EOS> eos, std::shared_ptr<domain::Region> region,
                                                                      std::shared_ptr<parameters::Parameters> conservedFieldParameters)
     : eos(std::move(eos)), region(std::move(region)), conservedFieldOptions(std::move(conservedFieldParameters)) {}
 
 std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVolume::NPhaseFlowFields::GetFields() {
+    // Get number of phases from EOS
+    auto nPhaseEOS = std::dynamic_pointer_cast<eos::NPhase>(eos);
+    if (!nPhaseEOS) {
+        throw std::invalid_argument("EOS must be of type NPhase");
+    }
+    std::size_t phases = nPhaseEOS->GetNumberOfPhases();
+
+    // Create component names for alphakrhok and alphak
+    std::vector<std::string> alphakrhokComponents;
+    std::vector<std::string> alphakComponents;
+    for (std::size_t k = 0; k < phases; k++) {
+        alphakrhokComponents.push_back("alphakrhok" + std::to_string(k));
+        alphakComponents.push_back("alphak" + std::to_string(k));
+    }
+
     std::vector<std::shared_ptr<ablate::domain::FieldDescription>> flowFields{
         std::make_shared<domain::FieldDescription>(
             ALLAIRE_FIELD, ALLAIRE_FIELD,
@@ -21,7 +37,7 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
         //register alphakrhok, alphak
         std::make_shared<domain::FieldDescription>(
             ALPHAKRHOK, ALPHAKRHOK,
-            std::vector<std::string>{"alphakrhok"},
+            alphakrhokComponents,
             domain::FieldLocation::SOL,
             domain::FieldType::FVM,
             region,
@@ -29,7 +45,7 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
 
         std::make_shared<domain::FieldDescription>(
             ALPHAK, ALPHAK,
-            std::vector<std::string>{"alphak"},
+            alphakComponents,
             domain::FieldLocation::SOL,
             domain::FieldType::FVM,
             region,

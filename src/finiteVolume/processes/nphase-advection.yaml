@@ -1,5 +1,5 @@
 environment:
-  title: nphase-sod
+  title: nphase-advection
   tagDirectory: true
 arguments:
   dm_plex_gmsh_use_regions: true
@@ -8,16 +8,14 @@ timestepper:
   name: theMainTimeStepper
   arguments:
     ts_type: euler
-    ts_max_time: 2e-4
+    ts_max_time: 0.75  # Time for second box to reach [0.75,0.95] with u=1
     ts_dt: 1e-4
     ts_adapt_type: none
-#  io: !<!ablate::io::Hdf5MultiFileSerializer>
-#    interval: !<!ablate::io::interval::FixedInterval> 1
   domain: !<!ablate::domain::BoxMesh> &1
     name: testMesh
-    faces: [100]
+    faces: [600]  # Increased resolution for better box representation
     lower: [0.0]
-    upper: [1.0]
+    upper: [2.0]
     boundary: [NONE]
     modifiers:
       - !<!ablate::domain::modifiers::DistributeWithGhostCells>
@@ -28,62 +26,77 @@ timestepper:
       - !<!ablate::finiteVolume::NPhaseFlowFields>
         eos: !<!ablate::eos::NPhase> &eos
           eosk:
-            - !<!ablate::eos::KthStiffenedGas> &aireos  
+            - !<!ablate::eos::KthStiffenedGas> &aireos1  
               parameters:
                 gamma: 1.4 
                 Cp: 1004.5 
                 p0: 0.0 
-            - *aireos
+            - !<!ablate::eos::KthStiffenedGas> &aireos2
+              parameters:
+                gamma: 1.4 
+                Cp: 1004.5 
+                p0: 0.0 
+            - !<!ablate::eos::KthStiffenedGas> &aireos3
+              parameters:
+                gamma: 1.4 
+                Cp: 1004.5 
+                p0: 0.0 
       - name: p
         location: AUX
         type: FVM
       - name: rhok
         location: AUX
         type: FVM
-        components: [rhok0, rhok1]
+        components: [rhok0, rhok1, rhok2]
       - name: tk
         location: AUX
         type: FVM
-        components: [tk0, tk1]
+        components: [tk0, tk1, tk2]
       - name: epsilonk
         location: AUX
         type: FVM
-        components: [epsilonk0, epsilonk1]
+        components: [epsilonk0, epsilonk1, epsilonk2]
       - name: rho
         location: AUX
         type: FVM
       - name: sosk
         location: AUX
         type: FVM
-        components: [sosk0, sosk1]
+        components: [sosk0, sosk1, sosk2]
       - name: debug
         location: AUX
         type: FVM
-        components: [debug0, debug1]
+        components: [debug0, debug1, debug2]
   initialization:
     - fieldName: allaire
       field: !<!ablate::mathFunctions::Formula> &allaireInit
-        formula: "rho1*(eps1 + u*u/2)*(interface) + rho2*(eps2+u*u/2)*(1-interface),0"
+        formula: "rho1*(eps1 + u*u/2)*(box1) + rho2*(eps2+u*u/2)*(box2) + rho3*(eps3+u*u/2)*(1-box1-box2), rho1*u*(box1) + rho2*u*(box2) + rho3*u*(1-box1-box2)"
         constants: &constants
-          rho1: 1.0  
-          rho2: 0.125   
-          eps1: 2.5  
-          eps2: 2.0  
-          u: 0
+          rho1: 1.0    # Density of first box
+          rho2: 1.0    # Density of second box
+          rho3: 1.0    # Density of background
+          eps1: 2.5    # Internal energy of first box
+          eps2: 2.5    # Internal energy of second box
+          eps3: 1.5    # Internal energy of background
+          u: 1.0       # Constant velocity of 1
         nested:
-          interface: !<!ablate::mathFunctions::Formula> &interface
-            formula: "x - 0.5 < 0 ? 1 : 0"
+          box1: !<!ablate::mathFunctions::Formula> &box1
+            formula: "x >= 0.05 && x <= 0.25 ? 1 : 0"
+          box2: !<!ablate::mathFunctions::Formula> &box2
+            formula: "x >= 0.3 && x <= 0.5 ? 1 : 0"
     - fieldName: alphakrhok
       field: !<!ablate::mathFunctions::Formula> &alphakrhokInit
-        formula: "rho1*interface, rho2*(1-interface)"
+        formula: "rho1*box1, rho2*box2, rho3*(1-box1-box2)"
         constants: *constants
         nested:
-          interface: *interface
+          box1: *box1
+          box2: *box2
     - fieldName: alphak
       field: !<!ablate::mathFunctions::Formula> &alphakInit
-        formula: "interface, (1-interface)"
+        formula: "box1, box2, (1-box1-box2)"
         nested:
-          interface: *interface
+          box1: *box1
+          box2: *box2
 solver: !<!ablate::finiteVolume::FiniteVolumeSolver>
   id: nPhase Problem
   processes:
@@ -116,4 +129,4 @@ solver: !<!ablate::finiteVolume::FiniteVolumeSolver>
     - !<!ablate::monitors::TimeStepMonitor>
       interval: 1
     - !<!ablate::monitors::CurveMonitor>
-      interval: 1
+      interval: 1 

@@ -123,7 +123,7 @@ class NPhaseNonconservativeRHS : public Process {
     //intsharp prestage stuff
     inline const static std::string ALPHAK_FIELD = "alphak"; //eos::NPhase::ALPHAK; //VOLUME_FRACTION_FIELD = eos::TwoPhase::VF;
     // inline const static std::string DENSITY_VF_FIELD = ablate::finiteVolume::CompressibleFlowFields::CONSERVED + VOLUME_FRACTION_FIELD;
-    PetscErrorCode PreStage(TS flowTs, ablate::solver::Solver &solver, PetscReal stagetime);
+    // PetscErrorCode PreStage(TS flowTs, ablate::solver::Solver &solver, PetscReal stagetime);
     // Add new RHS function declaration
     static PetscErrorCode ComputeNonconservativeRHS(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locXVec, Vec locFVec, void *ctx);
     // std::map<PetscInt, std::vector<PetscInt>> cellNeighbors;

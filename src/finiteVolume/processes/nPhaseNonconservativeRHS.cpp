@@ -16,9 +16,9 @@ void ablate::finiteVolume::processes::NPhaseNonconservativeRHS::Initialize(ablat
 ablate::finiteVolume::processes::NPhaseNonconservativeRHS::NPhaseNonconservativeRHS(const double mInf, const std::shared_ptr<ablate::finiteVolume::processes::PressureGradientScaling> pgs) : pgs(pgs), mInf(mInf) {}
 ablate::finiteVolume::processes::NPhaseNonconservativeRHS::~NPhaseNonconservativeRHS() { DMDestroy(&vertexDM) >> utilities::PetscUtilities::checkError; }
 
-void nPhaseNonconservativeRHSPreStageWrapper(TS flowTs, ablate::solver::Solver &solver, PetscReal stagetime, ablate::finiteVolume::processes::NPhaseNonconservativeRHS* nPhaseNonconservativeRHSProcess) {
-    nPhaseNonconservativeRHSProcess->PreStage(flowTs, solver, stagetime);
-  }
+// void nPhaseNonconservativeRHSPreStageWrapper(TS flowTs, ablate::solver::Solver &solver, PetscReal stagetime, ablate::finiteVolume::processes::NPhaseNonconservativeRHS* nPhaseNonconservativeRHSProcess) {
+//     nPhaseNonconservativeRHSProcess->PreStage(flowTs, solver, stagetime);
+//   }
 
 void ablate::finiteVolume::processes::NPhaseNonconservativeRHS::Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) {
     auto dim = flow.GetSubDomain().GetDimensions();
@@ -180,7 +180,8 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseNonconservativeRHS::Comput
     solver.GetCellRangeWithoutGhost(cellRange);
     
     // Get field offsets
-    const auto &alphakOffset = subDomain->GetField(ALPHAK).offset;
+    const auto &alphakField = subDomain->GetField(ALPHAK);
+    const auto &alphakOffset = alphakField.offset;
     
     // Get arrays
     PetscScalar *flowArray;
@@ -202,6 +203,11 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseNonconservativeRHS::Comput
     const auto &pressureField = subDomain->GetField(NPhaseFlowFields::PRESSURE);
     const auto &soskField = subDomain->GetField(NPhaseFlowFields::SOSK);
     
+    // Verify debug field has enough components
+    if (debugfield.numberComponents < nPhaseNonconservativeRHSProcess->nPhases) {
+        throw std::runtime_error("Debug field must have at least " + std::to_string(nPhaseNonconservativeRHSProcess->nPhases) + " components to store terms for each phase");
+    }
+    
     // Compute boundary distances if not already done
     if (nPhaseNonconservativeRHSProcess->cellBoundaryDistance.empty()) {
         nPhaseNonconservativeRHSProcess->ComputeBoundaryDistances();
@@ -210,7 +216,7 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseNonconservativeRHS::Comput
     // Resize cellValues if needed
     if (nPhaseNonconservativeRHSProcess->cellValues.empty()) {
         nPhaseNonconservativeRHSProcess->cellValues.resize(nPhaseNonconservativeRHSProcess->cEnd - nPhaseNonconservativeRHSProcess->cStart);
-        nPhaseNonconservativeRHSProcess->nPhases = subDomain->GetField(ALPHAK).numberComponents;
+        nPhaseNonconservativeRHSProcess->nPhases = alphakField.numberComponents;
     }
     
     // Load cell values
@@ -220,8 +226,8 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseNonconservativeRHS::Comput
         cellVal.sosk.resize(nPhaseNonconservativeRHSProcess->nPhases);
         
         // Read cell values
-        const PetscScalar *alpha1;
-        xDMPlexPointLocalRead(dm, cell, subDomain->GetField(ALPHAK).id, flowArray, &alpha1);
+        const PetscScalar *alphak;
+        xDMPlexPointLocalRead(dm, cell, alphakField.id, flowArray, &alphak);
         PetscReal *rho, *p, *u, *sosk;
         xDMPlexPointLocalRead(auxDM, cell, densityField.id, auxArray, &rho);
         xDMPlexPointLocalRead(auxDM, cell, pressureField.id, auxArray, &p);
@@ -229,9 +235,9 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseNonconservativeRHS::Comput
         xDMPlexPointLocalRead(auxDM, cell, soskField.id, auxArray, &sosk);
         
         // Store values
-        if (alpha1) {
+        if (alphak) {
             for (PetscInt k = 0; k < nPhaseNonconservativeRHSProcess->nPhases; k++) {
-                cellVal.alphak[k] = alpha1[k];
+                cellVal.alphak[k] = alphak[k];
                 cellVal.sosk[k] = sosk[k];
             }
         }
@@ -263,16 +269,12 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseNonconservativeRHS::Comput
             PetscReal faceAreaMag = 1.0;
             const auto& cells = nPhaseNonconservativeRHSProcess->faceToCells[face - nPhaseNonconservativeRHSProcess->fStart];
             if (dim == 1) {
-                // In 1D, determine if this is a left or right face
-                    
                 faceSign = (cells[0] == cell) ? 1.0 : -1.0;  // +1 for right face, -1 for left face
                 faceNormal[0] = faceSign;  
-
             } else {
                 DMPlexFaceCentroidOutwardAreaNormal(auxDM, cell, face, nullptr, faceNormal);
                 faceAreaMag = MagVector(dim, faceNormal);
             }
-            
 
             if (cells.size() != 2) {
                 throw std::runtime_error("Face " + std::to_string(face) + " has " + std::to_string(cells.size()) + " cells, expected 2");
@@ -327,37 +329,40 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseNonconservativeRHS::Comput
             }
 
             ujj += vRiem * faceAreaMag * faceSign;  
-
-            // Debug print for all faces IF vriem > petscsmall
-            // if (vRiem > PETSC_SMALL) {
-            //     PetscPrintf(PETSC_COMM_WORLD, "nonconservative vriem %f, alphaL %f, alphaR %f, rhoL %f, rhoR %f, pL %f, pR %f, uL %f, uR %f, soskL %f, soskR %f\n", vRiem, cellL.alphak[0], cellR.alphak[0], cellL.rho, cellR.rho, cellL.p, cellR.p, cellL.u[0], cellR.u[0], cellL.sosk[0], cellR.sosk[0]);
-            // //     PetscPrintf(PETSC_COMM_WORLD, "distance %d, faceareaMag %f, face %d (cell %d), normal sign %f, alphaL %f, alphaR %f, rhoL %f, rhoR %f, pL %f, pR %f, uL %f, uR %f, soskL %f, soskR %f, vRiem %f\n", 
-            // //     cellBoundaryDistance[cell - cStart], faceAreaMag, face, cell, faceSign, cellL.alphak[0], cellR.alphak[0], cellL.rho, cellR.rho, cellL.p, cellR.p, cellL.u[0], cellR.u[0], cellL.sosk[0], cellR.sosk[0], vRiem);
-            // }
-            
-            
         }
 
         cellVal.divU = ujj;
-
-
         
-        // Update the debug field
+        // Update the debug field with separate terms for each phase
         PetscScalar *term;
         xDMPlexPointLocalRef(auxDM, cell, debugfield.id, auxArray, &term);
-        *term = cellVal.alphak[0] * cellVal.divU;
+        PetscReal cellVolume;
+        for (PetscInt k = 0; k < nPhaseNonconservativeRHSProcess->nPhases; k++) {
+            if (term) {
+            term[k] = cellVal.alphak[k] * cellVal.divU;
+            }
+                // Scale by cell size
+                if (dim == 1) {
+                    DMPlexGetMinRadius(auxDM, &cellVolume) >> utilities::PetscUtilities::checkError;
+                    cellVolume *= 2.0;
+                }
+                if (dim > 1) {
+                    
+                    DMPlexComputeCellGeometryFVM(auxDM, cell, &cellVolume, nullptr, nullptr) >> utilities::PetscUtilities::checkError;
+                }
 
-        //if term is greater than petscsmall, print it
-        if (PetscAbs(*term) > PETSC_SMALL) {
-            PetscPrintf(PETSC_COMM_WORLD, "nonconservative term %f\n", *term);
+                //if term is greater than petscsmall, print it
+
         }
         
-        // Update the solution vector
+        // Update the solution vector for all phases
         PetscScalar *allFields = nullptr;
         DMPlexPointLocalRef(dm, cell, fArray, &allFields) >> utilities::PetscUtilities::checkError;
-        //if allfields and NOT allfields[alphakOffset] is greater than 1, add it
         if (allFields) {
-            allFields[alphakOffset] += 1 * *term/0.01;
+            // Add the nonconservative term to each phase's equation
+            for (PetscInt k = 0; k < nPhaseNonconservativeRHSProcess->nPhases; k++) {
+                allFields[alphakOffset + k] += cellVal.alphak[k] * cellVal.divU / cellVolume;
+            }
         }
     }
     
@@ -372,8 +377,6 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseNonconservativeRHS::Comput
 
 PetscErrorCode ablate::finiteVolume::processes::NPhaseNonconservativeRHS::EnforceAlphaKBounds(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locXVec, void *ctx) {
     PetscFunctionBegin;
-    
-    // auto nPhaseNonconservativeRHSProcess = (NPhaseNonconservativeRHS *)ctx;
     
     // Get the subdomain from the solver
     auto subDomain = const_cast<FiniteVolumeSolver&>(solver).GetSubDomainPtr();
@@ -399,10 +402,23 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseNonconservativeRHS::Enforc
         DMPlexPointLocalRef(dm, cell, xArray, &allFields) >> utilities::PetscUtilities::checkError;
         
         if (allFields) {
-            // Loop over all phases
+            // First enforce minimum bound of 0
             for (PetscInt k = 0; k < alphakField.numberComponents; k++) {
-                // Enforce bounds: 0 <= alpha_k <= 1
-                allFields[alphakOffset + k] = PetscMax(0.0, PetscMin(1.0, allFields[alphakOffset + k]));
+                allFields[alphakOffset + k] = PetscMax(0.0, allFields[alphakOffset + k]);
+            }
+            
+            // Compute sum of alpha values
+            PetscReal alphaSum = 0.0;
+            for (PetscInt k = 0; k < alphakField.numberComponents; k++) {
+                alphaSum += allFields[alphakOffset + k];
+            }
+            
+            // Normalize if sum is not equal to 1 (either greater than or less than)
+            if (PetscAbs(alphaSum - 1.0) > PETSC_SMALL) {
+                PetscReal normalizationFactor = 1.0 / alphaSum;
+                for (PetscInt k = 0; k < alphakField.numberComponents; k++) {
+                    allFields[alphakOffset + k] *= normalizationFactor;
+                }
             }
         }
     }
