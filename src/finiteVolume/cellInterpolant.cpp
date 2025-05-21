@@ -1,10 +1,10 @@
 #include "cellInterpolant.hpp"
-#include "utilities/petscSupport.hpp"
 #include <petsc/private/dmpleximpl.h>
 #include <utility>
 
-ablate::finiteVolume::CellInterpolant::CellInterpolant(std::shared_ptr<ablate::domain::SubDomain> subDomainIn, const std::shared_ptr<domain::Region>& solverRegion, Vec faceGeomVec, Vec cellGeomVec)
-    : subDomain(std::move(std::move(subDomainIn))) {
+ablate::finiteVolume::CellInterpolant::CellInterpolant(std::shared_ptr<ablate::domain::SubDomain> subDomainIn, const std::shared_ptr<domain::Region>& solverRegion, Vec faceGeomVec, Vec cellGeomVec,
+                                                       double maxGradIn)
+    : subDomain(std::move(std::move(subDomainIn))), maxLimGrad(maxGradIn) {
     auto getGradientDm = [this, solverRegion, faceGeomVec, cellGeomVec](const domain::Field& fieldInfo, std::vector<DM>& gradDMs) {
         auto petscField = subDomain->GetPetscFieldObject(fieldInfo);
         auto petscFieldFV = (PetscFV)petscField;
@@ -100,7 +100,6 @@ void ablate::finiteVolume::CellInterpolant::ComputeRHS(PetscReal time, Vec locXV
             VecGetArrayRead(locGradVecs[field.subId], &locGradArrays[field.subId]) >> utilities::PetscUtilities::checkError;
         }
     }
-
     ComputeFluxSourceTerms(dm,
                            ds,
                            totDim,
@@ -287,7 +286,7 @@ static PetscErrorCode DMPlexApplyLimiter_Internal(DM dm, DM dmCell, PetscLimiter
 
     PetscFunctionBegin;
     PetscCall(DMPlexGetTreeChildren(dm, face, &numChildren, &children));
-    if (numChildren) {
+    if (numChildren) {  // if the tree contains children
         PetscInt c;
 
         for (c = 0; c < numChildren; c++) {
@@ -297,27 +296,30 @@ static PetscErrorCode DMPlexApplyLimiter_Internal(DM dm, DM dmCell, PetscLimiter
                 PetscCall(DMPlexApplyLimiter_Internal(dm, dmCell, lim, dim, dof, cell, field, childFace, fStart, fEnd, cellPhi, x, cellgeom, cg, cx, cgrad));
             }
         }
-    } else {
-        PetscScalar* ncx;
-        PetscFVCellGeom* ncg;
-        const PetscInt* fcells;
-        PetscInt ncell, d;
-        PetscReal v[3];
+    } else {                     // if the tree doesn't contain children
+        PetscScalar* ncx;        // neighbor cell centered values
+        PetscFVCellGeom* ncg;    // neighbor cell geometry
+        const PetscInt* fcells;  // cells attached to this face
+        PetscInt ncell, d;       // neighbor cell and for loop index
+        PetscReal v[3];          // centr
 
         PetscCall(DMPlexGetSupport(dm, face, &fcells));
-        ncell = cell == fcells[0] ? fcells[1] : fcells[0];
+        ncell = cell == fcells[0] ? fcells[1] : fcells[0];  // figure out which cell is the neighbor and not this cell
+        // Read in the neighbor cell information
         if (field >= 0) {
             PetscCall(DMPlexPointLocalFieldRead(dm, ncell, field, x, &ncx));
         } else {
             PetscCall(DMPlexPointLocalRead(dm, ncell, x, &ncx));
         }
         PetscCall(DMPlexPointLocalRead(dmCell, ncell, cellgeom, &ncg));
-        DMPlex_WaxpyD_Internal(dim, -1, cg->centroid, ncg->centroid, v);
+        // Calculate the distance between the neighbor cell and this cell
+        DMPlex_WaxpyD_Internal(dim, -1, cg->centroid, ncg->centroid, v);  // v_i = NeighborCentroid_i - ThisCentroid_i = dx_i
         for (d = 0; d < dof; ++d) {
             /* We use the symmetric slope limited form of Berger, Aftosmis, and Murman 2005 */
-            PetscReal denom = DMPlex_DotD_Internal(dim, &cgrad[d * dim], v);
-            PetscReal phi, flim = 0.5 * PetscRealPart(ncx[d] - cx[d]) / denom;
-
+            PetscReal denom = DMPlex_DotD_Internal(dim, &cgrad[d * dim], v);    // denominator = \grad u \cdot dx
+            PetscReal phi, flim = 0.5 * PetscRealPart(ncx[d] - cx[d]) / denom;  // f = 1/2 * (u_i+1-u_i)/(\Delta u from cell gradient dot with \delta x)
+            // What the above means is that if any cell face has no change, but there was ample enough change close to it such that
+            //  the cell gradient dot with delta x is not 0, there is no limiting... i.e f = 0 and all limiters = 0
             PetscCall(PetscLimiterLimit(lim, flim, &phi));
             cellPhi[d] = PetscMin(cellPhi[d], phi);
         }
@@ -334,7 +336,6 @@ void ablate::finiteVolume::CellInterpolant::ComputeFieldGradients(const domain::
     // Get the dm for this grad field
     // If there is no grad, return
     if (!dmGrad) {
-        // PetscPrintf(PETSC_COMM_WORLD, "dmGrad is nullptr\n");
         return;
     }
 
@@ -344,7 +345,7 @@ void ablate::finiteVolume::CellInterpolant::ComputeFieldGradients(const domain::
     // Get the correct sized vec (gradient for this field)
     Vec gradGlobVec;
     DMGetGlobalVector(dmGrad, &gradGlobVec) >> utilities::PetscUtilities::checkError;
-    VecZeroEntries(gradGlobVec) >> utilities::PetscUtilities::checkError; 
+    VecZeroEntries(gradGlobVec) >> utilities::PetscUtilities::checkError;
 
     // check to see if there is a ghost label
     DMLabel ghostLabel;
@@ -378,19 +379,14 @@ void ablate::finiteVolume::CellInterpolant::ComputeFieldGradients(const domain::
             DMLabelGetValue(ghostLabel, face, &ghost);
         }
         DMIsBoundaryPoint(dm, face, &boundary);
-        PetscInt numChildren, numCells;
-        DMPlexGetSupportSize(dm, face, &numCells);
+        PetscInt numChildren;
         DMPlexGetTreeChildren(dm, face, &numChildren, nullptr);
-        if (ghost >= 0 || boundary || numChildren || numCells!=2) continue;
+        if (ghost >= 0 || boundary || numChildren) continue;
 
         // Do a sanity check on the number of cells connected to this face
+        PetscInt numCells;
+        DMPlexGetSupportSize(dm, face, &numCells);
         if (numCells != 2) {
-//PetscFVFaceGeom* fg;
-//DMPlexPointLocalRead(dmFace, face, faceGeometryArray, &fg);
-//printf("%+f\t%+f\n", fg->centroid[0], fg->centroid[1]);
-//printf("cellInterpolant::393\n");
-//exit(0);
-
             throw std::runtime_error("face " + std::to_string(face) + " has " + std::to_string(numCells) + " support points (cells): expected 2");
         }
 
@@ -419,7 +415,6 @@ void ablate::finiteVolume::CellInterpolant::ComputeFieldGradients(const domain::
     // Check for a limiter the limiter
     PetscLimiter lim;
     PetscFVGetLimiter(fvm, &lim) >> utilities::PetscUtilities::checkError;
-    PetscPrintf(PETSC_COMM_WORLD, "lim = %p\n", lim);
     if (lim) {
         /* Limit interior gradients (using cell-based loop because it generalizes better to vector limiters) */
         // Get the cell geometry
@@ -429,17 +424,17 @@ void ablate::finiteVolume::CellInterpolant::ComputeFieldGradients(const domain::
         VecGetArrayRead(cellGeomVec, &cellGeometryArray);
 
         // create a temp work array
-        PetscReal* cellPhi;
-        DMGetWorkArray(dm, dof, MPIU_REAL, &cellPhi) >> utilities::PetscUtilities::checkError;
+        PetscReal* cellPhi;                                                                     // Actual Limiter
+        DMGetWorkArray(dm, dof, MPIU_REAL, &cellPhi) >> utilities::PetscUtilities::checkError;  // Size it up to be dof length of reals
 
         for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
             PetscInt cell = cellRange.points ? cellRange.points[c] : c;
 
-            const PetscInt* cellFaces;
-            PetscScalar* cx;
-            PetscFVCellGeom* cg;
-            PetscScalar* cgrad;
-            PetscInt coneSize;
+            const PetscInt* cellFaces;  // faces belonging to the cell
+            PetscScalar* cx;            // cell solution/field values
+            PetscFVCellGeom* cg;        // cell geometry
+            PetscScalar* cgrad;         // cell gradient
+            PetscInt coneSize;          // cell conectivity
 
             DMPlexGetConeSize(dm, cell, &coneSize) >> utilities::PetscUtilities::checkError;
             DMPlexGetCone(dm, cell, &cellFaces) >> utilities::PetscUtilities::checkError;
@@ -459,11 +454,29 @@ void ablate::finiteVolume::CellInterpolant::ComputeFieldGradients(const domain::
                 DMPlexApplyLimiter_Internal(dm, dmCell, lim, dim, dof, cell, field.id, cellFaces[f], faceRange.start, faceRange.end, cellPhi, xLocalArray, cellGeometryArray, cg, cx, cgrad) >>
                     utilities::PetscUtilities::checkError;
             }
+
             /* Apply limiter to gradient */
+            PetscBool cancel = PETSC_FALSE;
+            for (PetscInt pd = 0; pd < dof; ++pd) {
+                if (cellPhi[pd] == 0) {
+                    for (PetscInt d = 0; d < dim; d++) {
+                        // Due to directional limiting being difficult in unstructured grids,
+                        // a strict gradient limiter is introduced here to revert back to cell centered
+                        // reconstructions if a component limiter is 0 even though there is a strong
+                        // component gradient in a direction (Usually happens at strong shocks seen in
+                        // high pressured rocket simulations)
+                        if (PetscAbsReal(cgrad[pd * dim + d]) > maxLimGrad) cancel = PETSC_TRUE;
+                    }
+                }
+            }
+
             for (PetscInt pd = 0; pd < dof; ++pd) {
                 /* Scalar limiter applied to each component separately */
                 for (PetscInt d = 0; d < dim; ++d) {
-                    cgrad[pd * dim + d] *= cellPhi[pd];
+                    if (cancel)
+                        cgrad[pd * dim + d] *= 0;
+                    else
+                        cgrad[pd * dim + d] *= cellPhi[pd];
                 }
             }
         }
@@ -482,9 +495,6 @@ void ablate::finiteVolume::CellInterpolant::ComputeFieldGradients(const domain::
     VecRestoreArrayRead(faceGeomVec, &faceGeometryArray) >> utilities::PetscUtilities::checkError;
     DMRestoreGlobalVector(dmGrad, &gradGlobVec) >> utilities::PetscUtilities::checkError;
 }
-
-
-static PetscInt cnt = 0;
 
 void ablate::finiteVolume::CellInterpolant::ComputeFluxSourceTerms(DM dm, PetscDS ds, PetscInt totDim, const PetscScalar* xArray, DM dmAux, PetscDS dsAux, PetscInt totDimAux,
                                                                    const PetscScalar* auxArray, DM faceDM, const PetscScalar* faceGeomArray, DM cellDM, const PetscScalar* cellGeomArray,
@@ -510,8 +520,8 @@ void ablate::finiteVolume::CellInterpolant::ComputeFluxSourceTerms(DM dm, PetscD
     PetscScalar *auxL = nullptr, *auxR = nullptr;
 
     // Precompute the offsets to pass into the rhsFluxFunctionDescriptions
-    std::vector<PetscInt> fluxComponentSize(rhsFunctions.size());
-    std::vector<PetscInt> fluxId(rhsFunctions.size());
+    std::vector<std::vector<PetscInt>> fluxComponentSize(rhsFunctions.size());
+    std::vector<std::vector<PetscInt>> fluxId(rhsFunctions.size());
     std::vector<std::vector<PetscInt>> uOff(rhsFunctions.size());
     std::vector<std::vector<PetscInt>> aOff(rhsFunctions.size());
 
@@ -520,10 +530,11 @@ void ablate::finiteVolume::CellInterpolant::ComputeFluxSourceTerms(DM dm, PetscD
     PetscDSGetComponentOffsets(ds, &uOffTotal) >> utilities::PetscUtilities::checkError;
 
     for (std::size_t fun = 0; fun < rhsFunctions.size(); fun++) {
-        const auto& field = subDomain->GetField(rhsFunctions[fun].field);
-        fluxComponentSize[fun] = field.numberComponents;
-        fluxId[fun] = field.id;
-
+        for (std::size_t f = 0; f < rhsFunctions[fun].updateFields.size(); f++) {
+            const auto& field = subDomain->GetField(rhsFunctions[fun].updateFields[f]);
+            fluxComponentSize[fun].push_back(field.numberComponents);
+            fluxId[fun].push_back(field.id);
+        }
         for (std::size_t f = 0; f < rhsFunctions[fun].inputFields.size(); f++) {
             uOff[fun].push_back(uOffTotal[rhsFunctions[fun].inputFields[f]]);
         }
@@ -546,14 +557,6 @@ void ablate::finiteVolume::CellInterpolant::ComputeFluxSourceTerms(DM dm, PetscD
     DMLabel regionLabel = nullptr;
     PetscInt regionValue = 0;
     domain::Region::GetLabel(solverRegion, subDomain->GetDM(), regionLabel, regionValue);
-
-//PetscMPIInt  rank;
-//MPI_Comm_rank(PETSC_COMM_WORLD, &rank) >> ablate::utilities::PetscUtilities::checkError;
-
-++cnt;
-
-//static PetscReal flux3104 = 0;
-
     // March over each face in this region
     for (PetscInt f = faceRange.start; f < faceRange.end; ++f) {
         const PetscInt face = faceRange.points ? faceRange.points[f] : f;
@@ -581,8 +584,8 @@ void ablate::finiteVolume::CellInterpolant::ComputeFluxSourceTerms(DM dm, PetscD
             DMLabelGetValue(regionLabel, faceCells[1], &rightFlowLabelValue);
         }
         // compute the left/right face values
-        ProjectToFace(subDomain->GetFields(), ds, *fg, faceCells[0], *cgL, dm, xArray, dmGrads, locGradArrays, uL, gradL, leftFlowLabelValue == regionValue); // && false);
-        ProjectToFace(subDomain->GetFields(), ds, *fg, faceCells[1], *cgR, dm, xArray, dmGrads, locGradArrays, uR, gradR, rightFlowLabelValue == regionValue); // && false);
+        ProjectToFace(subDomain->GetFields(), ds, *fg, faceCells[0], *cgL, dm, xArray, dmGrads, locGradArrays, uL, gradL, leftFlowLabelValue == regionValue);
+        ProjectToFace(subDomain->GetFields(), ds, *fg, faceCells[1], *cgR, dm, xArray, dmGrads, locGradArrays, uR, gradR, rightFlowLabelValue == regionValue);
 
         // determine the left/right cells
         if (auxArray) {
@@ -593,33 +596,36 @@ void ablate::finiteVolume::CellInterpolant::ComputeFluxSourceTerms(DM dm, PetscD
 
         // March over each source function
         for (std::size_t fun = 0; fun < rhsFunctions.size(); fun++) {
+            PetscInt fluxOffset = 0;  // Flux offset for the function ( Currently calculated by just adding the number of components of the previous fields)
             PetscArrayzero(flux, totDim) >> utilities::PetscUtilities::checkError;
             const auto& rhsFluxFunctionDescription = rhsFunctions[fun];
             rhsFluxFunctionDescription.function(dim, fg, uOff[fun].data(), uL, uR, aOff[fun].data(), auxL, auxR, flux, rhsFluxFunctionDescription.context) >> utilities::PetscUtilities::checkError;
+            // add the fluxes back to the cell
+            for (std::size_t updateFieldIdx = 0; updateFieldIdx < rhsFunctions[fun].updateFields.size(); updateFieldIdx++) {
+                PetscInt cellLabelValue = regionValue;
+                PetscScalar *fL = nullptr, *fR = nullptr;
+                DMLabelGetValue(ghostLabel, faceCells[0], &ghost) >> utilities::PetscUtilities::checkError;
+                if (regionLabel) {
+                    DMLabelGetValue(regionLabel, faceCells[0], &cellLabelValue) >> utilities::PetscUtilities::checkError;
+                }
+                if (ghost <= 0 && regionValue == cellLabelValue) {
+                    DMPlexPointLocalFieldRef(dm, faceCells[0], fluxId[fun][updateFieldIdx], locFArray, &fL) >> utilities::PetscUtilities::checkError;
+                }
 
-            // add the flux back to the cell
-            PetscScalar *fL = nullptr, *fR = nullptr;
-            PetscInt cellLabelValue = regionValue;
-            DMLabelGetValue(ghostLabel, faceCells[0], &ghost) >> utilities::PetscUtilities::checkError;
-            if (regionLabel) {
-                DMLabelGetValue(regionLabel, faceCells[0], &cellLabelValue) >> utilities::PetscUtilities::checkError;
-            }
-            if (ghost <= 0 && regionValue == cellLabelValue) {
-                DMPlexPointLocalFieldRef(dm, faceCells[0], fluxId[fun], locFArray, &fL) >> utilities::PetscUtilities::checkError;
-            }
+                cellLabelValue = regionValue;
+                DMLabelGetValue(ghostLabel, faceCells[1], &ghost) >> utilities::PetscUtilities::checkError;
+                if (regionLabel) {
+                    DMLabelGetValue(regionLabel, faceCells[1], &cellLabelValue) >> utilities::PetscUtilities::checkError;
+                }
+                if (ghost <= 0 && regionValue == cellLabelValue) {
+                    DMPlexPointLocalFieldRef(dm, faceCells[1], fluxId[fun][updateFieldIdx], locFArray, &fR) >> utilities::PetscUtilities::checkError;
+                }
 
-            cellLabelValue = regionValue;
-            DMLabelGetValue(ghostLabel, faceCells[1], &ghost) >> utilities::PetscUtilities::checkError;
-            if (regionLabel) {
-                DMLabelGetValue(regionLabel, faceCells[1], &cellLabelValue) >> utilities::PetscUtilities::checkError;
-            }
-            if (ghost <= 0 && regionValue == cellLabelValue) {
-                DMPlexPointLocalFieldRef(dm, faceCells[1], fluxId[fun], locFArray, &fR) >> utilities::PetscUtilities::checkError;
-            }
-
-            for (PetscInt d = 0; d < fluxComponentSize[fun]; ++d) {
-                if (fL) fL[d] -= flux[d] / cgL->volume;
-                if (fR) fR[d] += flux[d] / cgR->volume;
+                for (PetscInt d = 0; d < (fluxComponentSize[fun][updateFieldIdx]); ++d) {
+                    if (fL) fL[d] -= flux[fluxOffset + d] / cgL->volume;
+                    if (fR) fR[d] += flux[fluxOffset + d] / cgR->volume;
+                }
+                fluxOffset += fluxComponentSize[fun][updateFieldIdx];
             }
         }
     }
@@ -632,6 +638,255 @@ void ablate::finiteVolume::CellInterpolant::ComputeFluxSourceTerms(DM dm, PetscD
     DMRestoreWorkArray(dm, dim * totDim, MPIU_SCALAR, &gradR) >> utilities::PetscUtilities::checkError;
 }
 
+static PetscErrorCode BuildGradientReconstruction_Internal(DM dm, DMLabel regionLabel, PetscInt regionValue, PetscFV fvm, DM dmFace, PetscScalar* fgeom, DM dmCell, PetscScalar* cgeom) {
+    DMLabel ghostLabel;
+    PetscScalar *dx, *grad, **gref;
+    PetscInt dim, cStart, cEnd, c, cEndInterior, maxNumFaces;
+
+    PetscFunctionBegin;
+    PetscCall(DMGetDimension(dm, &dim));
+    PetscCall(DMPlexGetHeightStratum(dm, 0, &cStart, &cEnd));
+    PetscCall(DMPlexGetCellTypeStratum(dm, DM_POLYTOPE_FV_GHOST, &cEndInterior, nullptr));
+    cEndInterior = cEndInterior < 0 ? cEnd : cEndInterior;
+    PetscCall(DMPlexGetMaxSizes(dm, &maxNumFaces, nullptr));
+    PetscCall(PetscFVLeastSquaresSetMaxFaces(fvm, maxNumFaces));
+    PetscCall(DMGetLabel(dm, "ghost", &ghostLabel));
+    PetscCall(PetscMalloc3(maxNumFaces * dim, &dx, maxNumFaces * dim, &grad, maxNumFaces, &gref));
+    for (c = cStart; c < cEndInterior; c++) {
+        const PetscInt* faces;
+        PetscInt numFaces, usedFaces, f, d;
+        PetscFVCellGeom* cg;
+        PetscBool boundary;
+        PetscInt ghost;
+        PetscInt labelValue;
+
+        // do not attempt to compute a gradient reconstruction stencil in a ghost cell.  It will never be used
+        PetscCall(DMLabelGetValue(ghostLabel, c, &ghost));
+        if (ghost >= 0) continue;
+
+        if (regionLabel) {
+            PetscCall(DMLabelGetValue(regionLabel, c, &labelValue));
+            if (labelValue != regionValue) continue;
+        }
+
+        PetscCall(DMPlexPointLocalRead(dmCell, c, cgeom, &cg));
+        PetscCall(DMPlexGetConeSize(dm, c, &numFaces));
+        PetscCall(DMPlexGetCone(dm, c, &faces));
+        PetscCheck(!(numFaces < dim), PETSC_COMM_SELF, PETSC_ERR_ARG_INCOMP, "Cell %" PetscInt_FMT " has only %" PetscInt_FMT " faces, not enough for gradient reconstruction", c, numFaces);
+        for (f = 0, usedFaces = 0; f < numFaces; ++f) {
+            PetscFVCellGeom* cg1;
+            PetscFVFaceGeom* fg;
+            const PetscInt* fcells;
+            PetscInt ncell, side;
+
+            if (regionLabel) {
+                PetscCall(DMLabelGetValue(regionLabel, faces[f], &labelValue));
+                if (labelValue != regionValue) continue;
+            }
+
+            PetscCall(DMLabelGetValue(ghostLabel, faces[f], &ghost));
+            PetscCall(DMIsBoundaryPoint(dm, faces[f], &boundary));
+            if ((ghost >= 0) || boundary) continue;
+            PetscCall(DMPlexGetSupport(dm, faces[f], &fcells));
+            side = (c != fcells[0]); /* c is on left=0 or right=1 of face */
+            ncell = fcells[!side];   /* the neighbor */
+            PetscCall(DMPlexPointLocalRef(dmFace, faces[f], fgeom, &fg));
+            PetscCall(DMPlexPointLocalRead(dmCell, ncell, cgeom, &cg1));
+            for (d = 0; d < dim; ++d) dx[usedFaces * dim + d] = cg1->centroid[d] - cg->centroid[d];
+            gref[usedFaces++] = fg->grad[side]; /* Gradient reconstruction term will go here */
+        }
+        PetscCheck(usedFaces, PETSC_COMM_SELF, PETSC_ERR_USER, "Mesh contains isolated cell (no neighbors). Is it intentional?");
+        PetscCall(PetscFVComputeGradient(fvm, usedFaces, dx, grad));
+        for (f = 0, usedFaces = 0; f < numFaces; ++f) {
+            if (regionLabel) {
+                PetscCall(DMLabelGetValue(regionLabel, faces[f], &labelValue));
+                if (labelValue != regionValue) continue;
+            }
+            PetscCall(DMLabelGetValue(ghostLabel, faces[f], &ghost));
+            PetscCall(DMIsBoundaryPoint(dm, faces[f], &boundary));
+            if ((ghost >= 0) || boundary) continue;
+            for (d = 0; d < dim; ++d) gref[usedFaces][d] = grad[usedFaces * dim + d];
+            ++usedFaces;
+        }
+    }
+    // Free the memory allocated earlier with PetscMalloc3
+    PetscCall(PetscFree3(dx, grad, gref));
+    PetscFunctionReturn(0);
+}
+
+static PetscErrorCode BuildGradientReconstruction_Internal_Tree(DM dm, DMLabel regionLabel, PetscInt regionValue, PetscFV fvm, DM dmFace, PetscScalar* fgeom, DM dmCell, PetscScalar* cgeom) {
+    DMLabel ghostLabel;
+    PetscScalar *dx, *grad, **gref;
+    PetscInt dim, cStart, cEnd, c, cEndInterior, fStart, fEnd, f, nStart, nEnd, maxNumFaces = 0;
+    PetscSection neighSec;
+    PetscInt(*neighbors)[2];
+    PetscInt* counter;
+
+    PetscFunctionBegin;
+    PetscCall(DMGetDimension(dm, &dim));
+    PetscCall(DMPlexGetHeightStratum(dm, 0, &cStart, &cEnd));
+    PetscCall(DMPlexGetCellTypeStratum(dm, DM_POLYTOPE_FV_GHOST, &cEndInterior, nullptr));
+    if (cEndInterior < 0) cEndInterior = cEnd;
+    PetscCall(PetscSectionCreate(PetscObjectComm((PetscObject)dm), &neighSec));
+    PetscCall(PetscSectionSetChart(neighSec, cStart, cEndInterior));
+    PetscCall(DMPlexGetHeightStratum(dm, 1, &fStart, &fEnd));
+    PetscCall(DMGetLabel(dm, "ghost", &ghostLabel));
+    for (f = fStart; f < fEnd; f++) {
+        const PetscInt* fcells;
+        PetscBool boundary;
+        PetscInt ghost = -1;
+        PetscInt numChildren, numCells, labelValue;
+
+        if (ghostLabel) PetscCall(DMLabelGetValue(ghostLabel, f, &ghost));
+        PetscCall(DMIsBoundaryPoint(dm, f, &boundary));
+        PetscCall(DMPlexGetTreeChildren(dm, f, &numChildren, nullptr));
+        if ((ghost >= 0) || boundary || numChildren) continue;
+
+        if (regionLabel) {
+            PetscCall(DMLabelGetValue(regionLabel, f, &labelValue));
+            if (labelValue != regionValue) continue;
+        }
+
+        PetscCall(DMPlexGetSupportSize(dm, f, &numCells));
+        if (numCells == 2) {
+            PetscCall(DMPlexGetSupport(dm, f, &fcells));
+            for (c = 0; c < 2; c++) {
+                PetscInt cell = fcells[c];
+
+                if (cell >= cStart && cell < cEndInterior) {
+                    PetscCall(PetscSectionAddDof(neighSec, cell, 1));
+                }
+            }
+        }
+    }
+    PetscCall(PetscSectionSetUp(neighSec));
+    PetscCall(PetscSectionGetMaxDof(neighSec, &maxNumFaces));
+    PetscCall(PetscFVLeastSquaresSetMaxFaces(fvm, maxNumFaces));
+    nStart = 0;
+    PetscCall(PetscSectionGetStorageSize(neighSec, &nEnd));
+    PetscCall(PetscMalloc1((nEnd - nStart), &neighbors));
+    PetscCall(PetscCalloc1((cEndInterior - cStart), &counter));
+    for (f = fStart; f < fEnd; f++) {
+        const PetscInt* fcells;
+        PetscBool boundary;
+        PetscInt ghost = -1;
+        PetscInt numChildren, numCells, labelValue;
+
+        if (ghostLabel) PetscCall(DMLabelGetValue(ghostLabel, f, &ghost));
+        PetscCall(DMIsBoundaryPoint(dm, f, &boundary));
+        PetscCall(DMPlexGetTreeChildren(dm, f, &numChildren, nullptr));
+        if ((ghost >= 0) || boundary || numChildren) continue;
+
+        if (regionLabel) {
+            PetscCall(DMLabelGetValue(regionLabel, f, &labelValue));
+            if (labelValue != regionValue) continue;
+        }
+
+        PetscCall(DMPlexGetSupportSize(dm, f, &numCells));
+        if (numCells == 2) {
+            PetscCall(DMPlexGetSupport(dm, f, &fcells));
+            for (c = 0; c < 2; c++) {
+                PetscInt cell = fcells[c], off;
+
+                if (regionLabel) {
+                    PetscCall(DMLabelGetValue(regionLabel, c, &labelValue));
+                    if (labelValue != regionValue) continue;
+                }
+
+                if (cell >= cStart && cell < cEndInterior) {
+                    PetscCall(PetscSectionGetOffset(neighSec, cell, &off));
+                    off += counter[cell - cStart]++;
+                    neighbors[off][0] = f;
+                    neighbors[off][1] = fcells[1 - c];
+                }
+            }
+        }
+    }
+    PetscCall(PetscFree(counter));
+    PetscCall(PetscMalloc3(maxNumFaces * dim, &dx, maxNumFaces * dim, &grad, maxNumFaces, &gref));
+    for (c = cStart; c < cEndInterior; c++) {
+        PetscInt numFaces, d, off, labelValue, ghost = -1;
+        PetscFVCellGeom* cg;
+
+        PetscCall(DMPlexPointLocalRead(dmCell, c, cgeom, &cg));
+        PetscCall(PetscSectionGetDof(neighSec, c, &numFaces));
+        PetscCall(PetscSectionGetOffset(neighSec, c, &off));
+
+        if (regionLabel) {
+            PetscCall(DMLabelGetValue(regionLabel, c, &labelValue));
+            if (labelValue != regionValue) continue;
+        }
+
+        // do not attempt to compute a gradient reconstruction stencil in a ghost cell.  It will never be used
+        if (ghostLabel) PetscCall(DMLabelGetValue(ghostLabel, c, &ghost));
+        if (ghost >= 0) continue;
+
+        PetscCheck(!(numFaces < dim), PETSC_COMM_SELF, PETSC_ERR_ARG_INCOMP, "Cell %" PetscInt_FMT " has only %" PetscInt_FMT " faces, not enough for gradient reconstruction", c, numFaces);
+        for (f = 0; f < numFaces; ++f) {
+            PetscFVCellGeom* cg1;
+            PetscFVFaceGeom* fg;
+            const PetscInt* fcells;
+            PetscInt ncell, side, nface;
+
+            if (regionLabel) {
+                PetscCall(DMLabelGetValue(regionLabel, f, &labelValue));
+                if (labelValue != regionValue) continue;
+            }
+
+            nface = neighbors[off + f][0];
+            ncell = neighbors[off + f][1];
+            PetscCall(DMPlexGetSupport(dm, nface, &fcells));
+            side = (c != fcells[0]);
+            PetscCall(DMPlexPointLocalRef(dmFace, nface, fgeom, &fg));
+            PetscCall(DMPlexPointLocalRead(dmCell, ncell, cgeom, &cg1));
+            for (d = 0; d < dim; ++d) dx[f * dim + d] = cg1->centroid[d] - cg->centroid[d];
+            gref[f] = fg->grad[side]; /* Gradient reconstruction term will go here */
+        }
+        PetscCall(PetscFVComputeGradient(fvm, numFaces, dx, grad));
+        for (f = 0; f < numFaces; ++f) {
+            for (d = 0; d < dim; ++d) gref[f][d] = grad[f * dim + d];
+        }
+    }
+    PetscCall(PetscFree3(dx, grad, gref));
+    PetscCall(PetscSectionDestroy(&neighSec));
+    PetscCall(PetscFree(neighbors));
+    PetscFunctionReturn(0);
+}
+
+PetscErrorCode ablate::finiteVolume::CellInterpolant::ComputeGradientFVM(DM dm, DMLabel regionLabel, PetscInt regionValue, PetscFV fvm, Vec faceGeometry, Vec cellGeometry, DM* dmGrad) {
+    DM dmFace, dmCell;
+    PetscScalar *fgeom, *cgeom;
+    PetscSection sectionGrad, parentSection;
+    PetscInt dim, pdim, cStart, cEnd, cEndInterior, c;
+
+    PetscFunctionBegin;
+    PetscCall(DMGetDimension(dm, &dim));
+    PetscCall(PetscFVGetNumComponents(fvm, &pdim));
+    PetscCall(DMPlexGetHeightStratum(dm, 0, &cStart, &cEnd));
+    PetscCall(DMPlexGetCellTypeStratum(dm, DM_POLYTOPE_FV_GHOST, &cEndInterior, nullptr));
+    /* Construct the interpolant corresponding to each face from the least-square solution over the cell neighborhood */
+    PetscCall(VecGetDM(faceGeometry, &dmFace));
+    PetscCall(VecGetDM(cellGeometry, &dmCell));
+    PetscCall(VecGetArray(faceGeometry, &fgeom));
+    PetscCall(VecGetArray(cellGeometry, &cgeom));
+    PetscCall(DMPlexGetTree(dm, &parentSection, nullptr, nullptr, nullptr, nullptr));
+    if (!parentSection) {
+        PetscCall(BuildGradientReconstruction_Internal(dm, regionLabel, regionValue, fvm, dmFace, fgeom, dmCell, cgeom));
+    } else {
+        PetscCall(BuildGradientReconstruction_Internal_Tree(dm, regionLabel, regionValue, fvm, dmFace, fgeom, dmCell, cgeom));
+    }
+    PetscCall(VecRestoreArray(faceGeometry, &fgeom));
+    PetscCall(VecRestoreArray(cellGeometry, &cgeom));
+    /* Create storage for gradients */
+    PetscCall(DMClone(dm, dmGrad));
+    PetscCall(PetscSectionCreate(PetscObjectComm((PetscObject)dm), &sectionGrad));
+    PetscCall(PetscSectionSetChart(sectionGrad, cStart, cEnd));
+    for (c = cStart; c < cEnd; ++c) PetscCall(PetscSectionSetDof(sectionGrad, c, pdim * dim));
+    PetscCall(PetscSectionSetUp(sectionGrad));
+    PetscCall(DMSetLocalSection(*dmGrad, sectionGrad));
+    PetscCall(PetscSectionDestroy(&sectionGrad));
+    PetscFunctionReturn(0);
+}
 void ablate::finiteVolume::CellInterpolant::ProjectToFace(const std::vector<domain::Field>& fields, PetscDS ds, const PetscFVFaceGeom& faceGeom, PetscInt cellId, const PetscFVCellGeom& cellGeom,
                                                           DM dm, const PetscScalar* xArray, const std::vector<DM>& dmGrads, const std::vector<const PetscScalar*>& gradArrays, PetscScalar* u,
                                                           PetscScalar* grad, bool projectField) {
@@ -668,7 +923,6 @@ void ablate::finiteVolume::CellInterpolant::ProjectToFace(const std::vector<doma
             }
 
         } else if (dmGrads[field.subId]) {
-            // PetscPrintf(PETSC_COMM_WORLD, "Projecting to face %d\n", field.subId);
             // Project the cell centered value onto the face
             DMPlexPointLocalRead(dmGrads[field.subId], cellId, gradArrays[field.subId], &gradCell) >> utilities::PetscUtilities::checkError;
             // Project the cell centered value onto the face
@@ -682,7 +936,6 @@ void ablate::finiteVolume::CellInterpolant::ProjectToFace(const std::vector<doma
             }
 
         } else {
-            // PetscPrintf(PETSC_COMM_WORLD, "Not projecting to face %d\n", field.subId);
             // Just copy the cell centered value on to the face
             for (PetscInt c = 0; c < field.numberComponents; ++c) {
                 u[offsets[field.subId] + c] = xCell[c];
