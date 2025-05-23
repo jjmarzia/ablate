@@ -1,5 +1,6 @@
 target_sources(ablateLibrary
         PRIVATE
+        # auxFieldInterpolant.cpp 
         flowProcess.cpp
         navierStokesTransport.cpp
         speciesTransport.cpp
@@ -27,6 +28,7 @@ target_sources(ablateLibrary
 
         PUBLIC
         process.hpp
+        # auxFieldInterpolant.hpp 
         flowProcess.hpp
         navierStokesTransport.hpp
         speciesTransport.hpp

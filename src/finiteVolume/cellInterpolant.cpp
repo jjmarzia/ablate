@@ -5,6 +5,9 @@
 ablate::finiteVolume::CellInterpolant::CellInterpolant(std::shared_ptr<ablate::domain::SubDomain> subDomainIn, const std::shared_ptr<domain::Region>& solverRegion, Vec faceGeomVec, Vec cellGeomVec,
                                                        double maxGradIn)
     : subDomain(std::move(std::move(subDomainIn))), maxLimGrad(maxGradIn) {
+    // Initialize slope limiter
+    slopeLimiter = std::make_unique<SlopeLimiter>();
+    
     auto getGradientDm = [this, solverRegion, faceGeomVec, cellGeomVec](const domain::Field& fieldInfo, std::vector<DM>& gradDMs) {
         auto petscField = subDomain->GetPetscFieldObject(fieldInfo);
         auto petscFieldFV = (PetscFV)petscField;
@@ -161,6 +164,9 @@ void ablate::finiteVolume::CellInterpolant::ComputeRHS(PetscReal time, Vec locXV
         PetscDSGetTotalDimension(dsAux, &totDimAux) >> utilities::PetscUtilities::checkError;
         PetscDSGetNumFields(dsAux, &naf) >> utilities::PetscUtilities::checkError;
     }
+    if (!locAuxVec) {
+        PetscPrintf(PETSC_COMM_WORLD, "maxLimGrad = %g\n", maxLimGrad);
+    }
 
     // We can use a single call for the geometry data because it does not depend on the fv object
     const PetscScalar* cellGeomArray = nullptr;
@@ -279,58 +285,58 @@ void ablate::finiteVolume::CellInterpolant::ComputeRHS(PetscReal time, Vec locXV
 /**
  * This is a duplication of PETSC that we don't have access to
  */
-static PetscErrorCode DMPlexApplyLimiter_Internal(DM dm, DM dmCell, PetscLimiter lim, PetscInt dim, PetscInt dof, PetscInt cell, PetscInt field, PetscInt face, PetscInt fStart, PetscInt fEnd,
-                                                  PetscReal* cellPhi, const PetscScalar* x, const PetscScalar* cellgeom, const PetscFVCellGeom* cg, const PetscScalar* cx, const PetscScalar* cgrad) {
-    const PetscInt* children;
-    PetscInt numChildren;
+// static PetscErrorCode DMPlexApplyLimiter_Internal(DM dm, DM dmCell, PetscLimiter lim, PetscInt dim, PetscInt dof, PetscInt cell, PetscInt field, PetscInt face, PetscInt fStart, PetscInt fEnd,
+//                                                   PetscReal* cellPhi, const PetscScalar* x, const PetscScalar* cellgeom, const PetscFVCellGeom* cg, const PetscScalar* cx, const PetscScalar* cgrad) {
+//     const PetscInt* children;
+//     PetscInt numChildren;
 
-    PetscFunctionBegin;
-    PetscCall(DMPlexGetTreeChildren(dm, face, &numChildren, &children));
-    if (numChildren) {  // if the tree contains children
-        PetscInt c;
+//     PetscFunctionBegin;
+//     PetscCall(DMPlexGetTreeChildren(dm, face, &numChildren, &children));
+//     if (numChildren) {  // if the tree contains children
+//         PetscInt c;
 
-        for (c = 0; c < numChildren; c++) {
-            PetscInt childFace = children[c];
+//         for (c = 0; c < numChildren; c++) {
+//             PetscInt childFace = children[c];
 
-            if (childFace >= fStart && childFace < fEnd) {
-                PetscCall(DMPlexApplyLimiter_Internal(dm, dmCell, lim, dim, dof, cell, field, childFace, fStart, fEnd, cellPhi, x, cellgeom, cg, cx, cgrad));
-            }
-        }
-    } else {                     // if the tree doesn't contain children
-        PetscScalar* ncx;        // neighbor cell centered values
-        PetscFVCellGeom* ncg;    // neighbor cell geometry
-        const PetscInt* fcells;  // cells attached to this face
-        PetscInt ncell, d;       // neighbor cell and for loop index
-        PetscReal v[3];          // centr
+//             if (childFace >= fStart && childFace < fEnd) {
+//                 PetscCall(DMPlexApplyLimiter_Internal(dm, dmCell, lim, dim, dof, cell, field, childFace, fStart, fEnd, cellPhi, x, cellgeom, cg, cx, cgrad));
+//             }
+//         }
+//     } else {                     // if the tree doesn't contain children
+//         PetscScalar* ncx;        // neighbor cell centered values
+//         PetscFVCellGeom* ncg;    // neighbor cell geometry
+//         const PetscInt* fcells;  // cells attached to this face
+//         PetscInt ncell, d;       // neighbor cell and for loop index
+//         PetscReal v[3];          // centr
 
-        PetscCall(DMPlexGetSupport(dm, face, &fcells));
-        ncell = cell == fcells[0] ? fcells[1] : fcells[0];  // figure out which cell is the neighbor and not this cell
-        // Read in the neighbor cell information
-        if (field >= 0) {
-            PetscCall(DMPlexPointLocalFieldRead(dm, ncell, field, x, &ncx));
-        } else {
-            PetscCall(DMPlexPointLocalRead(dm, ncell, x, &ncx));
-        }
-        PetscCall(DMPlexPointLocalRead(dmCell, ncell, cellgeom, &ncg));
-        // Calculate the distance between the neighbor cell and this cell
-        DMPlex_WaxpyD_Internal(dim, -1, cg->centroid, ncg->centroid, v);  // v_i = NeighborCentroid_i - ThisCentroid_i = dx_i
-        for (d = 0; d < dof; ++d) {
-            /* We use the symmetric slope limited form of Berger, Aftosmis, and Murman 2005 */
-            PetscReal denom = DMPlex_DotD_Internal(dim, &cgrad[d * dim], v);    // denominator = \grad u \cdot dx
-            PetscReal phi, flim = 0.5 * PetscRealPart(ncx[d] - cx[d]) / denom;  // f = 1/2 * (u_i+1-u_i)/(\Delta u from cell gradient dot with \delta x)
-            // What the above means is that if any cell face has no change, but there was ample enough change close to it such that
-            //  the cell gradient dot with delta x is not 0, there is no limiting... i.e f = 0 and all limiters = 0
-            PetscCall(PetscLimiterLimit(lim, flim, &phi));
-            cellPhi[d] = PetscMin(cellPhi[d], phi);
-        }
-    }
-    PetscFunctionReturn(0);
-}
+//         PetscCall(DMPlexGetSupport(dm, face, &fcells));
+//         ncell = cell == fcells[0] ? fcells[1] : fcells[0];  // figure out which cell is the neighbor and not this cell
+//         // Read in the neighbor cell information
+//         if (field >= 0) {
+//             PetscCall(DMPlexPointLocalFieldRead(dm, ncell, field, x, &ncx));
+//         } else {
+//             PetscCall(DMPlexPointLocalRead(dm, ncell, x, &ncx));
+//         }
+//         PetscCall(DMPlexPointLocalRead(dmCell, ncell, cellgeom, &ncg));
+//         // Calculate the distance between the neighbor cell and this cell
+//         DMPlex_WaxpyD_Internal(dim, -1, cg->centroid, ncg->centroid, v);  // v_i = NeighborCentroid_i - ThisCentroid_i = dx_i
+//         for (d = 0; d < dof; ++d) {
+//             /* We use the symmetric slope limited form of Berger, Aftosmis, and Murman 2005 */
+//             PetscReal denom = DMPlex_DotD_Internal(dim, &cgrad[d * dim], v);    // denominator = \grad u \cdot dx
+//             PetscReal phi, flim = 0.5 * PetscRealPart(ncx[d] - cx[d]) / denom;  // f = 1/2 * (u_i+1-u_i)/(\Delta u from cell gradient dot with \delta x)
+//             // What the above means is that if any cell face has no change, but there was ample enough change close to it such that
+//             //  the cell gradient dot with delta x is not 0, there is no limiting... i.e f = 0 and all limiters = 0
+//             PetscCall(PetscLimiterLimit(lim, flim, &phi));
+//             cellPhi[d] = PetscMin(cellPhi[d], phi);
+//         }
+//     }
+//     PetscFunctionReturn(0);
+// }
 
 void ablate::finiteVolume::CellInterpolant::ComputeFieldGradients(const domain::Field& field, Vec xLocalVec, Vec& gradLocVec, DM& dmGrad, Vec cellGeomVec, Vec faceGeomVec,
                                                                   const ablate::domain::Range& faceRange, const ablate::domain::Range& cellRange) {
     // get the FVM petsc field associated with this field
-    auto fvm = (PetscFV)subDomain->GetPetscFieldObject(field);
+    // auto fvm = (PetscFV)subDomain->GetPetscFieldObject(field);
     auto dm = subDomain->GetFieldDM(field);
 
     // Get the dm for this grad field
@@ -369,6 +375,12 @@ void ablate::finiteVolume::CellInterpolant::ComputeFieldGradients(const domain::
     PetscInt dim = subDomain->GetDimensions();
     PetscInt dof = field.numberComponents;
 
+    // Setup slope limiter if not already done
+    if (!slopeLimiter->IsSetup()) {
+        slopeLimiter->Setup(dm, cellRange);
+    }
+
+    // Compute initial gradients using least squares
     for (PetscInt f = faceRange.start; f < faceRange.end; ++f) {
         PetscInt face = faceRange.points ? faceRange.points[f] : f;
 
@@ -412,79 +424,9 @@ void ablate::finiteVolume::CellInterpolant::ComputeFieldGradients(const domain::
         }
     }
 
-    // Check for a limiter the limiter
-    PetscLimiter lim;
-    PetscFVGetLimiter(fvm, &lim) >> utilities::PetscUtilities::checkError;
-    if (lim) {
-        /* Limit interior gradients (using cell-based loop because it generalizes better to vector limiters) */
-        // Get the cell geometry
-        DM dmCell;
-        const PetscScalar* cellGeometryArray;
-        VecGetDM(cellGeomVec, &dmCell) >> utilities::PetscUtilities::checkError;
-        VecGetArrayRead(cellGeomVec, &cellGeometryArray);
+    // Apply slope limiting to the gradients
+    slopeLimiter->ApplyLimiter(dm, dim, field, cellRange, xLocalArray, gradGlobArray);
 
-        // create a temp work array
-        PetscReal* cellPhi;                                                                     // Actual Limiter
-        DMGetWorkArray(dm, dof, MPIU_REAL, &cellPhi) >> utilities::PetscUtilities::checkError;  // Size it up to be dof length of reals
-
-        for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-            PetscInt cell = cellRange.points ? cellRange.points[c] : c;
-
-            const PetscInt* cellFaces;  // faces belonging to the cell
-            PetscScalar* cx;            // cell solution/field values
-            PetscFVCellGeom* cg;        // cell geometry
-            PetscScalar* cgrad;         // cell gradient
-            PetscInt coneSize;          // cell conectivity
-
-            DMPlexGetConeSize(dm, cell, &coneSize) >> utilities::PetscUtilities::checkError;
-            DMPlexGetCone(dm, cell, &cellFaces) >> utilities::PetscUtilities::checkError;
-            DMPlexPointLocalFieldRead(dm, cell, field.id, xLocalArray, &cx) >> utilities::PetscUtilities::checkError;
-            DMPlexPointLocalRead(dmCell, cell, cellGeometryArray, &cg) >> utilities::PetscUtilities::checkError;
-            DMPlexPointGlobalRef(dmGrad, cell, gradGlobArray, &cgrad) >> utilities::PetscUtilities::checkError;
-
-            if (!cgrad) {
-                /* Unowned overlap cell, we do not compute */
-                continue;
-            }
-            /* Limiter will be minimum value over all neighbors */
-            for (PetscInt d = 0; d < dof; ++d) {
-                cellPhi[d] = PETSC_MAX_REAL;
-            }
-            for (PetscInt f = 0; f < coneSize; ++f) {
-                DMPlexApplyLimiter_Internal(dm, dmCell, lim, dim, dof, cell, field.id, cellFaces[f], faceRange.start, faceRange.end, cellPhi, xLocalArray, cellGeometryArray, cg, cx, cgrad) >>
-                    utilities::PetscUtilities::checkError;
-            }
-
-            /* Apply limiter to gradient */
-            PetscBool cancel = PETSC_FALSE;
-            for (PetscInt pd = 0; pd < dof; ++pd) {
-                if (cellPhi[pd] == 0) {
-                    for (PetscInt d = 0; d < dim; d++) {
-                        // Due to directional limiting being difficult in unstructured grids,
-                        // a strict gradient limiter is introduced here to revert back to cell centered
-                        // reconstructions if a component limiter is 0 even though there is a strong
-                        // component gradient in a direction (Usually happens at strong shocks seen in
-                        // high pressured rocket simulations)
-                        if (PetscAbsReal(cgrad[pd * dim + d]) > maxLimGrad) cancel = PETSC_TRUE;
-                    }
-                }
-            }
-
-            for (PetscInt pd = 0; pd < dof; ++pd) {
-                /* Scalar limiter applied to each component separately */
-                for (PetscInt d = 0; d < dim; ++d) {
-                    if (cancel)
-                        cgrad[pd * dim + d] *= 0;
-                    else
-                        cgrad[pd * dim + d] *= cellPhi[pd];
-                }
-            }
-        }
-
-        // clean up the limiter work
-        DMRestoreWorkArray(dm, dof, MPIU_REAL, &cellPhi) >> utilities::PetscUtilities::checkError;
-        VecRestoreArrayRead(cellGeomVec, &cellGeometryArray);
-    }
     // Communicate gradient values
     VecRestoreArray(gradGlobVec, &gradGlobArray) >> utilities::PetscUtilities::checkError;
     DMGlobalToLocalBegin(dmGrad, gradGlobVec, INSERT_VALUES, gradLocVec) >> utilities::PetscUtilities::checkError;

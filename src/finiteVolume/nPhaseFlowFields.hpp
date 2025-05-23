@@ -60,7 +60,11 @@ class NPhaseFlowFields : public domain::FieldDescriptor {
     const std::shared_ptr<eos::EOS> eos;
     const std::shared_ptr<domain::Region> region;
     const std::shared_ptr<parameters::Parameters> conservedFieldOptions;
-    const std::shared_ptr<parameters::Parameters> auxFieldOptions = ablate::parameters::MapParameters::Create({{"petscfv_type", "leastsquares"}, {"petsclimiter_type", "none"}});
+    const std::shared_ptr<parameters::Parameters> auxFieldOptions = ablate::parameters::MapParameters::Create({
+        {"petscfv_type", "leastsquares"}, 
+        {"petsclimiter_type", "none"},
+        {"petscfv_compute_gradients", "false"}
+    });
 
    public:
     /**

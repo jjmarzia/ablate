@@ -1,5 +1,5 @@
 environment:
-  title: nphase-sod-water-air
+  title: nphase-gradient-test
   tagDirectory: true
 
 arguments:
@@ -10,16 +10,13 @@ timestepper:
   name: theMainTimeStepper
   arguments:
     ts_type: euler
-    ts_max_time: 2.5e-4
+    ts_max_time: 1e-7  # Shorter time for testing
     ts_dt: 1e-7
     ts_adapt_type: none
 
-#  io: !<!ablate::io::Hdf5MultiFileSerializer>
-#    interval: !<!ablate::io::interval::FixedInterval> 1
-
   domain: !<!ablate::domain::BoxMesh> &1
     name: testMesh
-    faces: [100]
+    faces: [100]  # 100 cells for good resolution
     lower: [0.0]
     upper: [1.0]
     boundary: [NONE]
@@ -47,7 +44,7 @@ timestepper:
           petscfv_compute_gradients: true
       - name: p
         location: AUX
-        type: FVM  
+        type: FVM
       - name: rhok
         location: AUX
         type: FVM
@@ -75,30 +72,26 @@ timestepper:
   initialization:
     - fieldName: allaire
       field: !<!ablate::mathFunctions::Formula> &allaireInit
-        formula: "rho1*(eps1 + u*u/2)*(interface) + rho2*(eps2 + u*u/2)*(1-interface), 0"
+        # Linear function with slope 1: x + base_value
+        formula: "x + base_value, 0"
         constants: &constants
-          rho1: 1000
-          rho2: 10
-          eps2: 25000
-          eps1: 1070588.23529411764705882352941176470588235
-          u: 0
-        nested:
-          interface: !<!ablate::mathFunctions::Formula> &interface
-            formula: "x - 0.75 < 0 ? 1 : 0"
+          base_value: 1000  # Base value for energy
     - fieldName: alphakrhok
       field: !<!ablate::mathFunctions::Formula> &alphakrhokInit
-        formula: "rho1*(interface), rho2*(1-interface)"
+        # Linear functions with slope 1 for each phase
+        formula: "x + rho1_base, x + rho2_base"
         constants: *constants
         nested:
-          interface: *interface
+          rho1_base: 1000  # Base density for phase 1
+          rho2_base: 10    # Base density for phase 2
     - fieldName: alphak
       field: !<!ablate::mathFunctions::Formula> &alphakInit
-        formula: "interface, (1-interface)"
-        nested:
-          interface: *interface
+        # Linear functions with slope 1 for volume fractions
+        # Note: These are scaled to ensure they sum to 1
+        formula: "0.5 + 0.4*x, 0.5 - 0.4*x"  # Sum is always 1, gradients are 0.4 and -0.4
 
 solver: !<!ablate::finiteVolume::FiniteVolumeSolver>
-  id: nPhase Problem
+  id: nPhase Gradient Test
   processes:
     - !<!ablate::finiteVolume::processes::NPhaseAllaireAdvection>
       eos: *eos
@@ -131,4 +124,4 @@ solver: !<!ablate::finiteVolume::FiniteVolumeSolver>
     - !<!ablate::monitors::TimeStepMonitor>
       interval: 1
     - !<!ablate::monitors::CurveMonitor>
-      interval: 100
+      interval: 1 

@@ -32,7 +32,11 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
             domain::FieldLocation::SOL,
             domain::FieldType::FVM,
             region,
-            conservedFieldOptions),
+            ablate::parameters::MapParameters::Create({
+        {"petscfv_type", "leastsquares"}, 
+        {"petsclimiter_type", "none"},
+        {"petscfv_compute_gradients", "false"}
+    })),
 
         //register alphakrhok, alphak
         std::make_shared<domain::FieldDescription>(
@@ -41,7 +45,11 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
             domain::FieldLocation::SOL,
             domain::FieldType::FVM,
             region,
-            conservedFieldOptions),
+            ablate::parameters::MapParameters::Create({
+        {"petscfv_type", "leastsquares"}, 
+        {"petsclimiter_type", "none"},
+        {"petscfv_compute_gradients", "false"}
+    })),
 
         std::make_shared<domain::FieldDescription>(
             ALPHAK, ALPHAK,
@@ -49,7 +57,11 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
             domain::FieldLocation::SOL,
             domain::FieldType::FVM,
             region,
-            conservedFieldOptions),
+            ablate::parameters::MapParameters::Create({
+        {"petscfv_type", "leastsquares"}, 
+        {"petsclimiter_type", "none"},
+        {"petscfv_compute_gradients", "true"}
+    })),
 
         //do tk, p, rho, rhok, e, ek
         // std::make_shared<domain::FieldDescription>(

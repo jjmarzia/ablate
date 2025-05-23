@@ -6,6 +6,7 @@
 #include "domain/range.hpp"
 #include "domain/region.hpp"
 #include "domain/subDomain.hpp"
+#include "slopeLimiter.hpp"
 namespace ablate::finiteVolume {
 
 class CellInterpolant {
@@ -51,12 +52,10 @@ class CellInterpolant {
     std::vector<DM> gradientCellDms;
 
     // Maximum value for gradients for the multi-direction flux limiter
-    const double maxLimGrad;
+    const double maxLimGrad = 1.0;
 
-    /**
-     * Function to compute the gradient FVM
-     */
-    static PetscErrorCode ComputeGradientFVM(DM dm, DMLabel regionLabel, PetscInt regionValue, PetscFV fvm, Vec faceGeometry, Vec cellGeometry, DM* dmGrad);
+    // Slope limiter for gradient computation
+    std::unique_ptr<SlopeLimiter> slopeLimiter;
 
     /**
      * Function to compute the flux source terms
@@ -85,6 +84,19 @@ class CellInterpolant {
      */
     void ComputeFieldGradients(const domain::Field& field, Vec xLocalVec, Vec& gradLocVec, DM& dmGrad, Vec cellGeomVec, Vec faceGeomVec, const ablate::domain::Range& faceRange,
                                const ablate::domain::Range& cellRange);
+
+    /**
+     * Helper function to compute the gradient at each cell
+     * @param dm
+     * @param regionLabel
+     * @param regionValue
+     * @param fvm
+     * @param faceGeometry
+     * @param cellGeometry
+     * @param dmGrad
+     * @return
+     */
+    static PetscErrorCode ComputeGradientFVM(DM dm, DMLabel regionLabel, PetscInt regionValue, PetscFV fvm, Vec faceGeometry, Vec cellGeometry, DM* dmGrad);
 
    public:
     /**

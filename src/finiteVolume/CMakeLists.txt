@@ -8,6 +8,7 @@ target_sources(ablateLibrary
         cellInterpolant.cpp
         turbulenceFlowFields.cpp
         extraVariable.cpp
+        slopeLimiter.cpp
 
         PUBLIC
         finiteVolumeSolver.hpp
@@ -18,6 +19,7 @@ target_sources(ablateLibrary
         cellInterpolant.hpp
         turbulenceFlowFields.hpp
         extraVariable.hpp
+        slopeLimiter.hpp
         )
 
 add_subdirectory(boundaryConditions)
