@@ -11,21 +11,39 @@ namespace ablate::finiteVolume {
 
 class SlopeLimiter {
    private:
-    // Helper function to compute Superbee limiter
-    static PetscReal SuperbeeLimiter(PetscReal r);
+    //! store the dmGrad, these are specific to this finite volume solver
+    std::vector<DM> gradientCellDms;
 
-    // Storage for mesh connectivity
-    std::vector<std::vector<PetscInt>> cellToFaces;  // For each cell, list of its faces
-    std::unordered_map<PetscInt, std::vector<PetscInt>> faceToCells;  // For each face, list of its cells (should always be 2)
-    std::vector<PetscInt> cellBoundaryDistance;  // Store distance to boundary for each cell
+    //! store the cell geometry vector
+    Vec cellGeomVec = nullptr;
+
+    //! store the face geometry vector
+    Vec faceGeomVec = nullptr;
+
+    //! store the cell to face connectivity
+    std::vector<std::vector<PetscInt>> cellToFaces;
+
+    //! store the face to cell connectivity
+    std::unordered_map<PetscInt, std::vector<PetscInt>> faceToCells;
+
+    //! store the cell centers
+    std::vector<PetscReal> cellCenters;
+
+    //! store the face centers
+    std::vector<PetscReal> faceCenters;
+
+    //! flag to indicate if we are in 1D mode
+    bool is1D = false;
+
+    //! flag to indicate if we are set up
     bool isSetup = false;
-    PetscInt maxBoundaryDistance = 5;  // Maximum distance from boundary to apply limiting
 
-    void ComputeBoundaryDistances(DM dm, const domain::Range& cellRange);
+    // Store minimum cell radius for 1D calculations
+    PetscReal minCellRadius = 0.0;
 
    public:
     SlopeLimiter() = default;
-    ~SlopeLimiter() = default;
+    ~SlopeLimiter();
 
     // Check if the limiter has been set up
     bool IsSetup() const { return isSetup; }
@@ -37,22 +55,7 @@ class SlopeLimiter {
     PetscInt GetNeighborCell(PetscInt cell, PetscInt face) const;
 
     /**
-     * Compute the ratio of consecutive differences for slope limiting
-     * @param dm The mesh DM
-     * @param dim The dimension
-     * @param cell The current cell
-     * @param face The face to compute ratio for
-     * @param field The field being limited
-     * @param cellValues The cell values array
-     * @param gradients The gradients array
-     * @param component The component to compute ratio for
-     * @return The ratio for limiting
-     */
-    PetscReal ComputeRatio(DM dm, PetscInt dim, PetscInt cell, PetscInt face, const domain::Field& field,
-                          const PetscScalar* cellValues, const PetscScalar* gradients, PetscInt component) const;
-
-    /**
-     * Apply the slope limiter to the gradients
+     * Apply the Barth-Jespersen slope limiter to the gradients
      * @param dm The DM object
      * @param dim The dimension of the problem
      * @param field The field being limited
@@ -63,8 +66,19 @@ class SlopeLimiter {
     void ApplyLimiter(DM dm, PetscInt dim, const domain::Field& field, const domain::Range& cellRange,
                      const PetscScalar* cellValues, PetscScalar* gradients);
 
-    // Set the maximum distance from boundary to apply limiting
-    void SetMaxBoundaryDistance(PetscInt distance) { maxBoundaryDistance = distance; }
+    /**
+     * For 1D cases, compute the vector from cell center to face center
+     * @param cell The cell index
+     * @param face The face index
+     * @return The vector from cell center to face center
+     */
+    PetscReal GetCellToFaceVector1D(PetscInt cell, PetscInt face) const;
+
+    /**
+     * Get min/max values from neighbors in 1D
+     */
+    void GetNeighborMinMax1D(PetscInt cell, const PetscScalar* cellValues, const domain::Field& field,
+                           PetscInt component, PetscReal& minVal, PetscReal& maxVal, PetscInt totalComponents) const;
 };
 
 }  // namespace ablate::finiteVolume 

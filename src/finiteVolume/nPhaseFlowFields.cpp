@@ -35,7 +35,7 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
             ablate::parameters::MapParameters::Create({
         {"petscfv_type", "leastsquares"}, 
         {"petsclimiter_type", "none"},
-        {"petscfv_compute_gradients", "false"}
+        {"petscfv_compute_gradients", "true"}
     })),
 
         //register alphakrhok, alphak
@@ -48,7 +48,7 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
             ablate::parameters::MapParameters::Create({
         {"petscfv_type", "leastsquares"}, 
         {"petsclimiter_type", "none"},
-        {"petscfv_compute_gradients", "false"}
+        {"petscfv_compute_gradients", "true"}
     })),
 
         std::make_shared<domain::FieldDescription>(

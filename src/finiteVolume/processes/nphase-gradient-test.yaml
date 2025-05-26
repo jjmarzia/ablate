@@ -10,85 +10,78 @@ timestepper:
   name: theMainTimeStepper
   arguments:
     ts_type: euler
-    ts_max_time: 1e-7  # Shorter time for testing
+    ts_max_time: 1e-7
     ts_dt: 1e-7
     ts_adapt_type: none
 
-  domain: !<!ablate::domain::BoxMesh> &1
-    name: testMesh
-    faces: [100]  # 100 cells for good resolution
-    lower: [0.0]
-    upper: [1.0]
-    boundary: [NONE]
-    modifiers:
-      - !<!ablate::domain::modifiers::DistributeWithGhostCells>
-        ghostCellDepth: 2
-      - !<!ablate::domain::modifiers::GhostBoundaryCells>
-        labelName: ""
-    fields:
-      - !<!ablate::finiteVolume::NPhaseFlowFields>
-        eos: !<!ablate::eos::NPhase> &eos
-          eosk:
-            - !<!ablate::eos::KthStiffenedGas>
-              parameters:
-                gamma: 4.4
-                Cp: 4186.0
-                p0: 6e8
-            - !<!ablate::eos::KthStiffenedGas>
-              parameters:
-                gamma: 1.4
-                Cp: 1004.5
-                p0: 0.0
-        conservedFieldOptions:
-          petscfv_type: leastsquares
-          petscfv_compute_gradients: true
-      - name: p
-        location: AUX
-        type: FVM
-      - name: rhok
-        location: AUX
-        type: FVM
-        components: [rhok0, rhok1]
-      - name: tk
-        location: AUX
-        type: FVM
-        components: [tk0, tk1]
-      - name: epsilonk
-        location: AUX
-        type: FVM
-        components: [epsilonk0, epsilonk1]
-      - name: rho
-        location: AUX
-        type: FVM
-      - name: sosk
-        location: AUX
-        type: FVM
-        components: [sosk0, sosk1]
-      - name: debug
-        location: AUX
-        type: FVM
-        components: [debug0, debug1]
+domain: !<!ablate::domain::BoxMesh> &1
+  name: testMesh
+  faces: [101]
+  lower: [0.0]
+  upper: [1.0]
+  boundary: [NONE]
+  modifiers:
+    - !<!ablate::domain::modifiers::DistributeWithGhostCells>
+      ghostCellDepth: 2
+    - !<!ablate::domain::modifiers::GhostBoundaryCells>
+      labelName: ""
+  fields:
+    - !<!ablate::finiteVolume::NPhaseFlowFields>
+      eos: !<!ablate::eos::NPhase> &eos
+        eosk:
+          - !<!ablate::eos::KthStiffenedGas>
+            parameters:
+              gamma: 1.4
+              Cp: 1004.5
+              p0: 0.0
+      conservedFieldOptions:
+        petscfv_type: leastsquares
+        petscfv_compute_gradients: true
+    - name: p
+      location: AUX
+      type: FVM
+    - name: rhok
+      location: AUX
+      type: FVM
+      components: [rhok0]
+    - name: tk
+      location: AUX
+      type: FVM
+      components: [tk0]
+    - name: epsilonk
+      location: AUX
+      type: FVM
+      components: [epsilonk0]
+    - name: rho
+      location: AUX
+      type: FVM
+    - name: sosk
+      location: AUX
+      type: FVM
+      components: [sosk0]
+    - name: debug
+      location: AUX
+      type: FVM
+      components: [debug0]
 
-  initialization:
-    - fieldName: allaire
-      field: !<!ablate::mathFunctions::Formula> &allaireInit
-        # Linear function with slope 1: x + base_value
-        formula: "x + base_value, 0"
-        constants: &constants
-          base_value: 1000  # Base value for energy
-    - fieldName: alphakrhok
-      field: !<!ablate::mathFunctions::Formula> &alphakrhokInit
-        # Linear functions with slope 1 for each phase
-        formula: "x + rho1_base, x + rho2_base"
-        constants: *constants
-        nested:
-          rho1_base: 1000  # Base density for phase 1
-          rho2_base: 10    # Base density for phase 2
-    - fieldName: alphak
-      field: !<!ablate::mathFunctions::Formula> &alphakInit
-        # Linear functions with slope 1 for volume fractions
-        # Note: These are scaled to ensure they sum to 1
-        formula: "0.5 + 0.4*x, 0.5 - 0.4*x"  # Sum is always 1, gradients are 0.4 and -0.4
+initialization:
+  - fieldName: allaire
+    field: !<!ablate::mathFunctions::Formula> &allaireInit
+      formula: "1000, 0"  # Constant energy
+  - fieldName: alphakrhok
+    field: !<!ablate::mathFunctions::Formula> &alphakrhokInit
+      # Creates a step function using min/max: 1 for x < 0.49, 100 for 0.49 <= x <= 0.51, 101 for x > 0.51
+      formula: "1*cond0 + 100*cond1 + 101*cond2"
+      nested:
+        cond1: !<!ablate::mathFunctions::Formula>
+          formula: "x > 0.49 && x < 0.51 ? 1 : 0"
+        cond2: !<!ablate::mathFunctions::Formula>
+          formula: "x > 0.51 ? 1 : 0"
+        cond0: !<!ablate::mathFunctions::Formula>
+          formula: "x < 0.49 ? 1 : 0"
+  - fieldName: alphak
+    field: !<!ablate::mathFunctions::Formula> &alphakInit
+      formula: "1"  # Constant volume fraction of 1
 
 solver: !<!ablate::finiteVolume::FiniteVolumeSolver>
   id: nPhase Gradient Test
