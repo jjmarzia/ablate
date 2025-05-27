@@ -16,22 +16,22 @@ void SlopeLimiter::Setup(DM dm, const domain::Range& cellRange) {
     DMPlexGetHeightStratum(dm, 0, &cStart, &cEnd) >> utilities::PetscUtilities::checkError;
     DMPlexGetHeightStratum(dm, 1, &fStart, &fEnd) >> utilities::PetscUtilities::checkError;
     
-    //PetscPrintf(PETSC_COMM_WORLD, "SlopeLimiter Setup:\n");
-    //PetscPrintf(PETSC_COMM_WORLD, "  Dimension: %d\n", dim);
-    //PetscPrintf(PETSC_COMM_WORLD, "  Cell range: %d to %d\n", cStart, cEnd);
-    //PetscPrintf(PETSC_COMM_WORLD, "  Face range: %d to %d\n", fStart, fEnd);
-    //PetscPrintf(PETSC_COMM_WORLD, "  CellRange: %d to %d\n", cellRange.start, cellRange.end);
+    ////PetscPrintf(PETSC_COMM_WORLD, "SlopeLimiter Setup:\n");
+    ////PetscPrintf(PETSC_COMM_WORLD, "  Dimension: %d\n", dim);
+    ////PetscPrintf(PETSC_COMM_WORLD, "  Cell range: %d to %d\n", cStart, cEnd);
+    ////PetscPrintf(PETSC_COMM_WORLD, "  Face range: %d to %d\n", fStart, fEnd);
+    ////PetscPrintf(PETSC_COMM_WORLD, "  CellRange: %d to %d\n", cellRange.start, cellRange.end);
     if (cellRange.points) {
-        //PetscPrintf(PETSC_COMM_WORLD, "  Using custom cell points\n");
+        ////PetscPrintf(PETSC_COMM_WORLD, "  Using custom cell points\n");
     }
 
     // Check if we're in 1D
     is1D = (dim == 1);
-    //PetscPrintf(PETSC_COMM_WORLD, "  Is 1D: %s\n", is1D ? "true" : "false");
+    ////PetscPrintf(PETSC_COMM_WORLD, "  Is 1D: %s\n", is1D ? "true" : "false");
 
     // Resize cellToFaces to hold faces for each cell
     cellToFaces.resize(cEnd - cStart);
-    //PetscPrintf(PETSC_COMM_WORLD, "  Resized cellToFaces to %d cells\n", cEnd - cStart);
+    ////PetscPrintf(PETSC_COMM_WORLD, "  Resized cellToFaces to %d cells\n", cEnd - cStart);
 
     // Get minimum cell radius for 1D calculations
     DMPlexGetMinRadius(dm, &minCellRadius) >> utilities::PetscUtilities::checkError;
@@ -40,28 +40,28 @@ void SlopeLimiter::Setup(DM dm, const domain::Range& cellRange) {
     if (is1D) {
         cellCenters.resize(cEnd - cStart);
         faceCenters.resize(fEnd - fStart);
-        //PetscPrintf(PETSC_COMM_WORLD, "  Resized cellCenters to %d cells\n", cEnd - cStart);
-        //PetscPrintf(PETSC_COMM_WORLD, "  Resized faceCenters to %d faces\n", fEnd - fStart);
+        ////PetscPrintf(PETSC_COMM_WORLD, "  Resized cellCenters to %d cells\n", cEnd - cStart);
+        ////PetscPrintf(PETSC_COMM_WORLD, "  Resized faceCenters to %d faces\n", fEnd - fStart);
 
         // Get cell geometry
         DM cellDM;
         // Get the cell DM directly from the input DM
         cellDM = dm;
-        //PetscPrintf(PETSC_COMM_WORLD, "using input dm as cell dm\n");
+        ////PetscPrintf(PETSC_COMM_WORLD, "using input dm as cell dm\n");
         
         // Check if cellDM is valid
         if (!cellDM) {
-            //PetscPrintf(PETSC_COMM_WORLD, "ERROR: cellDM is NULL\n");
+            ////PetscPrintf(PETSC_COMM_WORLD, "ERROR: cellDM is NULL\n");
             return;
         }
         
         // Compute the cell geometry vector
         DMPlexComputeGeometryFVM(cellDM, &this->cellGeomVec, &this->faceGeomVec) >> utilities::PetscUtilities::checkError;
-        //PetscPrintf(PETSC_COMM_WORLD, "dmplexcomputedgeometryfvm\n");
+        ////PetscPrintf(PETSC_COMM_WORLD, "dmplexcomputedgeometryfvm\n");
         
         // Check if cellGeomVec is valid
         if (!this->cellGeomVec) {
-            //PetscPrintf(PETSC_COMM_WORLD, "ERROR: cellGeomVec is NULL\n");
+            ////PetscPrintf(PETSC_COMM_WORLD, "ERROR: cellGeomVec is NULL\n");
             return;
         }
         
@@ -69,24 +69,24 @@ void SlopeLimiter::Setup(DM dm, const domain::Range& cellRange) {
         PetscInt vecSize, localSize;
         VecGetSize(this->cellGeomVec, &vecSize) >> utilities::PetscUtilities::checkError;
         VecGetLocalSize(this->cellGeomVec, &localSize) >> utilities::PetscUtilities::checkError;
-        //PetscPrintf(PETSC_COMM_WORLD, "cellGeomVec info - global size: %d, local size: %d\n", vecSize, localSize);
+        ////PetscPrintf(PETSC_COMM_WORLD, "cellGeomVec info - global size: %d, local size: %d\n", vecSize, localSize);
         
         const PetscScalar* cellGeomArray;
         const PetscScalar* faceGeomArray;
-        //PetscPrintf(PETSC_COMM_WORLD, "vecgetarrayread\n");
+        ////PetscPrintf(PETSC_COMM_WORLD, "vecgetarrayread\n");
         VecGetArrayRead(this->cellGeomVec, &cellGeomArray) >> utilities::PetscUtilities::checkError;
         VecGetArrayRead(this->faceGeomVec, &faceGeomArray) >> utilities::PetscUtilities::checkError;
-        //PetscPrintf(PETSC_COMM_WORLD, "vecgetarrayread complete\n");
+        ////PetscPrintf(PETSC_COMM_WORLD, "vecgetarrayread complete\n");
 
         // Get the cell and face ranges
-        //PetscPrintf(PETSC_COMM_WORLD, "cell range: %d to %d, face range: %d to %d\n", cStart, cEnd, fStart, fEnd);
+        ////PetscPrintf(PETSC_COMM_WORLD, "cell range: %d to %d, face range: %d to %d\n", cStart, cEnd, fStart, fEnd);
 
         // Get the cell centers and face centers
         for (PetscInt c = cStart; c < cEnd; c++) {
             const PetscFVCellGeom* cg;
             DMPlexPointLocalRead(cellDM, c, cellGeomArray, &cg) >> utilities::PetscUtilities::checkError;
             if (!cg) {
-                //PetscPrintf(PETSC_COMM_WORLD, "WARNING: No geometry data for cell %d\n", c);
+                ////PetscPrintf(PETSC_COMM_WORLD, "WARNING: No geometry data for cell %d\n", c);
                 continue;
             }
             if (is1D) {
@@ -98,12 +98,12 @@ void SlopeLimiter::Setup(DM dm, const domain::Range& cellRange) {
             const PetscFVFaceGeom* fg;
             DMPlexPointLocalRead(dm, f, faceGeomArray, &fg) >> utilities::PetscUtilities::checkError;
             if (!fg) {
-                PetscPrintf(PETSC_COMM_WORLD, "WARNING: No geometry data for face %d\n", f);
+                // //PetscPrintf(PETSC_COMM_WORLD, "WARNING: No geometry data for face %d\n", f);
                 continue;
             }
             if (is1D) {
                 if (!fg) {
-                    PetscPrintf(PETSC_COMM_WORLD, "WARNING: No geometry data for face %d\n", f);
+                    // //PetscPrintf(PETSC_COMM_WORLD, "WARNING: No geometry data for face %d\n", f);
                     continue;
                 }
                 else{
@@ -118,7 +118,7 @@ void SlopeLimiter::Setup(DM dm, const domain::Range& cellRange) {
             const PetscInt* faceCells;
             DMPlexGetSupport(dm, f, &faceCells) >> utilities::PetscUtilities::checkError;
             if (!faceCells) {
-                //PetscPrintf(PETSC_COMM_WORLD, "WARNING: No support for face %d\n", f);
+                ////PetscPrintf(PETSC_COMM_WORLD, "WARNING: No support for face %d\n", f);
                 continue;
             }
 
@@ -134,7 +134,7 @@ void SlopeLimiter::Setup(DM dm, const domain::Range& cellRange) {
         // Verify the connectivity
         for (PetscInt c = cStart; c < cEnd; c++) {
             if (cellToFaces[c - cStart].empty()) {
-                //PetscPrintf(PETSC_COMM_WORLD, "WARNING: Cell %d has no faces\n", c);
+                ////PetscPrintf(PETSC_COMM_WORLD, "WARNING: Cell %d has no faces\n", c);
             }
         }
 
@@ -143,11 +143,11 @@ void SlopeLimiter::Setup(DM dm, const domain::Range& cellRange) {
         VecRestoreArrayRead(this->faceGeomVec, &faceGeomArray) >> utilities::PetscUtilities::checkError;
 
         isSetup = true;
-        //PetscPrintf(PETSC_COMM_WORLD, "SlopeLimiter setup complete\n");
+        ////PetscPrintf(PETSC_COMM_WORLD, "SlopeLimiter setup complete\n");
     }
 
     // Build cell-to-face and face-to-cell connectivity
-    //PetscPrintf(PETSC_COMM_WORLD, "  Building connectivity maps...\n");
+    ////PetscPrintf(PETSC_COMM_WORLD, "  Building connectivity maps...\n");
     for (PetscInt c = cStart; c < cEnd; c++) {
         const PetscInt* faces;
         PetscInt numFaces;
@@ -155,7 +155,7 @@ void SlopeLimiter::Setup(DM dm, const domain::Range& cellRange) {
         DMPlexGetConeSize(dm, c, &numFaces) >> utilities::PetscUtilities::checkError;
 
         if (numFaces == 0) {
-            //PetscPrintf(PETSC_COMM_WORLD, "  WARNING: Cell %d has no faces\n", c);
+            ////PetscPrintf(PETSC_COMM_WORLD, "  WARNING: Cell %d has no faces\n", c);
             continue;
         }
 
@@ -171,30 +171,30 @@ void SlopeLimiter::Setup(DM dm, const domain::Range& cellRange) {
             DMPlexGetSupportSize(dm, face, &numCells) >> utilities::PetscUtilities::checkError;
 
             if (numCells != 2) {
-                //PetscPrintf(PETSC_COMM_WORLD, "  WARNING: Face %d has %d cells (expected 2)\n", face, numCells);
+                ////PetscPrintf(PETSC_COMM_WORLD, "  WARNING: Face %d has %d cells (expected 2)\n", face, numCells);
                 continue;
             }
 
             faceToCells[face] = std::vector<PetscInt>(cells, cells + 2);
 
             if (c > cStart + 5 && c < cEnd - 5) {  // Print connectivity for first and last few cells
-                //PetscPrintf(PETSC_COMM_WORLD, "  Cell %d -> Face %d -> Cells [%d, %d]\n", 
+                ////PetscPrintf(PETSC_COMM_WORLD, "  Cell %d -> Face %d -> Cells [%d, %d]\n", 
                         //    c, face, cells[0], cells[1]);
             }
         }
     }
 
     // Verify connectivity maps
-    //PetscPrintf(PETSC_COMM_WORLD, "  Verifying connectivity maps...\n");
+    ////PetscPrintf(PETSC_COMM_WORLD, "  Verifying connectivity maps...\n");
     for (PetscInt c = cStart; c < cEnd; c++) {
         if (cellToFaces[c - cStart].empty()) {
-            //PetscPrintf(PETSC_COMM_WORLD, "  ERROR: Cell %d has no faces in cellToFaces map\n", c);
+            ////PetscPrintf(PETSC_COMM_WORLD, "  ERROR: Cell %d has no faces in cellToFaces map\n", c);
         }
     }
 
     for (const auto& [face, cells] : faceToCells) {
         if (cells.size() != 2) {
-            //PetscPrintf(PETSC_COMM_WORLD, "  ERROR: Face %d has %d cells in faceToCells map\n", 
+            ////PetscPrintf(PETSC_COMM_WORLD, "  ERROR: Face %d has %d cells in faceToCells map\n", 
                     //    face, (int)cells.size());
         }
     }
@@ -262,25 +262,26 @@ void SlopeLimiter::ApplyLimiter(DM dm, PetscInt dim, const domain::Field& field,
     for (PetscInt f = 0; f < nf; f++) {
         PetscInt fieldSize;
         PetscDSGetFieldSize(ds, f, &fieldSize) >> utilities::PetscUtilities::checkError;
-        PetscPrintf(PETSC_COMM_WORLD, "Field %d: %d components\n", f, fieldSize);
+        //PetscPrintf(PETSC_COMM_WORLD, "Field %d: %d components\n", f, fieldSize);
         totalComponents += fieldSize;
     }
-    PetscPrintf(PETSC_COMM_WORLD, "Total components: %d\n", totalComponents);
+    //PetscPrintf(PETSC_COMM_WORLD, "Total components: %d\n", totalComponents);
 
-    PetscPrintf(PETSC_COMM_WORLD, "Starting Barth-Jespersen limiter application for field %s with %d components\n", field.name.c_str(), field.numberComponents);
+    PetscPrintf(PETSC_COMM_WORLD, "Starting Barth-Jespersen limiter application for field %s with %d components out of %d\n", field.name.c_str(), field.numberComponents, totalComponents);
 
-    //for the size of cellvalues, print the values
+    // //for the size of cellvalues, print the values
     // for (PetscInt i = 0; i < 100; i++) {
+    //     // PetscPrintf(PETSC_COMM_WORLD, "cellvalues[%d]: %g\n", i, cellValues[i]);
     //     for (PetscInt j = 0; j < field.numberComponents; j++) {
-    //         // PetscInt idx = i*4 + field.offset + j;
+    //     //     // PetscInt idx = i*4 + field.offset + j;
     //         PetscInt idx = i*totalComponents + field.offset + j;
     //         PetscPrintf(PETSC_COMM_WORLD, "cellvalues[%d]: %g\n", idx, cellValues[idx]);
     //     }
     // }
 
-    // for (PetscInt i = 0; i < 300; i++) {
-    //     for (PetscInt j = 0; j < field.numberComponents; j++) {
-    //         PetscInt idx = i*field.numberComponents + j;
+    // for (PetscInt i = 0; i < 100; i++) {
+    //     for (PetscInt comp = 0; comp < field.numberComponents; comp++) {
+    //         PetscInt idx = i*field.numberComponents + comp;
     //         PetscPrintf(PETSC_COMM_WORLD, "gradient[%d]: %g\n", idx, gradients[idx]);
     //     }
     // }
@@ -307,41 +308,37 @@ void SlopeLimiter::ApplyLimiter(DM dm, PetscInt dim, const domain::Field& field,
     // Loop over each cell
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
         const PetscInt cell = cellRange.points ? cellRange.points[c] : c;
-        //PetscPrintf(PETSC_COMM_WORLD, "\ncell %d\n", cell);
+        ////PetscPrintf(PETSC_COMM_WORLD, "\ncell %d\n", cell);
 
         // Skip cells outside our range
         if (c < cellRange.start + 5 || c > cellRange.end - 5) {
-            //PetscPrintf(PETSC_COMM_WORLD, "Skipping cell %d\n", cell);
+            ////PetscPrintf(PETSC_COMM_WORLD, "Skipping cell %d\n", cell);
             // Zero out gradients for cells outside range
             for (PetscInt comp = 0; comp < field.numberComponents; ++comp) {
-                PetscInt gradidx = cellRange.start + field.numberComponents*cell + comp; //2D?? (idx)dim + d? no that's not right but figure out what it is 
-
+                //gradidx = cellRange.start + field.numberComponents*cell + comp works for 1D
                 for (PetscInt d = 0; d < dim; ++d) {
-                    gradients[gradidx] = 0.0;
+                    // For each component and dimension, zero the gradient
+                    PetscInt gradIdx = (cell - cellRange.start) * (field.numberComponents * dim) + comp * dim + d;
+                    gradients[gradIdx] = 0.0;
                 }
             }
             continue;
         }
-        //PetscPrintf(PETSC_COMM_WORLD, "Processing cell %d\n", cell);
 
         // For each component in the field
         for (PetscInt comp = 0; comp < field.numberComponents; ++comp) {
-            // Print field information and indices
-            //PetscPrintf(PETSC_COMM_WORLD, "Field info: offset=%d, numberComponents=%d\n", field.offset, field.numberComponents);
-            PetscInt cellValIndex = cell*totalComponents + field.offset + comp; //i*totalComponents + field.offset + j;
-            //PetscPrintf(PETSC_COMM_WORLD, "Accessing cell value at index %d (offset + cell*components + comp)\n", cellValIndex);
-            
-            // Get current cell value
+            // Get current cell value - index into the flat array
+            // cellValues is organized as [cell0_comp0, cell0_comp1, ..., cell0_compN, cell1_comp0, ...]
+            PetscInt cellValIndex = cell * totalComponents + field.offset + comp;
             const PetscReal cellVal = cellValues[cellValIndex];
-            //PetscPrintf(PETSC_COMM_WORLD, "Cell %d, component %d: cellVal = %g (at index %d)\n", cell, comp, cellVal, cellValIndex);
 
             // Print a few values around this cell to verify indexing
-            //PetscPrintf(PETSC_COMM_WORLD, "Values around cell %d:\n", cell);
+            ////PetscPrintf(PETSC_COMM_WORLD, "Values around cell %d:\n", cell);
             // for (PetscInt i = -2; i <= 2; i++) {
             //     PetscInt idx = cell + i;
             //     if (idx >= 0) {
             //         PetscInt arrayIdx = idx*totalComponents + field.offset + comp;
-            //         PetscPrintf(PETSC_COMM_WORLD, "  Cell %d: value = %g (at index %d)\n", idx, cellValues[arrayIdx], arrayIdx);
+            //         //PetscPrintf(PETSC_COMM_WORLD, "  Cell %d: value = %g (at index %d)\n", idx, cellValues[arrayIdx], arrayIdx);
             //     }
             // }
 
@@ -356,26 +353,26 @@ void SlopeLimiter::ApplyLimiter(DM dm, PetscInt dim, const domain::Field& field,
             if (is1D) {
                 GetNeighborMinMax1D(cell, cellValues, field, comp, minVal, maxVal, totDim);
             } else {
-                // For non-1D, find min/max from all face neighbors
+                // For multi-D, we need to check all neighbors through faces
                 minVal = maxVal = cellVal;
                 for (const PetscInt& face : cellToFaces[cell]) {
                     const PetscInt neighbor = GetNeighborCell(cell, face);
                     PetscInt neighborValIndex = neighbor*totalComponents + field.offset + comp;
                     const PetscReal neighborVal = cellValues[neighborValIndex];
-                    //PetscPrintf(PETSC_COMM_WORLD, "  Neighbor cell %d (from face %d): value = %g (at index %d)\n", 
+                    ////PetscPrintf(PETSC_COMM_WORLD, "  Neighbor cell %d (from face %d): value = %g (at index %d)\n", 
                             //    neighbor, face, neighborVal, neighborValIndex);
                     minVal = PetscMin(minVal, neighborVal);
                     maxVal = PetscMax(maxVal, neighborVal);
                 }
             }
 
-            PetscPrintf(PETSC_COMM_WORLD, "cellval %g minval %g maxval %g\n", cellVal, minVal, maxVal);
+            // Initialize limiting factor for this cell/component
+            PetscReal alpha = 1.0;
 
-            // Compute limiting factor for each face
-            PetscReal alpha = 1.0;  // Start with no limiting
-            for (const PetscInt& face : cellToFaces[cell]) {
-                // Get vector from cell center to face center
-                PetscReal r[3] = {0.0, 0.0, 0.0};
+            // For each face of this cell
+            for (const auto& face : cellToFaces[cell - cellRange.start]) {
+                // Get the cell-to-face vector
+                PetscReal r[3] = {0.0, 0.0, 0.0};  // Initialize to zero
                 if (is1D) {
                     r[0] = GetCellToFaceVector1D(cell, face);
                 } else {
@@ -389,32 +386,36 @@ void SlopeLimiter::ApplyLimiter(DM dm, PetscInt dim, const domain::Field& field,
                     }
                 }
 
-                // Compute unlimited extrapolated increment
+                // Compute delta = grad dot r for this component
                 PetscReal delta = 0.0;
                 for (PetscInt d = 0; d < dim; ++d) {
-                    PetscInt gradidx = cellRange.start + field.numberComponents*cell + comp;
-                    delta += gradients[gradidx] * r[d]; //cellRange.start + totalComponents*cell + comp
+                    // Gradient index: (cell - start) * (components * dim) + component * dim + dimension
+                    PetscInt gradIdx = (cell - cellRange.start) * (field.numberComponents * dim) + comp * dim + d;
+                    delta += gradients[gradIdx] * r[d];
                 }
 
-                // Compute face-specific limiter factor
-                if (PetscAbs(delta) > 1e-10) {  // Avoid division by very small numbers
-                    PetscReal alpha_f;
-                    if (delta > 0) {
-                        alpha_f = PetscMin(1.0, (maxVal - cellVal) / delta);
-                    } else {
-                        alpha_f = PetscMin(1.0, (minVal - cellVal) / delta);
-                    }
-                    alpha = PetscMin(alpha, alpha_f);
+                // Skip if delta is too small
+                if (PetscAbs(delta) < 1e-10) continue;
+
+                // Compute face-specific limiting factor
+                PetscReal alpha_f;
+                if (delta > 0) {
+                    alpha_f = PetscMin(1.0, (maxVal - cellVal) / delta);
+                } else {
+                    alpha_f = PetscMin(1.0, (minVal - cellVal) / delta);
                 }
+                alpha = PetscMin(alpha, alpha_f);
             }
 
-            // Apply limiting to gradient
-            PetscInt gradidx = cellRange.start + field.numberComponents*cell + comp;
+            // Apply limiting factor to all gradient components for this cell/component
             for (PetscInt d = 0; d < dim; ++d) {
-                
-                gradients[gradidx] *= alpha; //cellRange.start + totalComponents*cell + comp
+                PetscInt gradIdx = (cell - cellRange.start) * (field.numberComponents * dim) + comp * dim + d;
+                gradients[gradIdx] *= alpha;
+                if (comp == 0) {
+                    PetscPrintf(PETSC_COMM_WORLD, "cellval %g minval %g maxval %g alphacell %f comp %d gradients[%d] %g\n", cellVal, minVal, maxVal, alpha, comp, gradIdx, gradients[gradIdx]);
+                }
             }
-            PetscPrintf(PETSC_COMM_WORLD, "alphacell %f comp %d gradients[%d] %g\n", alpha, comp, gradidx, gradients[gradidx]);
+            
         }
     }
 

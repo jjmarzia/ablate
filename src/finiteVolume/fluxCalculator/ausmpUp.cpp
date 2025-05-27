@@ -112,6 +112,11 @@ bool ablate::finiteVolume::fluxCalculator::AusmpUp::ComputeFullFluxVector(void* 
     PetscReal pgsAlpha = ausmUp->pgs ? ausmUp->pgs->GetAlpha() : 1.0;
     PetscReal mInf = ausmUp->mInf;
 
+    //PetscPrintf(PETSC_COMM_WORLD, " alphakRhokL  alphakRhokR\n");
+    // for (size_t i = 0; i < alphakL.size(); i++) {
+        //PetscPrintf(PETSC_COMM_WORLD, "%zu %f %f\n", i, alphakRhokL[i], alphakRhokR[i]);
+    // }
+
     // Compute the density at the interface
     PetscReal rho12 = 0.5 * (rhoL + rhoR);
 
@@ -141,7 +146,7 @@ bool ablate::finiteVolume::fluxCalculator::AusmpUp::ComputeFullFluxVector(void* 
     PetscReal vRiem = a12 * m12;
 
     //print: rhoL, rhoR, pL, pR, sosL, sosR, unL, unR, mBar2, m12, vRiem
-    // PetscPrintf(PETSC_COMM_WORLD, "rhoL %f, rhoR %f, pL %f, pR %f, sosL %f, sosR %f, unL %f, unR %f, mBar2 %f, m12 %f, vRiem %f\n", rhoL, rhoR, pL, pR, aL, aR, uL, uR, mBar2, m12, vRiem);
+    // //PetscPrintf(PETSC_COMM_WORLD, "rhoL %f, rhoR %f, pL %f, pR %f, sosL %f, sosR %f, unL %f, unR %f, mBar2 %f, m12 %f, vRiem %f\n", rhoL, rhoR, pL, pR, aL, aR, uL, uR, mBar2, m12, vRiem);
 
     // Split the velocity
     PetscReal lPlus = 0.5 * (vRiem + PetscAbs(vRiem));
