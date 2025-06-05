@@ -1,5 +1,5 @@
 environment:
-  title: nphase-advection-2d
+  title: nphase-surfaceforce
   tagDirectory: true
 arguments:
   dm_plex_gmsh_use_regions: true
@@ -8,14 +8,14 @@ timestepper:
   name: theMainTimeStepper
   arguments:
     ts_type: euler
-    ts_max_time: 0.1
+    ts_max_time: 1e-4 #0.1
     ts_dt: 1e-4
     ts_adapt_type: none
   io: !<!ablate::io::Hdf5MultiFileSerializer>
     interval: !<!ablate::io::interval::FixedInterval> 100
   domain: !<!ablate::domain::BoxMesh> &1
     name: testMesh
-    faces: [200, 50]  # [x, y] resolution - higher in x for better box representation
+    faces: [200, 50]  # [x, y] resolution - higher in x for better circle representation
     lower: [0.0, 0.0]
     upper: [2.0, 0.5]  # Domain is 2x0.5
     boundary: [NONE, NONE]
@@ -65,6 +65,15 @@ timestepper:
         location: AUX
         type: FVM
         components: [sosk0, sosk1, sosk2]
+      - name: kappa_0_1
+        location: AUX
+        type: FVM
+      - name: kappa_0_2
+        location: AUX
+        type: FVM
+      - name: kappa_1_2
+        location: AUX
+        type: FVM
       - name: debug
         location: AUX
         type: FVM
@@ -72,34 +81,34 @@ timestepper:
   initialization:
     - fieldName: allaire
       field: !<!ablate::mathFunctions::Formula> &allaireInit
-        formula: "rho1*(eps1 + (u*u + v*v)/2)*(box1) + rho2*(eps2+(u*u + v*v)/2)*(box2) + rho3*(eps3+(u*u + v*v)/2)*(1-box1-box2), rho1*u*(box1) + rho2*u*(box2) + rho3*u*(1-box1-box2), rho1*v*(box1) + rho2*v*(box2) + rho3*v*(1-box1-box2)"
+        formula: "rho1*(eps1 + (u*u + v*v)/2)*(circle1) + rho2*(eps2+(u*u + v*v)/2)*(circle2) + rho3*(eps3+(u*u + v*v)/2)*(1-circle1-circle2), rho1*u*(circle1) + rho2*u*(circle2) + rho3*u*(1-circle1-circle2), rho1*v*(circle1) + rho2*v*(circle2) + rho3*v*(1-circle1-circle2)"
         constants: &constants
-          rho1: 1.0    # Density of first box
-          rho2: 1.0    # Density of second box
+          rho1: 1.0    # Density of first circle
+          rho2: 1.0    # Density of second circle
           rho3: 1.0    # Density of background
-          eps1: 2.5    # Internal energy of first box
-          eps2: 2.5    # Internal energy of second box
+          eps1: 2.5    # Internal energy of first circle
+          eps2: 2.5    # Internal energy of second circle
           eps3: 1.5    # Internal energy of background
           u: 1.0       # x-velocity
           v: 0.0       # y-velocity (zero for pure x-advection)
         nested:
-          box1: !<!ablate::mathFunctions::Formula> &box1
-            formula: "x >= 0.05 && x <= 0.25 && y >= 0.1 && y <= 0.4 ? 1 : 0"
-          box2: !<!ablate::mathFunctions::Formula> &box2
-            formula: "x >= 0.3 && x <= 0.5 && y >= 0.1 && y <= 0.4 ? 1 : 0"
+          circle1: !<!ablate::mathFunctions::Formula> &circle1
+            formula: "0.5*(1.0 - tanh((sqrt((x-0.3)^2 + (y-0.25)^2) - 0.05)/(0.01)))"
+          circle2: !<!ablate::mathFunctions::Formula> &circle2
+            formula: "0.5*(1.0 - tanh((sqrt((x-0.7)^2 + (y-0.25)^2) - 0.05)/(0.01)))"
     - fieldName: alphakrhok
       field: !<!ablate::mathFunctions::Formula> &alphakrhokInit
-        formula: "rho1*box1, rho2*box2, rho3*(1-box1-box2)"
+        formula: "rho1*circle1, rho2*circle2, rho3*(1-circle1-circle2)"
         constants: *constants
         nested:
-          box1: *box1
-          box2: *box2
+          circle1: *circle1
+          circle2: *circle2
     - fieldName: alphak
       field: !<!ablate::mathFunctions::Formula> &alphakInit
-        formula: "box1, box2, (1-box1-box2)"
+        formula: "circle1, circle2, (1-circle1-circle2)"
         nested:
-          box1: *box1
-          box2: *box2
+          circle1: *circle1
+          circle2: *circle2
 solver: !<!ablate::finiteVolume::FiniteVolumeSolver>
   id: nPhase Problem
   processes:
@@ -109,6 +118,10 @@ solver: !<!ablate::finiteVolume::FiniteVolumeSolver>
         mInf: 0.3
     - !<!ablate::finiteVolume::processes::NPhaseNonconservativeRHS>
       mInf: 0.3
+#    - !<!ablate::finiteVolume::processes::NPhaseSurfaceForce>
+#      sigma: [[0.0, 1.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 0.0]]  # Surface tension between phases
+#      C: 0.1  # Smoothing parameter
+#      N: 3.0  # Number of standard deviations
   boundaryConditions:
     - !<!ablate::finiteVolume::boundaryConditions::EssentialGhost>
       boundaryName: allaire walls

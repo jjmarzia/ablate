@@ -7,6 +7,7 @@ target_sources(ablateLibrary
         evTransport.cpp
         #twoPhaseEulerAdvection.cpp
         nPhaseAllaireAdvection.cpp
+        nPhaseSurfaceForce.cpp
         nPhaseNonconservativeRHS.cpp
         intSharp.cpp
         locations.cpp
@@ -35,6 +36,7 @@ target_sources(ablateLibrary
         evTransport.hpp
         #twoPhaseEulerAdvection.hpp
         nPhaseAllaireAdvection.hpp
+        nPhaseSurfaceForce.hpp
         nPhaseNonconservativeRHS.hpp
         intSharp.hpp
         locations.hpp
