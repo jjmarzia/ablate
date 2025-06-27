@@ -35,22 +35,10 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
             ablate::parameters::MapParameters::Create({
         {"petscfv_type", "leastsquares"}, 
         {"petsclimiter_type", "none"},
-        {"petscfv_compute_gradients", "true"}
+        {"petscfv_compute_gradients", "true"} //TRUE
     })),
 
-        //register alphakrhok, alphak
-        std::make_shared<domain::FieldDescription>(
-            ALPHAKRHOK, ALPHAKRHOK,
-            alphakrhokComponents,
-            domain::FieldLocation::SOL,
-            domain::FieldType::FVM,
-            region,
-            ablate::parameters::MapParameters::Create({
-        {"petscfv_type", "leastsquares"}, 
-        {"petsclimiter_type", "none"},
-        {"petscfv_compute_gradients", "true"}
-    })),
-
+        //register alphak FIRST, then alphakrhok
         std::make_shared<domain::FieldDescription>(
             ALPHAK, ALPHAK,
             alphakComponents,
@@ -60,7 +48,20 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
             ablate::parameters::MapParameters::Create({
         {"petscfv_type", "leastsquares"}, 
         {"petsclimiter_type", "none"},
-        {"petscfv_compute_gradients", "true"}
+        {"petscfv_compute_gradients", "true"} //TRUE
+    })),
+
+        std::make_shared<domain::FieldDescription>(
+            ALPHAKRHOK, ALPHAKRHOK,
+            alphakrhokComponents,
+            domain::FieldLocation::SOL,
+            domain::FieldType::FVM,
+            region,
+            ablate::parameters::MapParameters::Create({
+        {"petscfv_type", "leastsquares"}, 
+        {"petsclimiter_type", "none"},
+        {"petscfv_compute_gradients", "false"} //should be FALSE as reconstructed ALPHAKRHOK should come from slope limited ALPHAK
+        //i.e. (ALPHAKRHOK)_R = (ALPHAK)_R rhok
     })),
 
         //do tk, p, rho, rhok, e, ek

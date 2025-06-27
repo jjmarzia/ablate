@@ -704,9 +704,6 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseFl
         // Use the computed flux vector directly
         for (std::size_t k = 0; k < nPhaseAllaireAdvection->eosk.size(); k++) {
             flux[k] = fluxVec.alphakFlux[k];
-            // if (PetscAbs(fluxVec.alphakFlux[k]) > PETSC_SMALL) {
-            //     PetscPrintf(PETSC_COMM_WORLD, "fluxVec.alphakFlux[%zu] %f\n", k, fluxVec.alphakFlux[k]);
-            // }
         } 
         
 

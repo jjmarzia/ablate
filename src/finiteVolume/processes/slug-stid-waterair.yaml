@@ -1,0 +1,378 @@
+---
+environment:
+  title: circ-u100-prestage-simplex
+  tagDirectory: true
+arguments: {}
+#  petscfv_type: leastsquares
+#  petsclimiter_type: vanleer
+#  dm_plex_hash_location: 1
+#  dm_plex_periodic_cut: true
+#  dm_plex_view_scale: 10
+#  dm_plex_view_numbers_depth: 1,0,1
+timestepper:
+  name: theMainTimeStepper
+  arguments:
+    ts_type: euler
+    ts_max_time: 1e-7 #10000e-7 #5000e-7 #30000e-7 #30000e-7 #110e-7 #100000e-7 #7200e-7 #20000e-7 #351e-7 #2001e-7 #10001e-7 #100001e-7 #30001e-7 #10000e-7 #10005e-7 #100009e-7 #5e-7
+    ts_dt: 1e-7
+    ts_adapt_type: physicsConstrained
+  io: !<!ablate::io::Hdf5MultiFileSerializer>
+    interval: !<!ablate::io::interval::FixedInterval> 1 #1000  #35 #1000 #500 #25000 #1000 #1500 #100 #250 #5000 #500 #1000
+  domain: !<!ablate::domain::BoxMesh> &1
+    name: simpleBoxField
+    faces: [101, 101]
+    lower: [-0.05, -0.05]
+    upper: [+0.05, +0.05]
+    boundary: [NONE, NONE]
+    simplex: false
+    options:
+      dm_refine: 0
+    modifiers:
+      - !<!ablate::domain::modifiers::DistributeWithGhostCells>
+        ghostCellDepth: 5
+      - !<!ablate::domain::modifiers::GhostBoundaryCells>
+        labelName: ""
+    postModifiers: ~
+    fields:
+      - !<!ablate::finiteVolume::CompressibleFlowFields>
+        eos: !<!ablate::eos::PerfectGas>
+          parameters:
+            gamma: 1.4
+            Rgas: 287.0
+        #region:
+        #  name: domain
+      - name: densityvolumeFraction
+        type: FVM
+ #       region:
+ #         name: domain
+      - name: gasDensity
+        location: AUX
+        type: FVM
+  #      region:
+  #        name: domain
+      - name: liquidDensity
+        location: AUX
+        type: FVM
+   #     region:
+   #       name: domain
+      - name: mixtureEnergy
+        location: AUX
+        type: FVM
+    #    region:
+    #      name: domain
+      - name: gasEnergy
+        location: AUX
+        type: FVM
+    #    region:
+    #      name: domain
+      - name: liquidEnergy
+        location: AUX
+        type: FVM
+    #    region:
+    #      name: domain
+      - name: volumeFraction
+        type: FVM
+    #    region:
+    #      name: domain
+      - name: pressure
+        location: AUX
+        type: FVM
+    #    region:
+    #      name: domain
+      - name: debug1
+        location: AUX
+        type: FVM
+    #    region:
+    #      name: domain
+      - name: debug2
+        location: AUX
+        type: FVM
+    #    region:
+    #      name: domain
+      - name: debug3
+        location: AUX
+        type: FVM
+    #    region:
+    #      name: domain
+      - name: debug4
+        location: AUX
+        type: FVM
+    #    region:
+    #      name: domain
+      - name: debug5
+        location: AUX
+        type: FVM
+    #    region:
+    #      name: domain
+      - name: debug6
+        location: AUX
+        type: FVM
+    #    region:
+     #     name: domain
+      - !<!ablate::domain::FieldDescription>
+        name: cellLocations
+        prefix: cellLocations
+        components: [x2, y2]
+        location: AUX
+        type: FVM
+    #    region:
+    #      name: domain
+      - !<!ablate::domain::FieldDescription>
+        name: rank
+        prefix: rank
+        location: AUX
+        type: FVM
+    #    region:
+    #      name: domain
+      - !<!ablate::domain::FieldDescription>
+        name: vertexLocations
+        prefix: vertexLocations
+        components: [x3, y3]
+        location: AUX
+        type: FE
+    #    region:
+    #      name: domain
+        options:
+          petscspace_degree: 1
+  initialization:
+
+#diffuse circ
+    - fieldName: volumeFraction
+      field: !<!ablate::mathFunctions::Formula> &2
+        formula: "(p < -h*n) ? 0 : ((p > h*n) ? 1 : (0.5 + 15*((p/(h*n)))/16 -5*((p/(h*n))^3)/8 + 3*((p/(h*n))^5)/16))"
+        constants:
+          h: 0.000990099009 #0.00049751243 #0.000625  # Grid-spacing
+          n: 8      # Number of grid-cells to smooth the VOF over
+        nested:
+          p: !<!ablate::mathFunctions::Formula> &lsFunction
+#            formula: "-sqrt(x^2 + y^2) + 0.015*(0.25 * sin(3*((atan2(y, x)+3.141592/8) + ((atan2(y, x)+3.141592/8) < 0) * 6.283185)) + 1.6)"
+            formula: "-sqrt(x^2+y^2) + 0.025"
+            #formula: "-sqrt(x^2+y^2) + 0.015*(0.25 * ( -0.25*( atan2(y,x) - 3.14159 )^2 + 4) * sin(5*atan2(y,x)) + 1.6    )  "
+#            formula: "-sqrt((x-0.0)^2 + (y-0.0)^2) + sqrt((1/1000)*( cos((2*asin(0.5)+3.141592*27.4)/(2*4))/cos((2*asin(0.5*cos(4*atan((y-0.0)/(x-0.0)))) + 3.141592*27.4)/(2*4))))"
+
+    - fieldName: densityvolumeFraction
+      field: !<!ablate::mathFunctions::Formula>
+        formula: vof*airDensity
+        constants: &3
+#water as perfect gas
+    #      waterDensity: 1.1614401858304297
+    #      waterCv: 717.5
+    #      waterGamma: 1.4
+#water as stiffened gas
+          waterDensity: 998.23   # kg/m^3
+          waterCp: 8095.08 # J/kg K
+          waterGamma: 1.932
+#air as perfect gas
+          airDensity: 1.1614401858304297
+          airCv: 717.5
+          airGamma: 1.4
+#air as stiffened gas
+#          airDensity: 998.23   # kg/m^3
+#          airCp: 8095.08 # J/kg K
+#          airGamma: 1.932
+#other stuff
+          T: 300
+          P: 100000
+          u: 0 #2000 #u: 2000 #100
+          wallu: 0 #2000 #4000 #2000 such that wallu*(y=0.05) = 100
+          #v: 0
+        nested:
+#          u: !<!ablate::mathFunctions::Formula> &ufun
+#            formula: "2000"
+  #        f: !<!ablate::mathFunctions::Formula> &ffun
+  #          formula: " max(0,min( 200*(x+0.05)/(0.05-0.025), -200*(x+0.025)/(0.025) + 200 ))  "
+  #        g: !<!ablate::mathFunctions::Formula> &gfun
+  #          formula: "10*200*(y+0.05)"
+  #        h: !<!ablate::mathFunctions::Formula> &hfun
+  #          formula: "sin(10*3.141592*(y+0.05))"
+  #        u: !<!ablate::mathFunctions::Formula> &ufun
+  #          formula: "39000*max(0.05*cos(100*(2*3.14159265358*(x+0.02)/10)),0)*(y+0.05)"
+  #          formula: "f*h + g*(1-h)"
+  #          nested:
+  #            f: *ffun
+  #            g: *gfun
+  #            h: *hfun
+#          u: !<!ablate::mathFunctions::Formula> &ufun
+#            formula: "39000*max(0.05*cos(100*(2*3.14159265358*(x+0.02)/10)),0)*(y+0.05)"
+#            formula: "(100*max(0,min(1,sign(y-0.04))))"
+#            formula: "10 * -1 * sin(3.141592 * (10 * x + 0.5)) * sin(3.141592 * (10 * x + 0.5)) * sin(2 * 3.141592 * (10 * y + 0.5)) * cos(3.151592 * t / 0.0001)"
+#          v: !<!ablate::mathFunctions::Formula> &vfun
+#            formula: "0"
+#            formula: "10 * sin(2 * 3.141592 * (10 * x + 0.5)) * sin(3.141592 * (10 * y + 0.5)) * sin(3.141592 * (10 * y + 0.5)) * cos(3.151592 * t / 0.0001)"
+          vof: *2
+          waterMassFraction: !<!ablate::mathFunctions::Formula> &4
+            formula: " waterDensity*(1-vof) / (waterDensity*(1-vof) + airDensity*vof) "
+            constants: *3
+            nested:
+              vof: *2
+          airMassFraction: !<!ablate::mathFunctions::Formula> &5
+            formula: " airDensity*(vof) / (waterDensity*(1-vof) + airDensity*vof) "
+            constants: *3
+            nested:
+              vof: *2
+    - fieldName: euler
+      field: !<!ablate::mathFunctions::Formula>
+     #   region:
+     #     name: domain
+        formula: density, density*(Yw*waterEnergy + Ya*airEnergy), density*(  1*min(200,max(0,1428.57*(y+0.03)))     ), 0 # density*(100*max(0,min(1,sign(y-0.04)))), density*0
+        constants: *3
+        nested:
+#          u: *ufun
+#          v: *vfun
+          vof: *2
+          Yw: *4
+          Ya: *5
+          density: !<!ablate::mathFunctions::Formula>
+            formula: " waterDensity*airDensity/(waterDensity*Ya + airDensity*Yw) "
+            constants: *3
+            nested:
+              Ya: *5
+              Yw: *4
+#          waterEnergy: !<!ablate::mathFunctions::Formula> # water as perfect gas EOS
+#            formula: waterCv*T + 0.5*(  0*min(200,max(0,1428.57*(y+0.03)))*min(200,max(0,1428.57*(y+0.03)))      + 0*0)  #0.5*((100*max(0,min(1,sign(y-0.04))))*(100>
+#            constants: *3
+          airEnergy: !<!ablate::mathFunctions::Formula> #air as perfect gas EOS
+            formula: airCv*T + 0.5*(  1*min(200,max(0,1428.57*(y+0.03)))*min(200,max(0,1428.57*(y+0.03)))      + 0*0)  #0.5*((100*max(0,min(1,sign(y-0.04))))*(100*max(0,min(1,sign(y-0.04)))) + 0*0)
+            constants: *3
+#            nested:
+#              u: *ufun
+#              v: *vfun
+
+
+          waterEnergy: !<!ablate::mathFunctions::Formula> # water as stiffened gas EOS
+            formula: (waterCp/waterGamma)*T + 0.5*(   1*min(200,max(0,1428.57*(y+0.03))) * min(200,max(0,1428.57*(y+0.03)))      + 0*0) + waterP0/waterDensity
+            constants: *3
+            nested:
+            #  u: *ufun
+            #  v: *vfun
+              waterP0: !<!ablate::mathFunctions::Formula> &waterP0
+                formula: " ( (waterGamma - 1)*waterDensity*waterCp*T/waterGamma - P)"
+                constants: *3
+#          airEnergy: !<!ablate::mathFunctions::Formula> #air as stiffened gas EOS
+#            formula: (airCp/airGamma)*T + 0.5*(  0*min(200,max(0,1428.57*(y+0.03)))*min(200,max(0,1428.57*(y+0.03)))      + 0*0) + airP0/airDensity
+#            constants: *3
+#            nested:
+#              airP0: !<!ablate::mathFunctions::Formula> &airP0
+#                formula: " ( (airGamma - 1)*airDensity*airCp*T/airGamma - P)"
+#                constants: *3
+
+
+solver: !<!ablate::finiteVolume::FiniteVolumeSolver>
+  id: Multiphase Problem
+ # region:
+ #   name: domain
+  processes:
+    - !<!ablate::finiteVolume::processes::NavierStokesTransport>
+      eos: !<!ablate::eos::PerfectGas>
+        parameters:
+          gamma: 0
+          Rgas: 0
+      transport: !<!ablate::eos::transport::TwoPhaseTransport>
+        transport1: !<!ablate::eos::transport::Constant>
+          k: 0.2
+          mu: 0.6
+        transport2: !<!ablate::eos::transport::Constant>
+          k: 0.4
+          mu: 0.8
+    - !<!ablate::finiteVolume::processes::TwoPhaseEulerAdvection>
+      eos: !<!ablate::eos::TwoPhase>
+        eos1: !<!ablate::eos::PerfectGas> &6 #air as perfect gas
+          parameters:
+            gamma: 1.4
+            Rgas: 287.0
+#        eos2: !<!ablate::eos::PerfectGas> &7 # water as perfect gas
+#          parameters:
+#            gamma: 1.4
+#            Rgas: 287.0
+#        eos1: !<!ablate::eos::StiffenedGas> &6 #air as stiffened gas
+#          parameters:
+#            gamma: 1.932 # Must match the value in *constants
+#            Cp: 8095.08 # Must match the value in *constants
+#            p0: 1169350402.52 # Must match the result from *airP0
+        eos2: !<!ablate::eos::StiffenedGas> &7 # water as stiffened gas
+          parameters:
+            gamma: 1.932 # Must match the value in *constants
+            Cp: 8095.08 # Must match the value in *constants
+            p0: 1169350402.52 # Must match the result from *waterP0
+
+
+      fluxCalculatorGasGas: !<!ablate::finiteVolume::fluxCalculator::AusmpUp>
+      fluxCalculatorGasLiquid: !<!ablate::finiteVolume::fluxCalculator::AusmpUp>
+      fluxCalculatorLiquidGas: !<!ablate::finiteVolume::fluxCalculator::AusmpUp>
+      fluxCalculatorLiquidLiquid: !<!ablate::finiteVolume::fluxCalculator::AusmpUp>
+
+#    - !<!ablate::finiteVolume::processes::SurfaceForce>
+#      sigma: 2000       # stid: 2000 = (rho=500)*(u^2=100^2)*(L=0.01)/(We=25)
+#      C: 1
+#      N: 2.6
+#      flipPhiTilde: true
+
+#    - !<!ablate::finiteVolume::processes::IntSharp>
+#      Gamma: 2 #1000
+#      epsilon: 0.000990099 #0.001 #0.000990099 #0.01234567901 #0.005
+#      addtoRHS: false
+#      flipPhiTilde: false
+
+#    - !ablate::finiteVolume::processes::locations
+  boundaryConditions:
+
+    - !ablate::finiteVolume::boundaryConditions::EssentialGhost
+      boundaryName: air walls euler
+      labelIds: [ 1,2,3,4 ]
+      boundaryValue:
+        fieldName: euler
+        field: !ablate::mathFunctions::Formula
+#          formula: airDensity, airDensity*airEnergy, 0, 0
+          formula: waterDensity, waterDensity*waterEnergy, 1*min(200,max(0,1428.57*(y+0.03))), 0
+          constants: *3 #constants
+
+#          formula: >-
+#            y > 0.0 ? airDensity : waterDensity,
+#            y > 0.0 ? airDensity*airEnergy : waterDensity*waterEnergy,
+#            y > 0.0 ? airDensity*(  0*min(200,max(0,1428.57*(y+0.03)))     ) : waterDensity*(0),
+#            y > 0.0 ? airDensity*(0) : waterDensity*(0)
+#          constants: *3 #constants
+          nested:
+#            airEnergy: !ablate::mathFunctions::Formula # air as ideal gas
+#              formula: "airCv*T + 0.5*(   0*min(200,max(0,1428.57*(y+0.03))) * min(200,max(0,1428.57*(y+0.03)))   + 0*0)"
+#              constants: *3 #constants
+#              nested:
+#                vof: *2
+#            waterEnergy: !ablate::mathFunctions::Formula # water as ideal gas
+#              formula: "waterCv*T + 0.5*(   0*min(200,max(0,1428.57*(y+0.03))) * min(200,max(0,1428.57*(y+0.03)))   + 0*0)"
+#              constants: *3 #constants
+#              nested:
+#                vof: *2
+#            airEnergy: !ablate::mathFunctions::Formula # air as stiffened gas
+#              formula: "(airCp/airGamma)*T + 0.5*( 0*min(200,max(0,1428.57*(y+0.03))) * min(200,max(0,1428.57*(y+0.03))) + 0*0) + airP0/airDensity"
+#              constants: *3 #constants
+#              nested:
+#                vof: *2
+#                airP0: *airP0
+            waterEnergy: !ablate::mathFunctions::Formula #water as stiffened gas
+              formula: "(waterCp/waterGamma)*T + 0.5*( ( 1*min(200,max(0,1428.57*(y+0.03))) )^2 + 0*0) + waterP0/waterDensity"
+              constants: *3 #constants
+              nested:
+                vof: *2
+                waterP0: *waterP0
+    - !ablate::finiteVolume::boundaryConditions::EssentialGhost
+      boundaryName: vf walls
+      labelIds: [ 1,2,3,4 ]
+      boundaryValue:
+        fieldName: densityvolumeFraction
+        field: !ablate::mathFunctions::Formula
+#          formula: "y > 0.0 ? airDensity : 0.0 "
+#          formula: 0
+          formula: "waterDensity*0"
+          constants: *3 #constants
+    - !ablate::finiteVolume::boundaryConditions::EssentialGhost
+      boundaryName: alpha walls
+      labelIds: [ 1,2,3,4 ]
+      boundaryValue:
+        fieldName: volumeFraction
+#          formula: "y > 0.0 ? 1.0 : 0.0 "
+#        field: "1"
+        field: "0"
+  monitors:
+    - !<!ablate::monitors::TimeStepMonitor>
+      interval: 1
