@@ -50,6 +50,11 @@ class TwoPhaseEulerAdvection : public Process {
     };
     TimeStepData timeStepData;
 
+    // Vortex test parameters
+    bool vortexTest = false;
+    PetscReal T_kothe = 2.0;
+    PetscReal T_cycle = 0.02;
+    PetscReal pi = 3.14159265358;
 
    private:
     // Add a member variable for IntSharp
@@ -228,6 +233,9 @@ class TwoPhaseEulerAdvection : public Process {
                                                            const PetscInt aOff[], const PetscScalar auxL[], const PetscScalar auxR[], PetscScalar *flux, void *ctx);
     static PetscErrorCode CompressibleFlowComputeVFFlux(PetscInt dim, const PetscFVFaceGeom *fg, const PetscInt uOff[], const PetscScalar fieldL[], const PetscScalar fieldR[], const PetscInt aOff[],
                                                         const PetscScalar auxL[], const PetscScalar auxR[], PetscScalar *flux, void *ctx);
+
+    // Vortex test source term function
+    static PetscErrorCode VortexTestSourceTerm(PetscInt dim, PetscReal time, const PetscFVCellGeom* cg, const PetscInt uOff[], const PetscScalar u[], const PetscInt aOff[], const PetscScalar a[], PetscScalar f[], void* ctx);
 
     // Compute the Euler and density-volume fraction fluxes
     static PetscErrorCode CompressibleFlowCompleteFlux(const ablate::finiteVolume::FiniteVolumeSolver &flow, DM dm, PetscReal time, Vec locXVec, Vec locFVec, void* ctx);

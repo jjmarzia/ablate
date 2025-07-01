@@ -226,6 +226,14 @@ ablate::finiteVolume::processes::TwoPhaseEulerAdvection::TwoPhaseEulerAdvection(
         // cfl
         timeStepData.cfl = parameters->Get<PetscReal>("cfl", 0.5);
     }
+
+    // Vortex test parameters
+    vortexTest = parameters->Get<bool>("vortexTest", false);
+    if (vortexTest) {
+        T_kothe = parameters->Get<PetscReal>("T_kothe", 2.0);
+        T_cycle = parameters->Get<PetscReal>("T_cycle", 0.02);
+        pi = parameters->Get<PetscReal>("pi", 3.14159265358);
+    }
 }
 
 ablate::finiteVolume::processes::TwoPhaseEulerAdvection::~TwoPhaseEulerAdvection() {
@@ -259,6 +267,12 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Setup(ablate::fini
 //    flow.RegisterRHSFunction(CompressibleFlowCompleteFlux, this);
     flow.RegisterRHSFunction(CompressibleFlowComputeEulerFlux, this, {CompressibleFlowFields::EULER_FIELD}, {VOLUME_FRACTION_FIELD, DENSITY_VF_FIELD, CompressibleFlowFields::EULER_FIELD}, {});
     flow.RegisterRHSFunction(CompressibleFlowComputeVFFlux, this, {DENSITY_VF_FIELD}, {VOLUME_FRACTION_FIELD, DENSITY_VF_FIELD, CompressibleFlowFields::EULER_FIELD}, {});
+    
+    // Register vortex test as source term if enabled
+    if (vortexTest) {
+        flow.RegisterRHSFunction(VortexTestSourceTerm, this, {CompressibleFlowFields::EULER_FIELD}, {CompressibleFlowFields::EULER_FIELD}, {});
+    }
+    
     flow.RegisterComputeTimeStepFunction(ComputeCflTimeStep, &timeStepData, "cfl");
     timeStepData.computeSpeedOfSound = eosTwoPhase->GetThermodynamicFunction(eos::ThermodynamicProperty::SpeedOfSound, subDomain.GetFields());
 
@@ -475,7 +489,7 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Multipha
         // //here we are assuming rhoG/L old = rhoG/L new, e old = e new 
         // allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] = allFields[vfOffset]*densityG + (1-allFields[vfOffset])*densityL;
         // allFields[ablate::finiteVolume::CompressibleFlowFields::RHOE] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHO]*internalEnergy;
-        // for (PetscInt d = 0; d < dim; ++d) { allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU+d] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] * velocity[d]; }
+        // for (PetscInt d = 0; d < dim; ++d) allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU+d] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] * velocity[d]; }
 
         // //redo decode with new euler fields (density G/L and alpha will be redundant but since RHOE is updated, eG/eL -->p,T will be changed)
         // decoder->DecodeTwoPhaseEulerState(
@@ -485,10 +499,6 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Multipha
 
 
     }
-
-    // //update sol vec
-    // PetscCall(DMLocalToGlobalBegin(dm, locFVec, ADD_VALUES, globFlowVec));
-    // PetscCall(DMLocalToGlobalEnd(dm, locFVec, ADD_VALUES, globFlowVec));
 
     //restore
     PetscCall(DMRestoreLocalVector(dm, &locFVec));
@@ -1562,3 +1572,51 @@ REGISTER(ablate::finiteVolume::processes::Process, ablate::finiteVolume::process
          OPT(ablate::parameters::Parameters, "parameters", "the parameters used by advection: cfl(.5)"), ARG(ablate::finiteVolume::fluxCalculator::FluxCalculator, "fluxCalculatorGasGas", ""),
          ARG(ablate::finiteVolume::fluxCalculator::FluxCalculator, "fluxCalculatorGasLiquid", ""), ARG(ablate::finiteVolume::fluxCalculator::FluxCalculator, "fluxCalculatorLiquidGas", ""),
          ARG(ablate::finiteVolume::fluxCalculator::FluxCalculator, "fluxCalculatorLiquidLiquid", ""));
+
+PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::VortexTestSourceTerm(PetscInt dim, PetscReal time, const PetscFVCellGeom* cg, const PetscInt uOff[], const PetscScalar u[], const PetscInt aOff[], const PetscScalar a[], PetscScalar f[], void* ctx) {
+    PetscFunctionBeginUser;
+    auto twoPhaseEulerAdvection = (TwoPhaseEulerAdvection *)ctx;
+    
+    // Get cell centroid coordinates
+    PetscReal x = cg->centroid[0];
+    PetscReal y = (dim > 1) ? cg->centroid[1] : 0.0;
+    PetscReal z = (dim > 2) ? cg->centroid[2] : 0.0;
+    
+    // Compute target vortex velocity field
+    PetscReal u_target = (twoPhaseEulerAdvection->T_kothe/twoPhaseEulerAdvection->T_cycle) * 
+                         PetscSinReal(twoPhaseEulerAdvection->pi * x) * PetscSinReal(twoPhaseEulerAdvection->pi * x) * 
+                         PetscSinReal(2.0 * twoPhaseEulerAdvection->pi * y) * 
+                         PetscCosReal(twoPhaseEulerAdvection->pi * time / twoPhaseEulerAdvection->T_cycle);
+    
+    PetscReal v_target = -(twoPhaseEulerAdvection->T_kothe/twoPhaseEulerAdvection->T_cycle) * 
+                         PetscSinReal(twoPhaseEulerAdvection->pi * y) * PetscSinReal(twoPhaseEulerAdvection->pi * y) * 
+                         PetscSinReal(2.0 * twoPhaseEulerAdvection->pi * x) * 
+                         PetscCosReal(twoPhaseEulerAdvection->pi * time / twoPhaseEulerAdvection->T_cycle);
+    
+    // Get current density and momentum from the EULER_FIELD
+    PetscReal rho = u[uOff[0] + ablate::finiteVolume::CompressibleFlowFields::RHO];
+    PetscReal rhoU_current = u[uOff[0] + ablate::finiteVolume::CompressibleFlowFields::RHOU];
+    PetscReal rhoV_current = (dim > 1) ? u[uOff[0] + ablate::finiteVolume::CompressibleFlowFields::RHOV] : 0.0;
+    
+    // Compute target momentum (density * target velocity)
+    PetscReal rhoU_target = rho * u_target;
+    PetscReal rhoV_target = rho * v_target;
+    
+    // Get current time step (this should come from the solver context)
+    // For now, use a reasonable default - in practice this should be passed from the solver
+    PetscReal dt = 0.001; // This should be obtained from the solver context
+    
+    // Initialize all source terms to zero
+    // for (PetscInt i = 0; i < 5; i++) { // EULER_FIELD has 5 components: RHO, RHOU, RHOV, RHOW, RHOE
+    //     f[uOff[0] + i] = 0.0;
+    // }
+    
+    // Compute source terms to completely override momentum in one time step
+    // f = (target_momentum - current_momentum) / dt
+    f[uOff[0] + ablate::finiteVolume::CompressibleFlowFields::RHOU] = (rhoU_target - rhoU_current) / dt;
+    if (dim > 1) {
+        f[uOff[0] + ablate::finiteVolume::CompressibleFlowFields::RHOV] = (rhoV_target - rhoV_current) / dt;
+    }
+    
+    PetscFunctionReturn(0);
+}
