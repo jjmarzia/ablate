@@ -1,145 +1,266 @@
 environment:
-  title: zalesak-disc
+  title: zalesak-disc-air-air
   tagDirectory: true
 arguments:
-  dm_plex_gmsh_use_regions: true
-  dm_plex_check_all: true
+  petscfv_type: leastsquares
+  petsclimiter_type: none
+  dm_plex_hash_location: 1
+  dm_plex_periodic_cut: true
+  dm_plex_view_scale: 10
+  dm_plex_view_numbers_depth: 1,0,1
 timestepper:
   name: theMainTimeStepper
   arguments:
     ts_type: euler
-    ts_max_time: 1e-7 #1  # One full rotation
-    ts_dt: 1e-7
-    ts_adapt_type: none
+    ts_max_time: 1e-5 #6.28318530718  # 2*pi for one full rotation
+    ts_dt: 1e-5
+    ts_adapt_type: physicsConstrained
   io: !<!ablate::io::Hdf5MultiFileSerializer>
-    interval: !<!ablate::io::interval::FixedInterval> 100
-  domain: !<!ablate::domain::BoxMesh> &1
+    interval: !<!ablate::io::interval::FixedInterval> 1
+  domain: !<!ablate::domain::BoxMeshBoundaryCells> &1
     name: zalesakDomain
     faces: [200, 200]
     lower: [0.0, 0.0]
     upper: [1.0, 1.0]
-    boundary: [NONE, NONE]
-    modifiers:
+    boundary: [PERIODIC, PERIODIC]
+    simplex: false
+    options:
+      dm_refine: 0
+    preModifiers:
       - !<!ablate::domain::modifiers::DistributeWithGhostCells>
-        ghostCellDepth: 2
-      - !<!ablate::domain::modifiers::GhostBoundaryCells>
-        labelName: ""
+        ghostCellDepth: 5
+    postModifiers: ~
     fields:
-      - !<!ablate::finiteVolume::NPhaseFlowFields>
-        eos: !<!ablate::eos::NPhase> &eos
-          eosk:
-            - !<!ablate::eos::KthStiffenedGas>  # Phase 1 (background)
-              parameters:
-                gamma: 1.4
-                Cp: 1005.0
-                p0: 0.0
-            - !<!ablate::eos::KthStiffenedGas>  # Phase 2 (disc)
-              parameters:
-                gamma: 1.4
-                Cp: 1005.0
-                p0: 0.0
-      - name: alphakrhok
+      - !<!ablate::finiteVolume::CompressibleFlowFields>
+        eos: !<!ablate::eos::PerfectGas>
+          parameters:
+            gamma: 1.4
+            Rgas: 287.0
+        region:
+          name: domain
+        options:
+          petscfv_compute_gradients: false
+          petsclimiter_type: none
+      - name: densityvolumeFraction
         type: FVM
-        components: [alphakrhok0, alphakrhok1]
-      - name: alphak
-        type: FVM
-        components: [alphak0, alphak1]
-      - name: p
+        region:
+          name: domain
+        options:
+          petscfv_compute_gradients: false
+          petsclimiter_type: none
+      - name: gasDensity
         location: AUX
         type: FVM
-      - name: rhok
+        region:
+          name: domain
+        options:
+          petscfv_compute_gradients: false
+          petsclimiter_type: none
+      - name: liquidDensity
         location: AUX
         type: FVM
-        components: [rhok0, rhok1]
-      - name: tk
+        region:
+          name: domain
+        options:
+          petscfv_compute_gradients: false
+          petsclimiter_type: none
+      - name: mixtureEnergy
         location: AUX
         type: FVM
-        components: [tk0, tk1]
-      - name: epsilonk
+        region:
+          name: domain
+        options:
+          petscfv_compute_gradients: false
+          petsclimiter_type: none
+      - name: gasEnergy
         location: AUX
         type: FVM
-        components: [epsilonk0, epsilonk1]
+        region:
+          name: domain
+        options:
+          petscfv_compute_gradients: false
+          petsclimiter_type: none
+      - name: liquidEnergy
+        location: AUX
+        type: FVM
+        region:
+          name: domain
+        options:
+          petscfv_compute_gradients: false
+          petsclimiter_type: none
+      - name: volumeFraction
+        type: FVM
+        region:
+          name: domain
+        options:
+          petscfv_compute_gradients: false
+          petsclimiter_type: none
+      - name: pressure
+        location: AUX
+        type: FVM
+        region:
+          name: domain
+        options:
+          petscfv_compute_gradients: false
+          petsclimiter_type: none
+      - name: debug1
+        location: AUX
+        type: FVM
+        region:
+          name: domain
+        options:
+          petscfv_compute_gradients: false
+          petsclimiter_type: none
+      - name: debug2
+        location: AUX
+        type: FVM
+        region:
+          name: domain
+        options:
+          petscfv_compute_gradients: false
+          petsclimiter_type: none
   initialization:
-    - fieldName: allaire
-      field: !<!ablate::mathFunctions::Formula>
-        formula: "rho*e, rho*u, rho*v"
+    - fieldName: volumeFraction
+      field: !<!ablate::mathFunctions::Formula> &2
+        formula: "(p < -h*n) ? 0 : ((p > h*n) ? 1 : (0.5 + 15*((p/(h*n)))/16 -5*((p/(h*n))^3)/8 + 3*((p/(h*n))^5)/16))"
         constants:
-          rho: 1.0
-          e: 2.5  # For gamma=1.4, e = p/((gamma-1)*rho) + 0.5*(u^2 + v^2) = 1.0/(0.4*1.0) + 0.5*(4π^2*0.25) ≈ 2.5
+          h: 0.005
+          n: 8
         nested:
+          p: !<!ablate::mathFunctions::Formula>
+            formula: 1 * min(circle, notch)
+            nested:
+              circle: !<!ablate::mathFunctions::Formula>
+                formula: "sqrt((x-0.5)^2 + (y-0.75)^2) - 0.15"
+              notch: !<!ablate::mathFunctions::Formula>
+                formula: "min(min(x-0.475, 0.525-x), y-0.5)"
+    - fieldName: densityvolumeFraction
+      field: !<!ablate::mathFunctions::Formula>
+        formula: vof*airDensity
+        constants: &3
+          airDensity: 1.1614401858304297
+          airCv: 717.5
+          airGamma: 1.4
+          T: 300
+          P: 100000
+        nested:
+          vof: *2
+          airMassFraction1: !<!ablate::mathFunctions::Formula> &4
+            formula: " airDensity*(vof) / (airDensity*vof + airDensity*(1-vof)) "
+            constants: *3
+            nested:
+              vof: *2
+          airMassFraction2: !<!ablate::mathFunctions::Formula> &5
+            formula: " airDensity*(1-vof) / (airDensity*vof + airDensity*(1-vof)) "
+            constants: *3
+            nested:
+              vof: *2
+    - fieldName: euler
+      field: !<!ablate::mathFunctions::Formula>
+        formula: density, density*(Ya1*airEnergy1 + Ya2*airEnergy2), density*u, density*v
+        constants: *3
+        nested:
+          vof: *2
+          Ya1: *4
+          Ya2: *5
           u: !<!ablate::mathFunctions::Formula>
-            formula: "-2*3.14159*(y - 0.5)"
+            formula: "0.5*(0.5-y)"
+            constants: *3
           v: !<!ablate::mathFunctions::Formula>
-            formula: "2*3.14159*(x - 0.5)"
-    - fieldName: alphakrhok
-      field: !<!ablate::mathFunctions::Formula>
-        formula: "rho1*(1 - max(circle, notch)), rho2*max(circle, notch)"
-        constants:
-          rho1: 1.0
-          rho2: 1.0
-        nested:
-          circle: !<!ablate::levelSet::VOFMathFunction>
-            domain: *1
-            levelSet: !<!ablate::mathFunctions::Formula>
-              formula: "sqrt((x-0.5)^2 + (y-0.75)^2) - 0.15"
-          notch: !<!ablate::levelSet::VOFMathFunction>
-            domain: *1
-            levelSet: !<!ablate::mathFunctions::Formula>
-              formula: "min(min(x-0.475, 0.525-x), y-0.5)"
-    - fieldName: alphak
-      field: !<!ablate::mathFunctions::Formula>
-        formula: "1 - max(circle, notch), max(circle, notch)"
-        nested:
-          circle: !<!ablate::levelSet::VOFMathFunction>
-            domain: *1
-            levelSet: !<!ablate::mathFunctions::Formula>
-              formula: "sqrt((x-0.5)^2 + (y-0.75)^2) - 0.15"
-          notch: !<!ablate::levelSet::VOFMathFunction>
-            domain: *1
-            levelSet: !<!ablate::mathFunctions::Formula>
-              formula: "min(min(x-0.475, 0.525-x), y-0.5)"
+            formula: "0.5*(x-0.5)"
+            constants: *3
+          density: !<!ablate::mathFunctions::Formula>
+            formula: "airDensity"
+            constants: *3
+          airEnergy1: !<!ablate::mathFunctions::Formula>
+            formula: airCv*T + 0.5*(u^2 + v^2)
+            constants: *3
+            nested:
+              u: !<!ablate::mathFunctions::Formula>
+                formula: "0.5*(0.5-y)"
+                constants: *3
+              v: !<!ablate::mathFunctions::Formula>
+                formula: "0.5*(x-0.5)"
+                constants: *3
+          airEnergy2: !<!ablate::mathFunctions::Formula>
+            formula: airCv*T + 0.5*(u^2 + v^2)
+            constants: *3
+            nested:
+              u: !<!ablate::mathFunctions::Formula>
+                formula: "0.5*(0.5-y)"
+                constants: *3
+              v: !<!ablate::mathFunctions::Formula>
+                formula: "0.5*(x-0.5)"
+                constants: *3
+
 solver: !<!ablate::finiteVolume::FiniteVolumeSolver>
-  id: Zalesak Disc Problem
+  id: zalesak
+  region:
+    name: interiorCells
   processes:
-    - !<!ablate::finiteVolume::processes::NPhaseAllaireAdvection>
-      eos: *eos
-      cfl: 0.5
-      fluxCalculatorNStiff: !<!ablate::finiteVolume::fluxCalculator::AusmpUp>
+    - !<!ablate::finiteVolume::processes::NavierStokesTransport>
+      eos: !<!ablate::eos::PerfectGas>
         parameters:
-          beta: 0.125
-          mInf: 0.0
+          gamma: 0
+          Rgas: 0
+      # transport: !ablate::eos::transport::TwoPhaseTransport
+      #   transport1: !<!ablate::eos::transport::Constant>
+      #     k: 0.2
+      #     mu: 0.6
+      #   transport2: !<!ablate::eos::transport::Constant>
+      #     k: 0.4
+      #     mu: 0.8
+    - !<!ablate::finiteVolume::processes::TwoPhaseEulerAdvection>
+      eos: !<!ablate::eos::TwoPhase>
+        eos1: !<!ablate::eos::PerfectGas>
+          parameters:
+            gamma: 1.4
+            Rgas: 287.0
+        eos2: !<!ablate::eos::PerfectGas>
+          parameters:
+            gamma: 1.4
+            Rgas: 287.0
+      parameters:
+        cfl: 0.5
+        vortexTest: false
+      fluxCalculatorGasGas: !<!ablate::finiteVolume::fluxCalculator::AusmpUp>
+      fluxCalculatorGasLiquid: !<!ablate::finiteVolume::fluxCalculator::AusmpUp>
+      fluxCalculatorLiquidGas: !<!ablate::finiteVolume::fluxCalculator::AusmpUp>
+      fluxCalculatorLiquidLiquid: !<!ablate::finiteVolume::fluxCalculator::AusmpUp>
+    - !<!ablate::finiteVolume::processes::IntSharp>
+      Gamma: 1
+      epsilon: 0.005
+      addtoRHS: false
+      flipPhiTilde: false
   boundaryConditions:
-    - !<!ablate::finiteVolume::boundaryConditions::EssentialGhost>
-      boundaryName: allaire walls
-      labelIds: [1, 2, 3, 4]
+    - !<!ablate::finiteVolume::boundaryConditions::EssentialBoundary>
+      boundaryName: periodic boundaries
+      labelIds: [boundaryCells]
       boundaryValue:
-        fieldName: allaire
+        fieldName: euler
         field: !<!ablate::mathFunctions::Formula>
-          formula: "rho*e, rho*u, rho*v"
-          constants:
-            rho: 1.0
-            e: 2.5
+          formula: "airDensity, airDensity*airEnergy, density*u, density*v"
+          constants: *3
           nested:
             u: !<!ablate::mathFunctions::Formula>
-              formula: "-2*3.14159*(y - 0.5)"
+              formula: "0.5*(0.5-y)"
+              constants: *3
             v: !<!ablate::mathFunctions::Formula>
-              formula: "2*3.14159*(x - 0.5)"
-    - !<!ablate::finiteVolume::boundaryConditions::EssentialGhost>
-      boundaryName: alphakrhok walls
-      labelIds: [1, 2, 3, 4]
-      boundaryValue:
-        fieldName: alphakrhok
-        field: !<!ablate::mathFunctions::Formula>
-          formula: "rho1, 0"
-          constants:
-            rho1: 1.0
-    - !<!ablate::finiteVolume::boundaryConditions::EssentialGhost>
-      boundaryName: alphak walls
-      labelIds: [1, 2, 3, 4]
-      boundaryValue:
-        fieldName: alphak
-        field: !<!ablate::mathFunctions::Formula>
-          formula: "1, 0"
+              formula: "0.5*(x-0.5)"
+              constants: *3
+            airEnergy: !<!ablate::mathFunctions::Formula>
+              formula: airCv*T + 0.5*(u^2 + v^2)
+              constants: *3
+              nested:
+                u: !<!ablate::mathFunctions::Formula>
+                  formula: "0.5*(0.5-y)"
+                  constants: *3
+                v: !<!ablate::mathFunctions::Formula>
+                  formula: "0.5*(x-0.5)"
+                  constants: *3
+            density: !<!ablate::mathFunctions::Formula>
+              formula: "airDensity"
+              constants: *3
   monitors:
     - !<!ablate::monitors::TimeStepMonitor>
       interval: 1

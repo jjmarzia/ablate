@@ -4,9 +4,15 @@
 #include "domain/fieldDescription.hpp"
 #include "utilities/vectorUtilities.hpp"
 
-ablate::finiteVolume::CompressibleFlowFields::CompressibleFlowFields(std::shared_ptr<eos::EOS> eos, std::shared_ptr<domain::Region> region,
-                                                                     std::shared_ptr<parameters::Parameters> conservedFieldParameters)
-    : eos(std::move(eos)), region(std::move(region)), conservedFieldOptions(std::move(conservedFieldParameters)) {}
+ablate::finiteVolume::CompressibleFlowFields::CompressibleFlowFields(
+    std::shared_ptr<eos::EOS> eos, std::shared_ptr<domain::Region> region,
+    std::shared_ptr<parameters::Parameters> /*conservedFieldParameters*/)
+    : eos(std::move(eos)), region(std::move(region)),
+      conservedFieldOptions(ablate::parameters::MapParameters::Create({
+          {"petscfv_type", "leastsquares"},
+          {"petsclimiter_type", "none"},
+          {"petscfv_compute_gradients", "false"}
+      })) {}
 
 std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVolume::CompressibleFlowFields::GetFields() {
     std::vector<std::shared_ptr<ablate::domain::FieldDescription>> flowFields{

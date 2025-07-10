@@ -11,7 +11,7 @@
 
 //ablate::finiteVolume::processes::IntSharp::IntSharp(PetscReal Gamma, PetscReal epsilon) : Gamma(Gamma), epsilon(epsilon) {}
 
-ablate::finiteVolume::processes::SurfaceForce::SurfaceForce(PetscReal sigma, PetscReal C, PetscReal N, bool flipPhiTilde) : sigma(sigma), C(C), N(N), flipPhiTilde(flipPhiTilde) {}
+ablate::finiteVolume::processes::SurfaceForce::SurfaceForce(PetscReal sigma, PetscReal C, PetscReal N, bool flipPhiTilde, bool applyToSolution) : sigma(sigma), C(C), N(N), flipPhiTilde(flipPhiTilde), applyToSolution(applyToSolution) {}
 ablate::finiteVolume::processes::SurfaceForce::~SurfaceForce() { DMDestroy(&vertexDM) >> utilities::PetscUtilities::checkError; }
 
 PetscReal GaussianDerivativeFactor(const PetscReal *x, const PetscReal s,  const PetscInt dx, const PetscInt dy, const PetscInt dz) {
@@ -402,7 +402,18 @@ PetscReal xmin = -0.05; PetscReal xmax = 0.05; PetscReal ymin = -0.05; PetscReal
     VecGetArrayRead(locX, &solArray) >> ablate::utilities::PetscUtilities::checkError;
     VecGetArray(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;
     VecGetArray(vertexVec, &vertexArray);
-    PetscCall(VecGetArray(locFVec, &fArray));
+    
+    // Only get RHS array if we're actually applying to solution
+    if (process->applyToSolution) {
+        PetscCall(VecGetArray(locFVec, &fArray));
+    } else {
+        fArray = nullptr;  // Don't touch the RHS vector
+    }
+
+    // --- Determinism: Print checksum of solution vector at start ---
+    PetscReal solNormStart = 0.0;
+    VecNorm(locX, NORM_2, &solNormStart);
+    PetscPrintf(PETSC_COMM_WORLD, "[SurfaceForce::ComputeSource] Start solution norm: %g\n", solNormStart);
 
     ablate::domain::Range cellRange;
     solver.GetCellRangeWithoutGhost(cellRange);
@@ -656,7 +667,7 @@ if (process->flipPhiTilde){*phitilde = 1.00- *phitilde;} }
                 PetscReal xn, yn, zn; Get3DCoordinate(dm, neighbor, &xn, &yn, &zn);
 
 
-bool periodicfix = true;
+bool periodicfix = false;
 
 if (periodicfix){
 
@@ -820,65 +831,70 @@ if ((cell==0) and (*rankptr == 5)){  std::cout << "";   }
         PetscScalar *phiptr; xDMPlexPointLocalRef(phiDM, cell, -1, phiLocalArray, &phiptr);
 
         PetscReal *phitildemaskptr; xDMPlexPointLocalRef(phitildemaskDM, cell, -1, phitildemaskLocalArray, &phitildemaskptr);
-//        PetscScalar *kappaptr; xDMPlexPointLocalRef(kappaDM, cell, -1, kappaLocalArray, &kappaptr);
-//        PetscScalar *nptr; xDMPlexPointLocalRef(nDM, cell, -1, nLocalArray, &nptr);
         PetscScalar *sfxptr; xDMPlexPointLocalRef(sfxDM, cell, -1, sfxLocalArray, &sfxptr);
         PetscScalar *sfyptr; xDMPlexPointLocalRef(sfyDM, cell, -1, sfyLocalArray, &sfyptr);
         PetscScalar *sfzptr; xDMPlexPointLocalRef(sfzDM, cell, -1, sfzLocalArray, &sfzptr);
 
-        const PetscScalar *euler = nullptr;
-        PetscScalar *eulerSource = nullptr;
-        PetscCall(DMPlexPointLocalFieldRef(dm, cell, eulerField.id, fArray, &eulerSource));
-        PetscCall(DMPlexPointLocalFieldRead(dm, cell, eulerField.id, solArray, &euler));
-        auto density = euler[ablate::finiteVolume::CompressibleFlowFields::RHO];
-        PetscReal ux = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 0] / density;
-        PetscReal uy = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 1] / density;
-        PetscReal uz = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 2] / density;
+        // REMOVED: All solution field access to prevent accidental modifications
+        // const PetscScalar *euler = nullptr;
+        // PetscScalar *eulerSource = nullptr;
+        // PetscCall(DMPlexPointLocalFieldRef(dm, cell, eulerField.id, fArray, &eulerSource));
+        // PetscCall(DMPlexPointLocalFieldRead(dm, cell, eulerField.id, solArray, &euler));
 
+        PetscScalar *xc; xDMPlexPointLocalRef(xDM, cell, -1, xLocalArray, &xc);
+        PetscScalar *yc; xDMPlexPointLocalRef(yDM, cell, -1, yLocalArray, &yc);
 
-PetscScalar *xc; xDMPlexPointLocalRef(xDM, cell, -1, xLocalArray, &xc);
-PetscScalar *yc; xDMPlexPointLocalRef(yDM, cell, -1, yLocalArray, &yc);
+        // REMOVED: All surface force additions to solution field
+        // if (PetscAbs(*sfxptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOU] += *sfxptr;}
+        // if (PetscAbs(*sfyptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOV] += *sfyptr;}
+        // if (dim==3){if (PetscAbs(*sfzptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOW] += *sfzptr;}}
+        // if (PetscAbs(*sfxptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += *sfxptr * ux;}
+        // if (PetscAbs(*sfyptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += *sfyptr * uy;}
+        // if (dim==3){if (PetscAbs(*sfzptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += *sfzptr * uz;}}
 
-//just focus on the pinchoff
-if (*xc < 0.027 || *xc > 0.048){*sfxptr = 0; *sfyptr = 0; *sfzptr = 0;}
+        // REMOVED: Pin liquid parent code
+        // if (*yc < 0.01042 && *phiptr < 0.9999) {
+        //     eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOU] = -1e-10;
+        //     eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOV] = -1e-10;
+        //     if (dim==3){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOW] = -1e-10;}
+        // }
 
-        if (PetscAbs(*sfxptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOU] += *sfxptr;}
-        if (PetscAbs(*sfyptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOV] += *sfyptr;}
-        if (dim==3){if (PetscAbs(*sfzptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOW] += *sfzptr;}}
-        if (PetscAbs(*sfxptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += *sfxptr * ux;}
-        if (PetscAbs(*sfyptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += *sfyptr * uy;}
-        if (dim==3){if (PetscAbs(*sfzptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += *sfzptr * uz;}}
-
-        //pin liquid parent
-        if (*yc < 0.01042 && *phiptr < 0.9999) {
-            eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOU] = -1e-10;
-            eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOV] = -1e-10;
-            if (dim==3){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOW] = -1e-10;}
-        }
-
-
+        // Only update aux fields for visualization/debugging
         PetscScalar *optr3; xDMPlexPointLocalRef(auxDM, cell, ofield3.id, auxArray, &optr3);
         PetscScalar *optr4; xDMPlexPointLocalRef(auxDM, cell, ofield4.id, auxArray, &optr4);
-
-PetscScalar *optr5; xDMPlexPointLocalRef(auxDM, cell, ofield5.id, auxArray, &optr5);
-PetscScalar *optr6; xDMPlexPointLocalRef(auxDM, cell, ofield6.id, auxArray, &optr6);
-
-//        PetscScalar *phitildemaskptr; xDMPlexPointLocalRef(phitildemaskDM, cell, -1, phitildemaskLocalArray, &phitildemaskptr);
+        PetscScalar *optr5; xDMPlexPointLocalRef(auxDM, cell, ofield5.id, auxArray, &optr5);
+        PetscScalar *optr6; xDMPlexPointLocalRef(auxDM, cell, ofield6.id, auxArray, &optr6);
 
         PetscScalar *phitildeptr; xDMPlexPointLocalRef(phitildeDM, cell, -1, phitildeLocalArray, &phitildeptr);
         *optr3 = *phitildeptr;
         if (dim==3){*optr4 = PetscSqrtReal(PetscSqr(*sfxptr) + PetscSqr(*sfyptr) + PetscSqr(*sfzptr));}
         if (dim<3){*optr4 = PetscSqrtReal(PetscSqr(*sfxptr) + PetscSqr(*sfyptr));}
 
+        PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
+        PetscScalar *kappaptr; xDMPlexPointLocalRef(kappaDM, cell, -1, kappaLocalArray, &kappaptr);
 
+        *optr5 = *rankptr;
+        *optr6 = *kappaptr;
 
-PetscScalar *rankptr; xDMPlexPointLocalRef(rankDM, cell, -1, rankLocalArray, &rankptr);
-PetscScalar *kappaptr; xDMPlexPointLocalRef(kappaDM, cell, -1, kappaLocalArray, &kappaptr);
+        // Apply surface forces to solution field only if requested
+        if (process->applyToSolution) {
+            const PetscScalar *euler = nullptr;
+            PetscScalar *eulerSource = nullptr;
+            PetscCall(DMPlexPointLocalFieldRef(dm, cell, eulerField.id, fArray, &eulerSource));
+            PetscCall(DMPlexPointLocalFieldRead(dm, cell, eulerField.id, solArray, &euler));
+            
+            auto density = euler[ablate::finiteVolume::CompressibleFlowFields::RHO];
+            PetscReal ux = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 0] / density;
+            PetscReal uy = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 1] / density;
+            PetscReal uz = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 2] / density;
 
-*optr5 = *rankptr;
-*optr6 = *kappaptr; // *phitildemaskptr;
-
-
+            if (PetscAbs(*sfxptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOU] += *sfxptr;}
+            if (PetscAbs(*sfyptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOV] += *sfyptr;}
+            if (dim==3){if (PetscAbs(*sfzptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOW] += *sfzptr;}}
+            if (PetscAbs(*sfxptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += *sfxptr * ux;}
+            if (PetscAbs(*sfyptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += *sfyptr * uy;}
+            if (dim==3){if (PetscAbs(*sfzptr) > 1e-10){eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += *sfzptr * uz;}}
+        }
     }
     if (verbose){
         SaveDataToFile(cellRange.start, cellRange.end, sfxDM, sfxLocalArray, "sfx", true);
@@ -886,7 +902,10 @@ PetscScalar *kappaptr; xDMPlexPointLocalRef(kappaDM, cell, -1, kappaLocalArray, 
         SaveDataToFile(cellRange.start, cellRange.end, sfzDM, sfzLocalArray, "sfz", true);
     }
 
-
+    // --- Determinism: Print checksum of solution vector at end ---
+    PetscReal solNormEnd = 0.0;
+    VecNorm(locX, NORM_2, &solNormEnd);
+    PetscPrintf(PETSC_COMM_WORLD, "[SurfaceForce::ComputeSource] End solution norm: %g\n", solNormEnd);
 
 //    std::cout << "surfaceForce is done\n";
 
@@ -968,7 +987,11 @@ PetscScalar *kappaptr; xDMPlexPointLocalRef(kappaDM, cell, -1, kappaLocalArray, 
     VecRestoreArrayRead(locX, &solArray) >> ablate::utilities::PetscUtilities::checkError;
     VecRestoreArray(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;
     VecRestoreArray(vertexVec, &vertexArray);
-    VecRestoreArray(locFVec, &fArray);
+    
+    // Only restore RHS array if we actually got it
+    if (process->applyToSolution) {
+        VecRestoreArray(locFVec, &fArray);
+    }
     DMRestoreLocalVector(process->vertexDM, &vertexVec);
     VecDestroy(&vertexVec);
     solver.RestoreRange(cellRange);
@@ -982,5 +1005,6 @@ REGISTER(ablate::finiteVolume::processes::Process, ablate::finiteVolume::process
          ARG(PetscReal, "sigma", "sigma, surface tension coefficient"),
          ARG(PetscReal, "C", "stdev length with respect to grid spacing magnitude (default 1)"),
          ARG(PetscReal, "N", "number of stdevs that the convolution integral captures (default 2.6 for 99 pct accuracy if C=1)"),
-         ARG(bool, "flipPhiTilde", "if true: phiTilde-->1-phiTilde (set it to true if primary phase is phi=0 or false if phi=1)")
+         ARG(bool, "flipPhiTilde", "if true: phiTilde-->1-phiTilde (set it to true if primary phase is phi=0 or false if phi=1)"),
+         OPT(bool, "applyToSolution", "if true, apply the surface force to the solution field (default false)")
 );

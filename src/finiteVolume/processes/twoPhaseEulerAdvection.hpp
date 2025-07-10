@@ -56,6 +56,9 @@ class TwoPhaseEulerAdvection : public Process {
     PetscReal T_cycle = 0.02;
     PetscReal pi = 3.14159265358;
 
+    // Zalesak test flag
+    bool zalesakTest = false;
+
    private:
     // Add a member variable for IntSharp
     // std::shared_ptr<ablate::finiteVolume::processes::IntSharp> intSharpProcess;
@@ -239,6 +242,9 @@ class TwoPhaseEulerAdvection : public Process {
 
     // Compute the Euler and density-volume fraction fluxes
     static PetscErrorCode CompressibleFlowCompleteFlux(const ablate::finiteVolume::FiniteVolumeSolver &flow, DM dm, PetscReal time, Vec locXVec, Vec locFVec, void* ctx);
+
+    // Zalesak test source term function
+    static PetscErrorCode ZalesakTestSourceTerm(PetscInt dim, PetscReal time, const PetscFVCellGeom* cg, const PetscInt uOff[], const PetscScalar u[], const PetscInt aOff[], const PetscScalar a[], PetscScalar f[], void* ctx);
 
    public:
     /**

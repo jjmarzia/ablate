@@ -234,6 +234,8 @@ ablate::finiteVolume::processes::TwoPhaseEulerAdvection::TwoPhaseEulerAdvection(
         T_cycle = parameters->Get<PetscReal>("T_cycle", 0.02);
         pi = parameters->Get<PetscReal>("pi", 3.14159265358);
     }
+
+    zalesakTest = parameters->Get<bool>("zalesakTest", false);
 }
 
 ablate::finiteVolume::processes::TwoPhaseEulerAdvection::~TwoPhaseEulerAdvection() {
@@ -270,7 +272,12 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Setup(ablate::fini
     
     // Register vortex test as source term if enabled
     if (vortexTest) {
-        flow.RegisterRHSFunction(VortexTestSourceTerm, this, {CompressibleFlowFields::EULER_FIELD}, {CompressibleFlowFields::EULER_FIELD}, {});
+        flow.RegisterRHSFunction(static_cast<ablate::finiteVolume::CellInterpolant::PointFunction>(VortexTestSourceTerm), this, {CompressibleFlowFields::EULER_FIELD}, {CompressibleFlowFields::EULER_FIELD}, {});
+    }
+    
+    // Register Zalesak test as source term if enabled
+    if (zalesakTest) {
+        flow.RegisterRHSFunction(static_cast<ablate::finiteVolume::CellInterpolant::PointFunction>(ZalesakTestSourceTerm), this, {CompressibleFlowFields::EULER_FIELD}, {CompressibleFlowFields::EULER_FIELD}, {});
     }
     
     flow.RegisterComputeTimeStepFunction(ComputeCflTimeStep, &timeStepData, "cfl");
@@ -1139,7 +1146,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffene
       eL = internalEnergy;
       TL = (eL*rhoL - p0L)/(cvL*rhoL);
 
-      PetscReal rho0 = 998.23;
+      PetscReal rho0 = 1.1614401858304297;
 
       if (rhoL < rho0) {
         PetscReal p0  = (gammaL - 1.0)*rho0*eL - gammaL*p0L; // What the pressure would be if the density was higher
@@ -1567,12 +1574,6 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::StiffenedGasStiffe
 
 }
 
-#include "registrar.hpp"
-REGISTER(ablate::finiteVolume::processes::Process, ablate::finiteVolume::processes::TwoPhaseEulerAdvection, "", ARG(ablate::eos::EOS, "eos", "must be twoPhase"),
-         OPT(ablate::parameters::Parameters, "parameters", "the parameters used by advection: cfl(.5)"), ARG(ablate::finiteVolume::fluxCalculator::FluxCalculator, "fluxCalculatorGasGas", ""),
-         ARG(ablate::finiteVolume::fluxCalculator::FluxCalculator, "fluxCalculatorGasLiquid", ""), ARG(ablate::finiteVolume::fluxCalculator::FluxCalculator, "fluxCalculatorLiquidGas", ""),
-         ARG(ablate::finiteVolume::fluxCalculator::FluxCalculator, "fluxCalculatorLiquidLiquid", ""));
-
 PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::VortexTestSourceTerm(PetscInt dim, PetscReal time, const PetscFVCellGeom* cg, const PetscInt uOff[], const PetscScalar u[], const PetscInt aOff[], const PetscScalar a[], PetscScalar f[], void* ctx) {
     PetscFunctionBeginUser;
     auto twoPhaseEulerAdvection = (TwoPhaseEulerAdvection *)ctx;
@@ -1580,7 +1581,7 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::VortexTe
     // Get cell centroid coordinates
     PetscReal x = cg->centroid[0];
     PetscReal y = (dim > 1) ? cg->centroid[1] : 0.0;
-    PetscReal z = (dim > 2) ? cg->centroid[2] : 0.0;
+    (void)(dim > 2 ? cg->centroid[2] : 0.0); // Suppress unused variable warning for z
     
     // Compute target vortex velocity field
     PetscReal u_target = (twoPhaseEulerAdvection->T_kothe/twoPhaseEulerAdvection->T_cycle) * 
@@ -1592,6 +1593,19 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::VortexTe
                          PetscSinReal(twoPhaseEulerAdvection->pi * y) * PetscSinReal(twoPhaseEulerAdvection->pi * y) * 
                          PetscSinReal(2.0 * twoPhaseEulerAdvection->pi * x) * 
                          PetscCosReal(twoPhaseEulerAdvection->pi * time / twoPhaseEulerAdvection->T_cycle);
+
+    //at a point at time t, if x is in 0.5,0.51 and y is in 0.75,0.76, print the velocity
+    // if (x > 0.5 && x < 0.51 && y > 0.75 && y < 0.76) {
+    //     PetscPrintf(PETSC_COMM_WORLD, "VORTEX TEST DEBUG: velocity at time=%g, x=%g, y=%g, u_target=%g, v_target=%g\n", time, x, y, u_target, v_target);
+    // }
+    
+    // Debug: Check for NaN velocities
+    if (PetscIsInfOrNanReal(u_target) || PetscIsInfOrNanReal(v_target)) {
+        PetscPrintf(PETSC_COMM_WORLD, "VORTEX TEST DEBUG: NaN/Inf velocity detected at time=%g, x=%g, y=%g\n", time, x, y);
+        PetscPrintf(PETSC_COMM_WORLD, "  u_target=%g, v_target=%g\n", u_target, v_target);
+        PetscPrintf(PETSC_COMM_WORLD, "  T_kothe=%g, T_cycle=%g, pi=%g\n", 
+                   twoPhaseEulerAdvection->T_kothe, twoPhaseEulerAdvection->T_cycle, twoPhaseEulerAdvection->pi);
+    }
     
     // Get current density and momentum from the EULER_FIELD
     PetscReal rho = u[uOff[0] + ablate::finiteVolume::CompressibleFlowFields::RHO];
@@ -1604,12 +1618,7 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::VortexTe
     
     // Get current time step (this should come from the solver context)
     // For now, use a reasonable default - in practice this should be passed from the solver
-    PetscReal dt = 0.001; // This should be obtained from the solver context
-    
-    // Initialize all source terms to zero
-    // for (PetscInt i = 0; i < 5; i++) { // EULER_FIELD has 5 components: RHO, RHOU, RHOV, RHOW, RHOE
-    //     f[uOff[0] + i] = 0.0;
-    // }
+    PetscReal dt = 1e-7; // This should be obtained from the solver context
     
     // Compute source terms to completely override momentum in one time step
     // f = (target_momentum - current_momentum) / dt
@@ -1620,3 +1629,48 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::VortexTe
     
     PetscFunctionReturn(0);
 }
+
+PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::ZalesakTestSourceTerm(
+    PetscInt dim, PetscReal time, const PetscFVCellGeom* cg, const PetscInt uOff[], const PetscScalar u[], const PetscInt aOff[], const PetscScalar a[], PetscScalar f[], void* ctx) {
+    PetscFunctionBeginUser;
+    // Get cell centroid coordinates
+    PetscReal x = cg->centroid[0];
+    PetscReal y = (dim > 1) ? cg->centroid[1] : 0.0;
+
+    // Zalesak velocity field
+    PetscReal u_target = 150.0 * (0.5 - y);
+    PetscReal v_target = 150.0 * (x - 0.5);
+
+    // Get current density and momentum from the EULER_FIELD
+    PetscReal rho = u[uOff[0] + ablate::finiteVolume::CompressibleFlowFields::RHO];
+    PetscReal rhoU_current = u[uOff[0] + ablate::finiteVolume::CompressibleFlowFields::RHOU];
+    PetscReal rhoV_current = (dim > 1) ? u[uOff[0] + ablate::finiteVolume::CompressibleFlowFields::RHOV] : 0.0;
+
+    // Compute target momentum (density * target velocity)
+    PetscReal rhoU_target = rho * u_target;
+    PetscReal rhoV_target = rho * v_target;
+
+    // Use a reasonable dt (should be passed from solver ideally)
+    PetscReal dt = 1e-7;
+
+    if (PetscIsInfOrNanReal(u_target) || PetscIsInfOrNanReal(v_target)) {
+        PetscPrintf(PETSC_COMM_WORLD, "VORTEX TEST DEBUG: NaN/Inf velocity detected at time=%g, x=%g, y=%g\n", time, x, y);
+        PetscPrintf(PETSC_COMM_WORLD, "  u_target=%g, v_target=%g\n", u_target, v_target);
+    }
+
+    // Compute source terms to override momentum in one time step
+    f[uOff[0] + ablate::finiteVolume::CompressibleFlowFields::RHOU] = (rhoU_target - rhoU_current) / dt;
+    if (dim > 1) {
+        f[uOff[0] + ablate::finiteVolume::CompressibleFlowFields::RHOV] = (rhoV_target - rhoV_current) / dt;
+    }
+
+    PetscFunctionReturn(0);
+}
+
+
+#include "registrar.hpp"
+REGISTER(ablate::finiteVolume::processes::Process, ablate::finiteVolume::processes::TwoPhaseEulerAdvection, "", ARG(ablate::eos::EOS, "eos", "must be twoPhase"),
+         OPT(ablate::parameters::Parameters, "parameters", "the parameters used by advection: cfl(.5)"), ARG(ablate::finiteVolume::fluxCalculator::FluxCalculator, "fluxCalculatorGasGas", ""),
+         ARG(ablate::finiteVolume::fluxCalculator::FluxCalculator, "fluxCalculatorGasLiquid", ""), ARG(ablate::finiteVolume::fluxCalculator::FluxCalculator, "fluxCalculatorLiquidGas", ""),
+         ARG(ablate::finiteVolume::fluxCalculator::FluxCalculator, "fluxCalculatorLiquidLiquid", ""));
+

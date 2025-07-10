@@ -5,11 +5,12 @@ target_sources(ablateLibrary
         navierStokesTransport.cpp
         speciesTransport.cpp
         evTransport.cpp
-        #twoPhaseEulerAdvection.cpp
+        twoPhaseEulerAdvection.cpp
         nPhaseAllaireAdvection.cpp
         nPhaseSurfaceForce.cpp
         nPhaseNonconservativeRHS.cpp
         intSharp.cpp
+        issf.cpp
         locations.cpp
         gravity.cpp
         pressureGradientScaling.cpp
@@ -20,7 +21,7 @@ target_sources(ablateLibrary
         chemistry.cpp
         radiationLoss.cpp
         thermophoreticDiffusion.cpp
-        surfaceForce.cpp
+        # surfaceForce.cpp
         soot.cpp
         compactCompressibleNSSpeciesTransport.cpp
         compactCompressibleNSSpeciesSingleProgressTransport.cpp
@@ -34,11 +35,12 @@ target_sources(ablateLibrary
         navierStokesTransport.hpp
         speciesTransport.hpp
         evTransport.hpp
-        #twoPhaseEulerAdvection.hpp
+        twoPhaseEulerAdvection.hpp
         nPhaseAllaireAdvection.hpp
         nPhaseSurfaceForce.hpp
         nPhaseNonconservativeRHS.hpp
         intSharp.hpp
+        issf.hpp
         locations.hpp
         gravity.hpp
         pressureGradientScaling.hpp
@@ -49,7 +51,7 @@ target_sources(ablateLibrary
         chemistry.hpp
         radiationLoss.hpp
         thermophoreticDiffusion.hpp
-        surfaceForce.hpp
+        # surfaceForce.hpp
         compactCompressibleNSSpeciesTransport.hpp
         compactCompressibleNSSpeciesSingleProgressTransport.hpp
         soot.hpp

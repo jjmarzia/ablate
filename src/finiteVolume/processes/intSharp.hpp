@@ -23,14 +23,24 @@ class IntSharp : public Process {
     //mesh for vertex information
     DM vertexDM{};
     std::shared_ptr<ablate::domain::SubDomain> subDomain;
+    
+    // Boundary information
+    PetscReal boundingBox[6];  // [xmin, xmax, ymin, ymax, zmin, zmax]
+    PetscReal minRadius;
+    PetscReal boundaryLayerThickness;
+    PetscReal boundaryLayerMultiplier;
+    std::map<PetscInt, PetscReal> cellBoundaryDistances;
+    std::map<PetscInt, PetscReal> cellBoundaryWeights;
 
    public:
     /**
      *
      * @param Gamma
      * @param epsilon
+     * @param flipPhiTilde
+     * @param boundaryLayerMultiplier Optional multiplier for boundary layer thickness (default: 3.0)
      */
-    explicit IntSharp(PetscReal Gamma, PetscReal epsilon, bool flipPhiTilde);
+    explicit IntSharp(PetscReal Gamma, PetscReal epsilon, bool flipPhiTilde, PetscReal boundaryLayerMultiplier = 3.0);
 
     /**
      * Clean up the dm created
@@ -43,6 +53,19 @@ class IntSharp : public Process {
      */
     void Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
     void Initialize(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
+
+    /**
+     * Compute boundary distances and weights for all cells
+     * @param dm The domain mesh
+     */
+    void ComputeBoundaryInformation(DM dm);
+
+    /**
+     * Get boundary weight for a cell (1.0 for interior, 0.0 for boundary, smooth transition in between)
+     * @param cell The cell index
+     * @return Boundary weight between 0.0 and 1.0
+     */
+    PetscReal GetBoundaryWeight(PetscInt cell) const;
 
     /**
      * static function private function to compute interface regularization term and add source to eulerset

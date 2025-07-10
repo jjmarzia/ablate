@@ -1,0 +1,64 @@
+# Example configuration for the combined IntSharpSurfaceForce process
+# This replaces the need for separate IntSharp and SurfaceForce processes
+
+processes:
+  - name: "combined_interface_process"
+    type: "IntSharpSurfaceForce"
+    # IntSharp parameters
+    Gamma: 1.0                    # velocity scale parameter
+    epsilon: 0.001                # interface thickness scale parameter
+    flipPhiTilde: false           # whether to flip phiTilde
+    boundaryLayerMultiplier: 3.0  # boundary layer thickness multiplier
+    
+    # SurfaceForce parameters
+    sigma: 0.0728                 # surface tension coefficient
+    C: 1.0                        # stdev length with respect to grid spacing
+    N: 2.6                        # number of stdevs for convolution
+    
+    # Control flags
+    enableIntSharp: true          # enable IntSharp functionality
+    enableSurfaceForce: true      # enable SurfaceForce functionality
+
+# Example configurations for different use cases:
+
+# 1. IntSharp only (no surface forces)
+# processes:
+#   - name: "intsharp_only"
+#     type: "IntSharpSurfaceForce"
+#     Gamma: 1.0
+#     epsilon: 0.001
+#     flipPhiTilde: false
+#     boundaryLayerMultiplier: 3.0
+#     sigma: 0.0                  # no surface tension
+#     C: 1.0
+#     N: 2.6
+#     enableIntSharp: true
+#     enableSurfaceForce: false   # disable surface forces
+
+# 2. SurfaceForce only (no interface sharpening)
+# processes:
+#   - name: "surfaceforce_only"
+#     type: "IntSharpSurfaceForce"
+#     Gamma: 0.0                  # no interface sharpening
+#     epsilon: 0.001
+#     flipPhiTilde: false
+#     boundaryLayerMultiplier: 3.0
+#     sigma: 0.0728               # surface tension enabled
+#     C: 1.0
+#     N: 2.6
+#     enableIntSharp: false       # disable IntSharp
+#     enableSurfaceForce: true
+
+# 3. Both enabled (recommended for most cases)
+# processes:
+#   - name: "both_enabled"
+#     type: "IntSharpSurfaceForce"
+#     Gamma: 1.0
+#     epsilon: 0.001
+#     flipPhiTilde: false
+#     boundaryLayerMultiplier: 3.0
+#     sigma: 0.0728
+#     C: 1.0
+#     N: 2.6
+#     enableIntSharp: true
+#     enableSurfaceForce: true 

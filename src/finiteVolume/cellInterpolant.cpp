@@ -95,6 +95,8 @@ void ablate::finiteVolume::CellInterpolant::ComputeRHS(PetscReal time, Vec locXV
     /* Reconstruct and limit cell gradients */
     // for each field compute the gradient in the localGrads vector
     for (const auto& field : subDomain->GetFields()) {
+        //print field and dmgrad corresponding to field
+        // PetscPrintf(PETSC_COMM_WORLD, "Field: %s, DMGrad: %p\n", field.name.c_str(), gradientCellDms[field.subId]);
         ComputeFieldGradients(field, locXVec, locGradVecs[field.subId], gradientCellDms[field.subId], cellGeomVec, faceGeomVec, faceRange, cellRange);
     }
 
@@ -376,8 +378,8 @@ void ablate::finiteVolume::CellInterpolant::ComputeFieldGradients(const domain::
     PetscInt dim = subDomain->GetDimensions();
     PetscInt dof = field.numberComponents;
 
-    // Setup slope limiter if not already done
-    if (!slopeLimiter->IsSetup()) {
+    // Setup slope limiter if not already done and gradients are being computed
+    if (dmGrad && !slopeLimiter->IsSetup()) {
         slopeLimiter->Setup(dm, cellRange);
     }
 
@@ -425,8 +427,10 @@ void ablate::finiteVolume::CellInterpolant::ComputeFieldGradients(const domain::
         }
     }
 
-    // Apply slope limiting to the gradients
-    slopeLimiter->ApplyLimiter(dm, dim, field, cellRange, xLocalArray, gradGlobArray);
+    // Apply slope limiting to the gradients only if gradients are being computed
+    if (dmGrad) {
+        slopeLimiter->ApplyLimiter(dm, dim, field, cellRange, xLocalArray, gradGlobArray);
+    }
 
     // Communicate gradient values
     VecRestoreArray(gradGlobVec, &gradGlobArray) >> utilities::PetscUtilities::checkError;
@@ -545,10 +549,10 @@ void ablate::finiteVolume::CellInterpolant::ComputeFluxSourceTerms(DM dm, PetscD
         
         // Debug prints for field identification
         if (faceCells[0] >= 48 && faceCells[0] <= 52) {
-            PetscPrintf(PETSC_COMM_WORLD, "=== ALPHAKRHOK POST-PROCESSING DEBUG ===\n");
-            PetscPrintf(PETSC_COMM_WORLD, "Face %d between cells %d and %d\n", face, faceCells[0], faceCells[1]);
-            PetscPrintf(PETSC_COMM_WORLD, "alphakFieldId: %d, alphakrhokFieldId: %d\n", alphakFieldId, alphakrhokFieldId);
-            PetscPrintf(PETSC_COMM_WORLD, "Total fields: %zu\n", fields.size());
+            //PetscPrintf(PETSC_COMM_WORLD, "=== ALPHAKRHOK POST-PROCESSING DEBUG ===\n");
+            //PetscPrintf(PETSC_COMM_WORLD, "Face %d between cells %d and %d\n", face, faceCells[0], faceCells[1]);
+            //PetscPrintf(PETSC_COMM_WORLD, "alphakFieldId: %d, alphakrhokFieldId: %d\n", alphakFieldId, alphakrhokFieldId);
+            //PetscPrintf(PETSC_COMM_WORLD, "Total fields: %zu\n", fields.size());
         }
         
         // If both fields are found, compute face-averaged rhok for alphakrhok
@@ -735,8 +739,8 @@ void ablate::finiteVolume::CellInterpolant::ComputeFluxSourceTerms(DM dm, PetscD
             }
         } else {
             if (faceCells[0] >= 48 && faceCells[0] <= 52) {
-                PetscPrintf(PETSC_COMM_WORLD, "One or both fields not found, skipping post-processing\n");
-                PetscPrintf(PETSC_COMM_WORLD, "=== END ALPHAKRHOK POST-PROCESSING DEBUG ===\n");
+                //PetscPrintf(PETSC_COMM_WORLD, "One or both fields not found, skipping post-processing\n");
+                //PetscPrintf(PETSC_COMM_WORLD, "=== END ALPHAKRHOK POST-PROCESSING DEBUG ===\n");
             }
         }
 

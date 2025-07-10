@@ -24,6 +24,7 @@ class SurfaceForce : public Process {
     PetscReal C;
     PetscReal N;
     bool flipPhiTilde;
+    bool applyToSolution;  // Control whether surface forces are applied to solution field
     //mesh for vertex information
     DM vertexDM{};
     std::shared_ptr<ablate::domain::SubDomain> subDomain;
@@ -33,8 +34,12 @@ class SurfaceForce : public Process {
     /**
      *
      * @param sigma
+     * @param C
+     * @param N
+     * @param flipPhiTilde
+     * @param applyToSolution Whether to apply surface forces to solution field (default: false)
      */
-    explicit SurfaceForce(PetscReal sigma, PetscReal C, PetscReal N, bool flipPhiTilde);
+    explicit SurfaceForce(PetscReal sigma, PetscReal C, PetscReal N, bool flipPhiTilde, bool applyToSolution = false);
 
     /**
      * Clean up the dm created
