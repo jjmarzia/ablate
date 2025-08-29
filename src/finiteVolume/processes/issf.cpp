@@ -73,6 +73,10 @@ ablate::finiteVolume::processes::IntSharpSurfaceForce::IntSharpSurfaceForce(
     }
 }
 
+void intSharpPreStageWrapper(TS flowTs, ablate::solver::Solver &solver, PetscReal stagetime, ablate::finiteVolume::processes::IntSharpSurfaceForce* intSharpProcess) {
+    intSharpProcess->PreStage(flowTs, solver, stagetime);
+}
+
 void ablate::domain::SubDomain::UpdateAuxLocalVector() {
     if (auxDM) {
         DMLocalToGlobal(auxDM, auxLocalVec, INSERT_VALUES, auxGlobalVec) >> utilities::PetscUtilities::checkError;
@@ -197,7 +201,7 @@ void ablate::finiteVolume::processes::IntSharpSurfaceForce::Setup(ablate::finite
         for (PetscInt i = cStart; i < cEnd; ++i) {
             PetscInt cell = i;
             PetscInt nNeighbors, *neighbors;
-            PetscReal layers = 1;
+            PetscReal layers = 3;  // Match original IntSharp: use 3-layer neighbors
             DMPlexGetNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
             cellNeighbors[cell] = std::vector<PetscInt>(neighbors, neighbors + nNeighbors);
             cellWeights[cell] = std::vector<PetscReal>(nNeighbors, 0);
@@ -263,201 +267,146 @@ void ablate::finiteVolume::processes::IntSharpSurfaceForce::Setup(ablate::finite
         }
     }
 
-    // Register RHS function for both IntSharp and SurfaceForce
+    // Register PreStage function for both IntSharp and SurfaceForce (like original IntSharp)
     if (enableIntSharp || enableSurfaceForce) {
-        flow.RegisterRHSFunction(ComputeSource, this);
+        auto intSharpPreStage = std::bind(intSharpPreStageWrapper, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, this);
+        flow.RegisterPreStage(intSharpPreStage);
     }
 }
 
 
 
-PetscErrorCode ablate::finiteVolume::processes::IntSharpSurfaceForce::ComputeSource(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx) {
+PetscErrorCode ablate::finiteVolume::processes::IntSharpSurfaceForce::PreStage(TS flowTs, ablate::solver::Solver &solver, PetscReal stagetime) {
     PetscFunctionBegin;
-    
-    PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] ENTRY\n");
-    
-    auto *process = (ablate::finiteVolume::processes::IntSharpSurfaceForce *)ctx;
-    PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] Got process pointer\n");
-    
-    if (!process->enableIntSharp && !process->enableSurfaceForce) {
-        PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] Both IntSharp and SurfaceForce disabled, returning\n");
-        PetscFunctionReturn(0);
-    }
 
-    PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] Getting subDomain\n");
+    const auto &fvSolver = dynamic_cast<ablate::finiteVolume::FiniteVolumeSolver &>(solver);
+    ablate::domain::Range cellRange; 
+    fvSolver.GetCellRangeWithoutGhost(cellRange);
+    PetscInt dim; 
+    PetscCall(DMGetDimension(fvSolver.GetSubDomain().GetDM(), &dim));
+    DM dm = fvSolver.GetSubDomain().GetDM();
+    Vec globFlowVec; 
+    PetscCall(TSGetSolution(flowTs, &globFlowVec));
+    PetscScalar *flowArray; 
+    PetscCall(VecGetArray(globFlowVec, &flowArray));
+    Vec locFVec; PetscCall(DMGetLocalVector(dm, &locFVec)); 
+    PetscCall(VecZeroEntries(locFVec));
+
+    const auto &eulerOffset = fvSolver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD).offset;
+    const auto &vfOffset = fvSolver.GetSubDomain().GetField(ablate::finiteVolume::processes::TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD).offset;
+    const auto &rhoAlphaOffset = fvSolver.GetSubDomain().GetField(ablate::finiteVolume::processes::TwoPhaseEulerAdvection::DENSITY_VF_FIELD).offset;
+    PetscInt uOff[3]; uOff[0] = vfOffset; uOff[1] = rhoAlphaOffset; uOff[2] = eulerOffset;
+
+    Vec locX = solver.GetSubDomain().GetSolutionVector(); 
+    ablate::finiteVolume::processes::IntSharpSurfaceForce *process = this;
+
     std::shared_ptr<ablate::domain::SubDomain> subDomain = process->subDomain;
-    PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] Calling UpdateAuxLocalVector\n");
     subDomain->UpdateAuxLocalVector();
-    PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] UpdateAuxLocalVector completed\n");
 
-    PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] Getting auxVec\n");
-    Vec auxVec = subDomain->GetAuxVector();
-    
-    // Only get vertexVec if SurfaceForce is enabled (and vertexDM exists)
+    DM auxDM = subDomain->GetAuxDM();
+    Vec auxVec = subDomain->GetAuxVector(); //LOCAL aux vector, not global
+
     Vec vertexVec = nullptr;
-    PetscScalar *vertexArray = nullptr;
     if (process->enableSurfaceForce) {
-        PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] Getting vertexVec\n");
         DMGetLocalVector(process->vertexDM, &vertexVec);
-        PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] Got vertexVec\n");
-        VecGetArray(vertexVec, &vertexArray);
     }
-    
-    const PetscScalar *solArray;
-    PetscScalar *auxArray;
-    PetscScalar *fArray;
-
-    PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] Getting array pointers\n");
-    VecGetArrayRead(locX, &solArray) >> ablate::utilities::PetscUtilities::checkError;
-    PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] Got solArray\n");
-    VecGetArray(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;
-    PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] Got auxArray\n");
+    const PetscScalar *solArray; 
+    VecGetArrayRead(locX, &solArray) >> ablate::utilities::PetscUtilities::checkError; //solution (cell centered) variables rho, rhoe, rhou
+    PetscScalar *auxArray; 
+    VecGetArray(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError; //aux (cell centered) variables phi, p, T, etc
+    PetscScalar *vertexArray = nullptr; 
     if (process->enableSurfaceForce && vertexVec) {
-        VecGetArray(vertexVec, &vertexArray);
-        PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] Got vertexArray\n");
+        VecGetArray(vertexVec, &vertexArray); //vertex based info
     }
-    PetscCall(VecGetArray(locFVec, &fArray));
-    PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] Got fArray\n");
+    PetscScalar *fArray; 
+    PetscCall(VecGetArray(locFVec, &fArray)); //rhs vector
+    PetscInt vStart, vEnd; 
+    if (process->enableSurfaceForce) {
+        DMPlexGetDepthStratum(process->vertexDM, 0, &vStart, &vEnd);
+    }
+    PetscInt cStart, cEnd; 
+    DMPlexGetHeightStratum(auxDM, 0, &cStart, &cEnd);
+
+    //get the volumeFraction field
+    const auto &phiField = subDomain->GetField("volumeFraction");
+    const auto &ofield = subDomain->GetField("debug1");
+    const auto &phitildeField = subDomain->GetField("debug2");
+    const auto &gasDensityField = subDomain->GetField("gasDensity");
+    const auto &liquidDensityField = subDomain->GetField("liquidDensity");
+    const auto &gasEnergyField = subDomain->GetField("gasEnergy");
+    const auto &liquidEnergyField = subDomain->GetField("liquidEnergy");
 
     // --- Determinism: Print checksum of solution vector at start ---
     PetscReal solNormStart = 0.0;
     VecNorm(locX, NORM_2, &solNormStart);
-    PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] Start solution norm: %g\n", solNormStart);
+    PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::PreStage] Start solution norm: %g\n", solNormStart);
 
-    PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] Getting cellRange\n");
-    ablate::domain::Range cellRange;
-    solver.GetCellRangeWithoutGhost(cellRange);
-    PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] Got cellRange\n");
-
-    // Compute combined IntSharp and SurfaceForce contributions
-    if (process->enableIntSharp || process->enableSurfaceForce) {
-        PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] Computing combined contributions\n");
-        process->ComputeCombinedContributions(dm, locX, locFVec, solArray, auxArray, cellRange, process);
-        PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] Combined contributions completed\n");
-    }
-
-    // --- Determinism: Print checksum of solution vector at end ---
-    PetscReal solNormEnd = 0.0;
-    VecNorm(locX, NORM_2, &solNormEnd);
-    PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] End solution norm: %g\n", solNormEnd);
-
-    PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] Restoring arrays\n");
-    VecRestoreArrayRead(locX, &solArray) >> ablate::utilities::PetscUtilities::checkError;
-    VecRestoreArray(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;
-    VecRestoreArray(locFVec, &fArray);
-    
-    // Only cleanup vertexVec if it was created
+    // Zero locFVec and vertexVec before use (already done)
+    PetscCall(VecZeroEntries(locFVec));
     if (process->enableSurfaceForce && vertexVec) {
-        VecRestoreArray(vertexVec, &vertexArray);
-        DMRestoreLocalVector(process->vertexDM, &vertexVec);
-        VecDestroy(&vertexVec);
+        PetscCall(VecZeroEntries(vertexVec));
     }
-    
-    solver.RestoreRange(cellRange);
 
-    PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::ComputeSource] EXIT\n");
-    PetscFunctionReturn(0);
-}
+    // Synchronize ghost cells for input vectors (if needed)
+    DMGlobalToLocalBegin(dm, globFlowVec, INSERT_VALUES, locX);
+    DMGlobalToLocalEnd(dm, globFlowVec, INSERT_VALUES, locX);
+    DMGlobalToLocalBegin(auxDM, auxVec, INSERT_VALUES, auxVec);
+    DMGlobalToLocalEnd(auxDM, auxVec, INSERT_VALUES, auxVec);
 
-void ablate::finiteVolume::processes::IntSharpSurfaceForce::ComputeCombinedContributions(DM dm, Vec locX, Vec locFVec, 
-                                                                                         const PetscScalar *solArray, 
-                                                                                         PetscScalar *auxArray, 
-                                                                                         const ablate::domain::Range &cellRange,
-                                                                                         IntSharpSurfaceForce *process) {
-    PetscPrintf(PETSC_COMM_WORLD, "[ComputeCombinedContributions] ENTRY\n");
-    
-    PetscScalar *fArray;
-    VecGetArray(locFVec, &fArray);
-    PetscPrintf(PETSC_COMM_WORLD, "[ComputeCombinedContributions] Got fArray\n");
-    
-    auto dim = process->subDomain->GetDimensions();
-    PetscPrintf(PETSC_COMM_WORLD, "[ComputeCombinedContributions] dim = %d\n", dim);
-    
-    // Get fields
-    const auto &phiField = process->subDomain->GetField("volumeFraction");
-    const auto &ofield = process->subDomain->GetField("debug1");
-    const auto &phitildeField = process->subDomain->GetField("debug2");
-    const auto &eulerField = process->subDomain->GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
-    const auto &gasDensityField = process->subDomain->GetField("gasDensity");
-    const auto &liquidDensityField = process->subDomain->GetField("liquidDensity");
-    
-    PetscPrintf(PETSC_COMM_WORLD, "[ComputeCombinedContributions] Getting strata\n");
-    PetscInt cStart, cEnd;
-    DMPlexGetHeightStratum(dm, 0, &cStart, &cEnd);
-    PetscPrintf(PETSC_COMM_WORLD, "[ComputeCombinedContributions] cStart = %d, cEnd = %d\n", cStart, cEnd);
-    
-    // Zero the debug fields
-    for (PetscInt cell = cStart; cell < cEnd; ++cell) {
-        PetscScalar* auxCell = nullptr;
-        xDMPlexPointLocalRef(process->subDomain->GetAuxDM(), cell, ofield.id, auxArray, &auxCell);
-        if (auxCell) {
-            auxCell[ofield.offset] = 0.0;
+    // Get the field offset and number of components for debug1 and debug2
+    PetscInt offset = ofield.offset;
+    PetscInt nComp = ofield.numberComponents;
+    PetscInt phitildeOffset = phitildeField.offset;
+    PetscInt phitildeNComp = phitildeField.numberComponents;
+
+    // Only do shared operations if at least one process is enabled
+    if (process->enableIntSharp || process->enableSurfaceForce) {
+        // Zero just the debug1 and debug2 fields for all cells
+        for (PetscInt cell = cStart; cell < cEnd; ++cell) {
+            PetscScalar* auxCell = nullptr;
+            xDMPlexPointLocalRef(auxDM, cell, ofield.id, auxArray, &auxCell);
+            if (auxCell) {
+                for (PetscInt c = 0; c < nComp; ++c) {
+                    auxCell[offset + c] = 0.0;
+                }
+            }
+            PetscScalar* phitildeCell = nullptr;
+            xDMPlexPointLocalRef(auxDM, cell, phitildeField.id, auxArray, &phitildeCell);
+            if (phitildeCell) {
+                for (PetscInt c = 0; c < phitildeNComp; ++c) {
+                    phitildeCell[phitildeOffset + c] = 0.0;
+                }
+            }
         }
-        PetscScalar* phitildeCell = nullptr;
-        xDMPlexPointLocalRef(process->subDomain->GetAuxDM(), cell, phitildeField.id, auxArray, &phitildeCell);
-        if (phitildeCell) {
-            phitildeCell[phitildeField.offset] = 0.0;
-        }
-    }
-    
-    // --- SHARED: Compute phitilde (smoothed volume fraction) for all cells ---
-    PetscPrintf(PETSC_COMM_WORLD, "[ComputeCombinedContributions] Computing shared phitilde\n");
-    
-    // Debug: Check if neighbor data structures are populated
-    PetscPrintf(PETSC_COMM_WORLD, "[ComputeCombinedContributions] DEBUG: cellNeighbors size = %zu, cellWeights size = %zu\n", 
-                process->cellNeighbors.size(), process->cellWeights.size());
-    
-    // Debug: Check a few specific cells
-    for (PetscInt debugCell = cStart; debugCell < cStart + 5; ++debugCell) {
-        auto it = process->cellNeighbors.find(debugCell);
-        if (it != process->cellNeighbors.end()) {
-            PetscPrintf(PETSC_COMM_WORLD, "[ComputeCombinedContributions] DEBUG: Cell %d has %zu neighbors\n", 
-                       debugCell, it->second.size());
-        } else {
-            PetscPrintf(PETSC_COMM_WORLD, "[ComputeCombinedContributions] DEBUG: Cell %d NOT FOUND in cellNeighbors!\n", debugCell);
+
+        // --- SHARED: Compute phitilde (smoothed volume fraction) for all cells ---
+        // PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::PreStage] Computing shared phitilde\n");
+        for (PetscInt cell = cStart; cell < cEnd; ++cell) {
+            PetscReal sum = 0.0;
+            const auto& neighbors = process->cellNeighbors[cell];
+            const auto& weights = process->cellWeights[cell];
+            for (std::size_t j = 0; j < neighbors.size(); ++j) {
+                PetscInt neighbor = neighbors[j];
+                PetscReal weight = weights[j];
+                // Get phi value for neighbor
+                const PetscScalar* neighborPhi = nullptr;
+                xDMPlexPointLocalRead(dm, neighbor, phiField.id, solArray, &neighborPhi);
+                sum += weight * (neighborPhi ? *neighborPhi : 0.0);
+            }
+            // Store phitilde in debug2 field
+            PetscScalar* phitildeCell = nullptr;
+            xDMPlexPointLocalRef(auxDM, cell, phitildeField.id, auxArray, &phitildeCell);
+            *phitildeCell = sum;
         }
     }
-    
-    for (PetscInt cell = cStart; cell < cEnd; ++cell) {
-        PetscReal sum = 0.0;
-        const auto& neighbors = process->cellNeighbors[cell];
-        const auto& weights = process->cellWeights[cell];
-        
-        // Debug: Check if this cell has neighbors
-        if (cell < cStart + 5) {
-            PetscPrintf(PETSC_COMM_WORLD, "[ComputeCombinedContributions] DEBUG: Cell %d - neighbors.size() = %zu, weights.size() = %zu\n", 
-                       cell, neighbors.size(), weights.size());
-        }
-        
-        for (std::size_t j = 0; j < neighbors.size(); ++j) {
-            PetscInt neighbor = neighbors[j];
-            PetscReal weight = weights[j];
-            // Get phi value for neighbor
-            const PetscScalar* neighborPhi = nullptr;
-            xDMPlexPointLocalRead(dm, neighbor, phiField.id, solArray, &neighborPhi);
-            sum += weight * (neighborPhi ? *neighborPhi : 0.0);
-        }
-        // Store phitilde in debug2 field (shared by both processes)
-        PetscScalar* phitildeCell = nullptr;
-        xDMPlexPointLocalRef(process->subDomain->GetAuxDM(), cell, phitildeField.id, auxArray, &phitildeCell);
-        *phitildeCell = sum;
-        
-        // Debug: Print phitilde for first few cells
-        if (cell < cStart + 5) {
-            PetscPrintf(PETSC_COMM_WORLD, "[ComputeCombinedContributions] DEBUG: Cell %d - phitilde = %g\n", cell, sum);
-        }
-    }
-    
+
     // --- SURFACE FORCE: Compute vertex normals and curvature (if enabled) ---
     DM nvDM = nullptr;
     Vec nvLocalVec = nullptr, nvGlobalVec = nullptr;
     PetscScalar *nvLocalArray = nullptr;
     
     if (process->enableSurfaceForce) {
-        PetscPrintf(PETSC_COMM_WORLD, "[ComputeCombinedContributions] Setting up SurfaceForce vertex operations\n");
-        
-        PetscInt vStart, vEnd;
-        DMPlexGetDepthStratum(process->vertexDM, 0, &vStart, &vEnd);
+        // PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::PreStage] Setting up SurfaceForce vertex operations\n");
         
         // Create and setup vertex normal field
         SF_CopyDM(process->vertexDM, vStart, vEnd, dim, &nvDM);
@@ -485,7 +434,7 @@ void ablate::finiteVolume::processes::IntSharpSurfaceForce::ComputeCombinedContr
             
             if (isAdjToInterface) {
                 // Compute and normalize gradient
-                DMPlexVertexGradFromCell(process->subDomain->GetAuxDM(), vertex, process->subDomain->GetAuxVector(), phitildeField.id, 0, nv);
+                DMPlexVertexGradFromCell(auxDM, vertex, auxVec, phitildeField.id, 0, nv);
                 
                 PetscReal norm = 0.0;
                 for (int d = 0; d < dim; ++d) norm += PetscSqr(nv[d]);
@@ -507,89 +456,23 @@ void ablate::finiteVolume::processes::IntSharpSurfaceForce::ComputeCombinedContr
         DMLocalToGlobal(nvDM, nvLocalVec, INSERT_VALUES, nvGlobalVec);
         DMGlobalToLocal(nvDM, nvGlobalVec, INSERT_VALUES, nvLocalVec);
     }
-    
-    // --- COMBINED CELL LOOP: Process both IntSharp and SurfaceForce ---
-    PetscPrintf(PETSC_COMM_WORLD, "[ComputeCombinedContributions] Starting combined cell loop\n");
-    PetscInt debugCount = 0;
-    
-    for (PetscInt cell = cStart; cell < cEnd; ++cell) {
-        if (cell % 1000 == 0) {
-            PetscPrintf(PETSC_COMM_WORLD, "[ComputeCombinedContributions] Processing cell %d of %d\n", cell, cEnd);
-        }
+
+    // --- PHASE 1: SURFACE FORCE FIRST (if enabled) ---
+    if (process->enableSurfaceForce) {
+        // PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::PreStage] PHASE 1: Applying SurfaceForce\n");
         
-        const PetscScalar *phic, *phitilde;
-        xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic);
-        xDMPlexPointLocalRead(process->subDomain->GetAuxDM(), cell, phitildeField.id, auxArray, &phitilde);
-        
-        // Skip non-interfacial cells
-        if (*phic <= 1e-4 || *phic >= 1.0 - 1e-4) {
-            continue;
-        }
-        
-        // Debug: Print for first 10 interfacial cells
-        if (debugCount < 10) {
-            PetscReal boundaryWeight = process->GetBoundaryWeight(cell);
-            PetscPrintf(PETSC_COMM_WORLD, "[ComputeCombinedContributions] DEBUG: Cell %d - INTERFACIAL #%d (phic = %g, phitilde = %g, boundaryWeight = %g)\n", 
-                       cell, debugCount, *phic, *phitilde, boundaryWeight);
-        }
-        
-        // --- INTSHARP: Compute fsharp and add to RHS (if enabled) ---
-        if (process->enableIntSharp) {
-            PetscScalar *fsharp; 
-            xDMPlexPointLocalRef(process->subDomain->GetAuxDM(), cell, ofield.id, auxArray, &fsharp);
+        for (PetscInt cell = cStart; cell < cEnd; ++cell) {
+            const PetscScalar *phic; 
+            xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic);
             
-            // Get the magnitude of the gradient of the phic field
-            PetscScalar gradphic[dim];
-            DMPlexCellGradFromCell(dm, cell, locX, phiField.id, 0, gradphic);
-            PetscReal normgradphi = 0.0;
-            for (int k = 0; k < dim; ++k) {
-                normgradphi += PetscSqr(gradphic[k]);
+            // Only process interfacial cells
+            if (*phic <= 1e-3 || *phic >= 1.0 - 1e-3) {
+                continue;
             }
-            normgradphi = PetscSqrtReal(normgradphi);
             
-            // Compute fsharp for interfacial cells using phic
-            *fsharp = process->Gamma * ( (-1 * *phic) * (1 - *phic) * (1 - 2 * *phic) + process->epsilon * (1 - 2 * *phic) * normgradphi );
+            PetscScalar *allFields = nullptr; 
+            DMPlexPointLocalRef(dm, cell, flowArray, &allFields) >> utilities::PetscUtilities::checkError;
             
-            // Apply boundary weight to fsharp (dampen near boundaries)
-            PetscReal boundaryWeight = process->GetBoundaryWeight(cell);
-            *fsharp *= boundaryWeight;
-            
-            // Add fsharp contribution to RHS (volume fraction equation)
-            const PetscScalar *euler;
-            PetscScalar *eulerSource;
-            DMPlexPointLocalFieldRef(dm, cell, eulerField.id, fArray, &eulerSource);
-            DMPlexPointLocalFieldRead(dm, cell, eulerField.id, solArray, &euler);
-            
-            // Get density values for RHS computation
-            PetscReal *densityG, *densityL;
-            xDMPlexPointLocalRead(process->subDomain->GetAuxDM(), cell, gasDensityField.id, auxArray, &densityG);
-            xDMPlexPointLocalRead(process->subDomain->GetAuxDM(), cell, liquidDensityField.id, auxArray, &densityL);
-
-            // const auto &eulerOffset = fvSolver.GetSubDomain().GetField(CompressibleFlowFields::EULER_FIELD).offset;
-            // const auto &vfOffset = fvSolver.GetSubDomain().GetField(VOLUME_FRACTION_FIELD).offset;
-            // const auto &rhoAlphaOffset = fvSolver.GetSubDomain().GetField(DENSITY_VF_FIELD).offset;
-            // PetscInt uOff[3]; uOff[0] = vfOffset; uOff[1] = rhoAlphaOffset; uOff[2] = eulerOffset;
-            //do the equiv of the above for the eulerSource
-
-            const auto &vfOffset = process->subDomain->GetField(ablate::finiteVolume::processes::TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD).offset;
-            const auto &rhoAlphaOffset = process->subDomain->GetField(ablate::finiteVolume::processes::TwoPhaseEulerAdvection::DENSITY_VF_FIELD).offset;
-            // const auto &eulerOffset = process->subDomain->GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD).offset;
-
-
-            
-            // Add to volume fraction RHS
-            eulerSource[vfOffset] += *fsharp;
-            //densityVolumeFraction += *fsharp * *densityG;
-            // fvSolver.GetSubDomain().GetField(DENSITY_VF_FIELD).offset;
-            eulerSource[rhoAlphaOffset] += *fsharp * *densityG;
-            
-            // Update density RHS based on volume fraction change
-            // PetscReal densityChange = *fsharp * (*densityG - *densityL);
-            // eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHO] += densityChange;
-        }
-        
-        // --- SURFACE FORCE: Compute curvature and surface forces (if enabled) ---
-        if (process->enableSurfaceForce) {
             // Get boundary weight for this cell
             PetscReal boundaryWeight = process->GetBoundaryWeight(cell);
             
@@ -604,17 +487,9 @@ void ablate::finiteVolume::processes::IntSharpSurfaceForce::ComputeCombinedContr
             // Apply boundary weight to curvature (zero near boundaries)
             kappa *= boundaryWeight;
             
-            if (debugCount < 10) {
-                PetscPrintf(PETSC_COMM_WORLD, "[ComputeCombinedContributions] DEBUG: Cell %d - kappa = %g (boundaryWeight = %g)\n", cell, kappa, boundaryWeight);
-            }
-            
             // Compute surface force using gradient of phitilde (shared field)
             PetscScalar gradphitilde[dim];
-            DMPlexCellGradFromCell(process->subDomain->GetAuxDM(), cell, process->subDomain->GetAuxVector(), phitildeField.id, 0, gradphitilde);
-            
-            if (debugCount < 10) {
-                PetscPrintf(PETSC_COMM_WORLD, "[ComputeCombinedContributions] DEBUG: Cell %d - gradphitilde = [%g, %g, %g]\n", cell, gradphitilde[0], gradphitilde[1], gradphitilde[2]);
-            }
+            DMPlexCellGradFromCell(auxDM, cell, auxVec, phitildeField.id, 0, gradphitilde);
             
             PetscReal normgrad = 0.0;
             for (int d = 0; d < dim; ++d) normgrad += PetscSqr(gradphitilde[d]);
@@ -623,56 +498,134 @@ void ablate::finiteVolume::processes::IntSharpSurfaceForce::ComputeCombinedContr
             PetscReal surfaceForce[3] = {0.0, 0.0, 0.0};
             if (normgrad > 1e-10) {
                 for (int d = 0; d < dim; ++d) {
-                    surfaceForce[d] = process->sigma * kappa * (-gradphitilde[d] / normgrad);
+                    surfaceForce[d] = -1 * process->sigma * kappa * (-gradphitilde[d] / normgrad);
                 }
             }
             
-            if (debugCount < 10) {
-                PetscPrintf(PETSC_COMM_WORLD, "[ComputeCombinedContributions] DEBUG: Cell %d - surfaceForce = [%g, %g, %g]\n", cell, surfaceForce[0], surfaceForce[1], surfaceForce[2]);
-            }
-            
-            // Apply surface forces to RHS
-            const PetscScalar *euler;
-            PetscScalar *eulerSource;
-            DMPlexPointLocalFieldRef(dm, cell, eulerField.id, fArray, &eulerSource);
-            DMPlexPointLocalFieldRead(dm, cell, eulerField.id, solArray, &euler);
-            
-            auto density = euler[ablate::finiteVolume::CompressibleFlowFields::RHO];
+            // Apply surface forces directly to solution fields
+            auto density = allFields[ablate::finiteVolume::CompressibleFlowFields::RHO];
             PetscReal u[3] = {
-                euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 0] / density,
-                euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 1] / density,
-                euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + 2] / density
+                allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU + 0] / density,
+                allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU + 1] / density,
+                allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU + 2] / density
             };
             
-            // Apply surface forces
+            PetscReal pseudoTime = 1e-3;
             for (int d = 0; d < dim; ++d) {
                 if (PetscAbs(surfaceForce[d]) > 1e-10) {
-                    eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] += surfaceForce[d];
-                    eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += surfaceForce[d] * u[d];
+                    allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] += pseudoTime * surfaceForce[d];
+                    allFields[ablate::finiteVolume::CompressibleFlowFields::RHOE] += pseudoTime * surfaceForce[d] * u[d];
                 }
             }
             
-            // Update aux fields for visualization
-            const auto &ofield3 = process->subDomain->GetField("phitilde_surfaceforce");
-            const auto &ofield4 = process->subDomain->GetField("sf_magnitude");
-            const auto &ofield6 = process->subDomain->GetField("kappa");
-            
-            PetscScalar *optr3, *optr4, *optr6;
-            xDMPlexPointLocalRef(process->subDomain->GetAuxDM(), cell, ofield3.id, auxArray, &optr3);
-            xDMPlexPointLocalRef(process->subDomain->GetAuxDM(), cell, ofield4.id, auxArray, &optr4);
-            xDMPlexPointLocalRef(process->subDomain->GetAuxDM(), cell, ofield6.id, auxArray, &optr6);
-            
-            *optr3 = *phitilde;
-            *optr4 = (dim == 3) ? 
-                PetscSqrtReal(PetscSqr(surfaceForce[0]) + PetscSqr(surfaceForce[1]) + PetscSqr(surfaceForce[2])) :
-                PetscSqrtReal(PetscSqr(surfaceForce[0]) + PetscSqr(surfaceForce[1]));
-            *optr6 = kappa;
+            // Update aux fields for visualization (only if SurfaceForce fields exist)
+            try {
+                const auto &ofield3 = subDomain->GetField("phitilde_surfaceforce");
+                const auto &ofield4 = subDomain->GetField("sf_magnitude");
+                const auto &ofield6 = subDomain->GetField("kappa");
+                
+                PetscScalar *optr3, *optr4, *optr6;
+                xDMPlexPointLocalRef(auxDM, cell, ofield3.id, auxArray, &optr3);
+                xDMPlexPointLocalRef(auxDM, cell, ofield4.id, auxArray, &optr4);
+                xDMPlexPointLocalRef(auxDM, cell, ofield6.id, auxArray, &optr6);
+                
+                PetscScalar *phitildeCell = nullptr;
+                xDMPlexPointLocalRef(auxDM, cell, phitildeField.id, auxArray, &phitildeCell);
+                *optr3 = *phitildeCell;
+                *optr4 = (dim == 3) ? 
+                    PetscSqrtReal(PetscSqr(surfaceForce[0]) + PetscSqr(surfaceForce[1]) + PetscSqr(surfaceForce[2])) :
+                    PetscSqrtReal(PetscSqr(surfaceForce[0]) + PetscSqr(surfaceForce[1]));
+                *optr6 = kappa;
+            } catch (const std::exception&) {
+                // SurfaceForce fields not defined, skip visualization update
+            }
         }
         
-        if (debugCount < 10) {
-            PetscPrintf(PETSC_COMM_WORLD, "[ComputeCombinedContributions] DEBUG: Cell %d - Completed processing\n", cell);
-            debugCount++;
+        // Synchronize the updated solution after SurfaceForce
+        DMLocalToGlobalBegin(dm, locFVec, ADD_VALUES, globFlowVec);
+        DMLocalToGlobalEnd(dm, locFVec, ADD_VALUES, globFlowVec);
+        DMGlobalToLocalBegin(dm, globFlowVec, INSERT_VALUES, locX);
+        DMGlobalToLocalEnd(dm, globFlowVec, INSERT_VALUES, locX);
+    }
+    
+    // --- PHASE 2: INTSHARP SECOND (if enabled) ---
+    if (process->enableIntSharp) {
+        PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::PreStage] PHASE 2: Applying IntSharp\n");
+        
+        for (PetscInt cell = cStart; cell < cEnd; ++cell) {
+            const PetscScalar *phic; 
+            xDMPlexPointLocalRead(dm, cell, phiField.id, solArray, &phic);
+            PetscScalar *fsharp; 
+            xDMPlexPointLocalRef(auxDM, cell, ofield.id, auxArray, &fsharp);
+            PetscScalar *allFields = nullptr; 
+            DMPlexPointLocalRef(dm, cell, flowArray, &allFields) >> utilities::PetscUtilities::checkError;
+
+            // Only process interfacial cells based on phic; set fsharp=0 and skip otherwise
+            if (*phic <= 1e-3 || *phic >= 1.0 - 1e-3) {
+                *fsharp = 0.0;
+                continue;
+            }
+
+            // Get the magnitude of the gradient of the phic field
+            PetscScalar gradphic[dim];
+            DMPlexCellGradFromCell(dm, cell, locX, phiField.id, 0, gradphic);
+            PetscReal normgradphi = 0.0;
+            for (int k = 0; k < dim; ++k) {
+                normgradphi += PetscSqr(gradphic[k]);
+            }
+            normgradphi = PetscSqrtReal(normgradphi);
+
+            // Compute fsharp for interfacial cells using phic
+            *fsharp = process->Gamma * ( (-1 * *phic) * (1 - *phic) * (1 - 2 * *phic) + process->epsilon * (1 - 2 * *phic) * normgradphi );
+            
+            // Apply boundary weight to fsharp (dampen near boundaries)
+            PetscReal boundaryWeight = process->GetBoundaryWeight(cell);
+            *fsharp *= boundaryWeight;
+
+            PetscReal velocity[3]; 
+            for (PetscInt d = 0; d < dim; d++) { 
+                velocity[d] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] / allFields[ablate::finiteVolume::CompressibleFlowFields::RHO]; 
+            }
+            PetscReal pseudoTime = 1e-3;
+            PetscReal *densityG, *densityL, *eG, *eL;
+            xDMPlexPointLocalRead(auxDM, cell, gasDensityField.id, auxArray, &densityG) >> utilities::PetscUtilities::checkError;
+            xDMPlexPointLocalRead(auxDM, cell, liquidDensityField.id, auxArray, &densityL) >> utilities::PetscUtilities::checkError;
+            xDMPlexPointLocalRead(auxDM, cell, gasEnergyField.id, auxArray, &eG) >> utilities::PetscUtilities::checkError;
+            xDMPlexPointLocalRead(auxDM, cell, liquidEnergyField.id, auxArray, &eL) >> utilities::PetscUtilities::checkError;
+        
+            // Update solution fields directly with IntSharp corrections
+            if (*phic > 1e-3 && *phic < 1-1e-3 && PetscAbs(*fsharp) > 1e-10) {
+                allFields[vfOffset] += pseudoTime * *fsharp;
+                if (allFields[vfOffset] < 0.0) { allFields[vfOffset] = 0.0; } 
+                else if (allFields[vfOffset] > 1.0) { allFields[vfOffset] = 1.0; }
+                allFields[rhoAlphaOffset] = *densityG * allFields[vfOffset];
+                // allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] = allFields[vfOffset] * *densityG + (1 - allFields[vfOffset]) * *densityL;
+                // for (PetscInt d = 0; d < dim; ++d) {
+                //     allFields[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] = allFields[ablate::finiteVolume::CompressibleFlowFields::RHO] * velocity[d];
+                // }
+            }
         }
+    }
+
+    // Synchronize ghost cells for output vectors (if needed)
+    DMLocalToGlobalBegin(dm, locFVec, ADD_VALUES, globFlowVec);
+    DMLocalToGlobalEnd(dm, locFVec, ADD_VALUES, globFlowVec);
+    DMLocalToGlobalBegin(auxDM, auxVec, INSERT_VALUES, auxVec);
+    DMLocalToGlobalEnd(auxDM, auxVec, INSERT_VALUES, auxVec);
+
+    // --- Determinism: Print checksum of solution vector at end ---
+    PetscReal solNormEnd = 0.0;
+    VecNorm(locX, NORM_2, &solNormEnd);
+    PetscPrintf(PETSC_COMM_WORLD, "[IntSharpSurfaceForce::PreStage] End solution norm: %g\n", solNormEnd);
+
+    PetscCall(VecRestoreArray(globFlowVec, &flowArray)); 
+    VecRestoreArrayRead(locX, &solArray);
+    VecRestoreArray(auxVec, &auxArray);
+    VecRestoreArray(locFVec, &fArray);
+    if (process->enableSurfaceForce && vertexVec) {
+        VecRestoreArray(vertexVec, &vertexArray);
+        DMRestoreLocalVector(process->vertexDM, &vertexVec);
+        VecDestroy(&vertexVec);
     }
     
     // Cleanup SurfaceForce resources
@@ -683,9 +636,12 @@ void ablate::finiteVolume::processes::IntSharpSurfaceForce::ComputeCombinedContr
         DMDestroy(&nvDM);
     }
     
-    VecRestoreArray(locFVec, &fArray);
-    PetscPrintf(PETSC_COMM_WORLD, "[ComputeCombinedContributions] EXIT\n");
+    solver.RestoreRange(cellRange);
+
+    PetscFunctionReturn(0);
 }
+
+
 
 REGISTER(ablate::finiteVolume::processes::Process, ablate::finiteVolume::processes::IntSharpSurfaceForce, "combined interface sharpening and surface force process",
          ARG(PetscReal, "Gamma", "IntSharp: velocity scale parameter (approx. umax)"),

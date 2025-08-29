@@ -1146,7 +1146,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffene
       eL = internalEnergy;
       TL = (eL*rhoL - p0L)/(cvL*rhoL);
 
-      PetscReal rho0 = 1.1614401858304297;
+      PetscReal rho0 = 998.23;
 
       if (rhoL < rho0) {
         PetscReal p0  = (gammaL - 1.0)*rho0*eL - gammaL*p0L; // What the pressure would be if the density was higher

@@ -126,7 +126,7 @@ void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::Fini
 
         PetscInt cell = cellRange.GetPoint(i);
         PetscInt nNeighbors, *neighbors;
-        PetscReal layers=1;
+        PetscReal layers=3;
         DMPlexGetNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
         cellNeighbors[cell] = std::vector<PetscInt>(neighbors, neighbors + nNeighbors);
         //corresponding to each of the neighbors, get the weight of the neighbor which is calculated via (inverse distance) /(total weight) such that the sum of the weights is 1

@@ -116,6 +116,10 @@ class NPhaseAllaireAdvection : public Process {
     std::vector<std::shared_ptr<eos::EOS>> eosk;
     const std::shared_ptr<fluxCalculator::FluxCalculator> fluxCalculatorNStiff;
 
+    // Zalesak test parameters
+    bool zalesakTest;
+    // PetscReal T_zalesak;
+
     /**
      * Create and store the decoder
      */
@@ -145,6 +149,9 @@ class NPhaseAllaireAdvection : public Process {
                                                         const PetscScalar auxL[], const PetscScalar auxR[], PetscScalar *flux, void *ctx);
     static PetscErrorCode NPhaseFlowComputeAlphakFlux(PetscInt dim, const PetscFVFaceGeom *fg, const PetscInt uOff[], const PetscScalar fieldL[], const PetscScalar fieldR[], const PetscInt aOff[],
                                                         const PetscScalar auxL[], const PetscScalar auxR[], PetscScalar *flux, void *ctx);
+
+    // Zalesak test source term
+    static PetscErrorCode ZalesakTestSourceTerm(PetscInt dim, PetscReal time, const PetscFVCellGeom* cg, const PetscInt uOff[], const PetscScalar u[], const PetscInt aOff[], const PetscScalar a[], PetscScalar f[], void* ctx);
 
     //this will be necessary later
     // static PetscErrorCode NPhaseFlowComputeAlphakFlux(PetscInt dim, const PetscFVFaceGeom *fg, const PetscInt uOff[], const PetscScalar fieldL[], const PetscScalar fieldR[], const PetscInt aOff[],

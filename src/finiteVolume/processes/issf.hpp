@@ -71,14 +71,11 @@ class IntSharpSurfaceForce : public Process {
 
     void Initialize(ablate::finiteVolume::FiniteVolumeSolver &solver);
     void Setup(ablate::finiteVolume::FiniteVolumeSolver &flow);
-    static PetscErrorCode ComputeSource(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx);
+    PetscErrorCode PreStage(TS flowTs, ablate::solver::Solver &solver, PetscReal stagetime);
 
    private:
     void ComputeBoundaryInformation(DM dm);
     PetscReal GetBoundaryWeight(PetscInt cell) const;
-    void ComputeCombinedContributions(DM dm, Vec locX, Vec locFVec, const PetscScalar *solArray, 
-                                     PetscScalar *auxArray, const ablate::domain::Range &cellRange, 
-                                     IntSharpSurfaceForce *process);
 };
 
 }  // namespace ablate::finiteVolume::processes

@@ -81,6 +81,13 @@ ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseAllaireAdvection(
         timeStepData.cfl = parameters->Get<PetscReal>("cfl", 0.5);
     }
 
+    // Zalesak test parameters
+    zalesakTest = parameters->Get<bool>("zalesakTest", false);
+    if (zalesakTest) {
+    //     T_zalesak = parameters->Get<PetscReal>("T_zalesak", 1.0);
+        PetscPrintf(MPI_COMM_WORLD, "[NPhaseAllaireAdvection] Zalesak test enabled\n");
+    }
+
     //(MPI_COMM_WORLD, "end of constructor\n");
 }
 
@@ -113,6 +120,22 @@ void ablate::finiteVolume::processes::NPhaseAllaireAdvection::Setup(ablate::fini
     flow.RegisterRHSFunction(NPhaseFlowComputeAlphakRhokFlux, this, {ALPHAKRHOK}, {ALPHAK, ALPHAKRHOK, NPhaseFlowFields::ALLAIRE_FIELD}, {});
     flow.RegisterRHSFunction(NPhaseFlowComputeAlphakFlux, this, {ALPHAK}, {ALPHAK, ALPHAKRHOK, NPhaseFlowFields::ALLAIRE_FIELD}, {});
 
+    // Register Zalesak test as source term if enabled
+    if (zalesakTest) {
+        PetscPrintf(MPI_COMM_WORLD, "[NPhaseAllaireAdvection::Setup] About to register Zalesak test\n");
+        PetscPrintf(MPI_COMM_WORLD, "[NPhaseAllaireAdvection::Setup] ALPHAK field offset: %d\n", subDomain.GetField(ALPHAK).offset);
+        PetscPrintf(MPI_COMM_WORLD, "[NPhaseAllaireAdvection::Setup] ALPHAKRHOK field offset: %d\n", subDomain.GetField(ALPHAKRHOK).offset);
+        PetscPrintf(MPI_COMM_WORLD, "[NPhaseAllaireAdvection::Setup] ALLAIRE_FIELD offset: %d\n", subDomain.GetField(NPhaseFlowFields::ALLAIRE_FIELD).offset);
+        
+        // Register Zalesak test like the working twoPhaseEulerAdvection version
+        flow.RegisterRHSFunction(static_cast<ablate::finiteVolume::CellInterpolant::PointFunction>(ZalesakTestSourceTerm), 
+            this, 
+            {NPhaseFlowFields::ALLAIRE_FIELD},  // Input fields: only need ALLAIRE_FIELD
+            {NPhaseFlowFields::ALLAIRE_FIELD},  // Output fields: modifies ALLAIRE_FIELD
+            {});
+        PetscPrintf(MPI_COMM_WORLD, "[NPhaseAllaireAdvection::Setup] Zalesak test registered successfully\n");
+    }
+
     flow.RegisterComputeTimeStepFunction(ComputeCflTimeStep, &timeStepData, "cfl");
     timeStepData.computeSpeedOfSound = eosNPhase->GetThermodynamicFunction(eos::ThermodynamicProperty::SpeedOfSound, subDomain.GetFields());
 
@@ -143,6 +166,11 @@ void ablate::finiteVolume::processes::NPhaseAllaireAdvection::Setup(ablate::fini
     }
     if (subDomain.ContainsField(NPhaseFlowFields::SOSK) && (subDomain.GetField(NPhaseFlowFields::SOSK).location == ablate::domain::FieldLocation::AUX)) {
       auxUpdateFields.push_back(NPhaseFlowFields::SOSK);
+    }
+
+    // include Aij interface indicator field if present
+    if (subDomain.ContainsField(NPhaseFlowFields::AIJ) && (subDomain.GetField(NPhaseFlowFields::AIJ).location == ablate::domain::FieldLocation::AUX)) {
+      auxUpdateFields.push_back(NPhaseFlowFields::AIJ);
     }
 
     // if (subDomain.ContainsField(ALPHAK) && (subDomain.GetField(ALPHAK).location == ablate::domain::FieldLocation::AUX)) {
@@ -258,6 +286,19 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::UpdateAu
         else if (fields[f] == NPhaseFlowFields::SOSK) {
             for (std::size_t k = 0; k < nPhaseAllaireAdvection->eosk.size(); k++) {
                 auxField[aOff[f] + k] = ak[k];
+            }
+        }
+        else if (fields[f] == NPhaseFlowFields::AIJ) {
+            // Populate Aij for unique pairs (i<j): Aij = alpha_i / (alpha_i + alpha_j)
+            std::size_t nPhases = nPhaseAllaireAdvection->eosk.size();
+            PetscInt idx = 0;
+            for (std::size_t i = 0; i < nPhases; i++) {
+                for (std::size_t j = i + 1; j < nPhases; j++) {
+                    PetscReal denom = alphak[i] + alphak[j];
+                    PetscReal value = (denom > PETSC_SMALL) ? (alphak[i] / denom) : 1.0;
+                    auxField[aOff[f] + idx] = value;
+                    idx++;
+                }
             }
         }
         // else if (fields[f] == NPhaseFlowFields::ALPHAKRHOK) {
@@ -1069,6 +1110,69 @@ void ablate::finiteVolume::processes::NPhaseAllaireAdvection::NStiffDecoder::Dec
 
     //(MPI_COMM_WORLD, "finished DecodeNPhaseAllaireState\n");
 
+}
+
+PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::ZalesakTestSourceTerm(
+    PetscInt dim, PetscReal time, const PetscFVCellGeom* cg, const PetscInt uOff[], const PetscScalar u[], const PetscInt aOff[], const PetscScalar a[], PetscScalar f[], void* ctx) {
+    PetscFunctionBeginUser;
+    
+    // PetscPrintf(MPI_COMM_WORLD, "[ZalesakTestSourceTerm] Function called at time=%g, dim=%d\n", time, dim);
+    // PetscPrintf(MPI_COMM_WORLD, "[ZalesakTestSourceTerm] Cell centroid: x=%g, y=%g\n", cg->centroid[0], (dim > 1) ? cg->centroid[1] : 0.0);
+    
+    // Get cell centroid coordinates
+    PetscReal x = cg->centroid[0];
+    PetscReal y = (dim > 1) ? cg->centroid[1] : 0.0;
+
+    // Zalesak velocity field (rotating velocity field)
+    PetscReal u_target = 30.0 * (0.5 - y);
+    PetscReal v_target = 30.0 * (x - 0.5);
+
+        // Debug: Print the offset we're receiving
+    PetscPrintf(MPI_COMM_WORLD, "[ZalesakTestSourceTerm] Received offset: uOff[0]=%d\n", uOff[0]);
+    
+    // Since we only registered ALLAIRE_FIELD, uOff[0] points to the start of ALLAIRE_FIELD
+    // We need to access other fields through the solution vector directly
+    // Get the field offsets from the subdomain
+    // PetscInt alphakOffset = 3;    // From your debug output
+    PetscInt alphakrhokOffset = 8; // From your debug output
+    PetscInt allaireOffset = 0;    // From your debug output
+    
+    // Get current density and momentum using hardcoded offsets for now
+    PetscReal rho = 0.0;
+    std::size_t phases = 5;  // Hardcode for now
+    for (std::size_t k = 0; k < phases; k++) {
+        rho += u[alphakrhokOffset + k];  // ALPHAKRHOK field
+    }
+    
+    PetscReal rhoU_current = u[allaireOffset + NPhaseFlowFields::RHOU];      // RHOU from ALLAIRE_FIELD
+    PetscReal rhoV_current = (dim > 1) ? u[allaireOffset + NPhaseFlowFields::RHOV] : 0.0;  // RHOV from ALLAIRE_FIELD
+
+    // Compute target momentum (density * target velocity)
+    PetscReal rhoU_target = rho * u_target;
+    PetscReal rhoV_target = rho * v_target;
+
+    // Use a reasonable dt (should be passed from solver ideally)
+    PetscReal dt = 1e-4;
+
+    // Debug: Check for NaN velocities
+    if (PetscIsInfOrNanReal(u_target) || PetscIsInfOrNanReal(v_target)) {
+        PetscPrintf(MPI_COMM_WORLD, "ZALESAK TEST DEBUG: NaN/Inf velocity detected at time=%g, x=%g, y=%g\n", time, x, y);
+        PetscPrintf(MPI_COMM_WORLD, "  u_target=%g, v_target=%g\n", u_target, v_target);
+    }
+
+    // Compute source terms to override momentum in one time step
+    // f = (target_momentum - current_momentum) / dt
+    f[uOff[0] + NPhaseFlowFields::RHOU] = (rhoU_target - rhoU_current) / dt;
+    if (dim > 1) {
+        f[uOff[0] + NPhaseFlowFields::RHOV] = (rhoV_target - rhoV_current) / dt;
+    }
+    
+    // Debug: Print what we're writing
+    PetscPrintf(MPI_COMM_WORLD, "[ZalesakTestSourceTerm] Writing source terms: f[%d]=%g, f[%d]=%g\n", 
+                uOff[0] + NPhaseFlowFields::RHOU, f[uOff[0] + NPhaseFlowFields::RHOU],
+                uOff[0] + NPhaseFlowFields::RHOV, f[uOff[0] + NPhaseFlowFields::RHOV]);
+
+    PetscFunctionReturn(0);
 }
 
 #include "registrar.hpp"

@@ -5,9 +5,15 @@
 #include "utilities/vectorUtilities.hpp"
 #include "eos/nPhase.hpp"
 
-ablate::finiteVolume::NPhaseFlowFields::NPhaseFlowFields(std::shared_ptr<eos::EOS> eos, std::shared_ptr<domain::Region> region,
-                                                                     std::shared_ptr<parameters::Parameters> conservedFieldParameters)
-    : eos(std::move(eos)), region(std::move(region)), conservedFieldOptions(std::move(conservedFieldParameters)) {}
+ablate::finiteVolume::NPhaseFlowFields::NPhaseFlowFields(std::shared_ptr<eos::EOS> eos, 
+    std::shared_ptr<domain::Region> region,
+                                                                     
+    std::shared_ptr<parameters::Parameters> conservedFieldParameters,
+    PetscInt dimensions)
+    : eos(std::move(eos)), 
+    region(std::move(region)), 
+    conservedFieldOptions(std::move(conservedFieldParameters)), 
+    dim(dimensions) {  }
 
 std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVolume::NPhaseFlowFields::GetFields() {
     // Get number of phases from EOS
@@ -25,6 +31,16 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
         alphakComponents.push_back("alphak" + std::to_string(k));
     }
 
+    // Create component names for Aij (unique i<j pairs)
+    std::vector<std::string> aijComponents;
+    if (phases >= 2) {
+        for (std::size_t i = 0; i < phases; i++) {
+            for (std::size_t j = i + 1; j < phases; j++) {
+                aijComponents.push_back("aij_" + std::to_string(i) + "_" + std::to_string(j));
+            }
+        }
+    }
+
     std::vector<std::shared_ptr<ablate::domain::FieldDescription>> flowFields{
         std::make_shared<domain::FieldDescription>(
             ALLAIRE_FIELD, ALLAIRE_FIELD,
@@ -35,7 +51,7 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
             ablate::parameters::MapParameters::Create({
         {"petscfv_type", "leastsquares"}, 
         {"petsclimiter_type", "none"},
-        {"petscfv_compute_gradients", "true"} //TRUE
+        {"petscfv_compute_gradients", "false"} //TRUE
     })),
 
         //register alphak FIRST, then alphakrhok
@@ -48,7 +64,7 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
             ablate::parameters::MapParameters::Create({
         {"petscfv_type", "leastsquares"}, 
         {"petsclimiter_type", "none"},
-        {"petscfv_compute_gradients", "true"} //TRUE
+        {"petscfv_compute_gradients", "false"} //TRUE
     })),
 
         std::make_shared<domain::FieldDescription>(
@@ -79,36 +95,89 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
             domain::FieldLocation::AUX, 
             domain::FieldType::FVM, 
             region, 
+            auxFieldOptions),
+
+
+
+        // Aij interface indicator per unique pair (i<j)
+        std::make_shared<domain::FieldDescription>(
+            AIJ, AIJ,
+            aijComponents,
+            domain::FieldLocation::AUX,
+            domain::FieldType::FVM,
+            region,
+            auxFieldOptions),
+
+        std::make_shared<domain::FieldDescription>(
+            "gradAij", "gradAij",
+            [&](){
+                std::vector<std::string> gradAijComponents;
+                for (std::size_t i = 0; i < phases; i++){
+                    for (std::size_t j = i + 1; j < phases; j++){
+                        for (PetscInt d = 0; d < 2; d++){
+                            std::string dimName = (d==0) ? "x" : (d==1) ? "y" : "z";
+                            gradAijComponents.push_back("gradAij_" + std::to_string(i) + "_" + std::to_string(j) + "_" + dimName);
+                        }
+                    }
+                }
+                return gradAijComponents;
+            }(),
+            domain::FieldLocation::AUX,
+            domain::FieldType::FVM,
+            region,
+            auxFieldOptions),
+
+        std::make_shared<domain::FieldDescription>(
+            "sfmom", "sfmom", 
+            [&](){
+                std::vector<std::string> sfmomComponents;
+                for (PetscInt d = 0; d < 2; d++){
+                    sfmomComponents.push_back("sfmom_" + std::to_string(d));
+                }
+                return sfmomComponents;
+            }(),
+            domain::FieldLocation::AUX, 
+            domain::FieldType::FVM, 
+            region, 
+            auxFieldOptions),
+
+        std::make_shared<domain::FieldDescription>(
+            "nAij", "nAij",
+            [&](){
+                std::vector<std::string> nAijComponents;
+                for (std::size_t i = 0; i < phases; i++){
+                    for (std::size_t j = i + 1; j < phases; j++){
+                        for (PetscInt d = 0; d < 2; d++){
+                            std::string dimName = (d==0) ? "x" : (d==1) ? "y" : "z";
+                            nAijComponents.push_back("nAij_" + std::to_string(i) + "_" + std::to_string(j) + "_" + dimName);
+                        }
+                    }
+                }
+                return nAijComponents;
+            }(),
+            domain::FieldLocation::AUX,
+            domain::FieldType::FVM,
+            region,
+            auxFieldOptions),
+
+        std::make_shared<domain::FieldDescription>(
+            "kappaij", "kappaij",
+            [&](){
+                std::vector<std::string> kappaijComponents;
+                for (std::size_t i = 0; i < phases; i++){
+                    for (std::size_t j = i + 1; j < phases; j++){
+                        kappaijComponents.push_back("kappaij_" + std::to_string(i) + "_" + std::to_string(j));
+                    }
+                }
+                return kappaijComponents;
+            }(),
+            domain::FieldLocation::AUX,
+            domain::FieldType::FVM,
+            region,
             auxFieldOptions)
 
-        // std::make_shared<domain::FieldDescription>(
-        //     USTAR, USTAR,
-        //     std::vector<std::string>{"ustar" + domain::FieldDescription::DIMENSION},
-        //     domain::FieldLocation::AUX,
-        //     domain::FieldType::FVM,
-        //     region,
-        //     auxFieldOptions)
         };
-        
-        // if (!eos->GetSpeciesVariables().empty()) {
-        //     flowFields.emplace_back(std::make_shared<domain::FieldDescription>(
-        //         DENSITY_YI_FIELD, DENSITY_YI_FIELD, eos->GetSpeciesVariables(), domain::FieldLocation::SOL, domain::FieldType::FVM, region, conservedFieldOptions, eos->GetFieldTags()));
-        //     flowFields.emplace_back(
-        //         std::make_shared<domain::FieldDescription>(YI_FIELD, YI_FIELD, eos->GetSpeciesVariables(), domain::FieldLocation::AUX, domain::FieldType::FVM, region, auxFieldOptions));
-        // }
-    
-        // if (!eos->GetProgressVariables().empty()) {
-        //     flowFields.emplace_back(std::make_shared<domain::FieldDescription>(DENSITY_PROGRESS_FIELD,
-        //                                                                        DENSITY_PROGRESS_FIELD,
-        //                                                                        eos->GetProgressVariables(),
-        //                                                                        domain::FieldLocation::SOL,
-        //                                                                        domain::FieldType::FVM,
-        //                                                                        region,
-        //                                                                        conservedFieldOptions,
-        //                                                                        ablate::utilities::VectorUtilities::Merge(eos->GetFieldTags(), {EV_TAG})));
-        //     flowFields.emplace_back(
-        //         std::make_shared<domain::FieldDescription>(PROGRESS_FIELD, PROGRESS_FIELD, eos->GetProgressVariables(), domain::FieldLocation::AUX, domain::FieldType::FVM, region, auxFieldOptions));
-        // }
+
     
         // // check the eos/chemModel for any additional required fields
         for (auto& fieldDescriptor : eos->GetAdditionalFields()) {

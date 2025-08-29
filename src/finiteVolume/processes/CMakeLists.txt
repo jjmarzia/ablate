@@ -7,9 +7,10 @@ target_sources(ablateLibrary
         evTransport.cpp
         twoPhaseEulerAdvection.cpp
         nPhaseAllaireAdvection.cpp
-        nPhaseSurfaceForce.cpp
+        nPhaseSurfaceTension.cpp
         nPhaseNonconservativeRHS.cpp
-        intSharp.cpp
+        nPhaseIntSharp.cpp
+        # intSharp.cpp
         issf.cpp
         locations.cpp
         gravity.cpp
@@ -25,7 +26,6 @@ target_sources(ablateLibrary
         soot.cpp
         compactCompressibleNSSpeciesTransport.cpp
         compactCompressibleNSSpeciesSingleProgressTransport.cpp
-        intSharp.cpp
         locations.cpp
 
         PUBLIC
@@ -37,9 +37,10 @@ target_sources(ablateLibrary
         evTransport.hpp
         twoPhaseEulerAdvection.hpp
         nPhaseAllaireAdvection.hpp
-        nPhaseSurfaceForce.hpp
+        nPhaseSurfaceTension.hpp
         nPhaseNonconservativeRHS.hpp
-        intSharp.hpp
+        nPhaseIntSharp.hpp
+        # intSharp.hpp
         issf.hpp
         locations.hpp
         gravity.hpp
@@ -55,6 +56,5 @@ target_sources(ablateLibrary
         compactCompressibleNSSpeciesTransport.hpp
         compactCompressibleNSSpeciesSingleProgressTransport.hpp
         soot.hpp
-        intSharp.hpp
         locations.hpp
         )

@@ -54,6 +54,7 @@ class NPhaseFlowFields : public domain::FieldDescriptor {
     inline const static std::string EPSILON = "epsilon";
     inline const static std::string EPSILONK = "epsilonk";
     inline const static std::string SOSK = "sosk";
+    inline const static std::string AIJ = "aij";
     // inline const static std::string USTAR = "ustar";
 
    protected:
@@ -65,6 +66,7 @@ class NPhaseFlowFields : public domain::FieldDescriptor {
         {"petsclimiter_type", "none"},
         {"petscfv_compute_gradients", "false"}
     });
+    const PetscInt dim;
 
    public:
     /**
@@ -73,7 +75,10 @@ class NPhaseFlowFields : public domain::FieldDescriptor {
      * @param region the region for all of the fields
      * @param conservedFieldParameters override the default field parameters for the conserved field
      */
-    explicit NPhaseFlowFields(std::shared_ptr<eos::EOS> eos, std::shared_ptr<domain::Region> region = {}, std::shared_ptr<parameters::Parameters> conservedFieldParameters = {});
+    explicit NPhaseFlowFields(std::shared_ptr<eos::EOS> eos, 
+        std::shared_ptr<domain::Region> region = {}, 
+        std::shared_ptr<parameters::Parameters> conservedFieldParameters = {}, 
+        PetscInt dimensions = 2);
 
     /**
      * override and return the compressible flow fields
